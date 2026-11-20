@@ -5,9 +5,9 @@ These Windows binaries were built with the Microsoft C/C++ compiler of a
 Visual Studio installation whose license terms this project does not accept
 for releases (Visual Studio reports product line {productLine}, product
 {product}). The linker copies some Microsoft code into every .exe and .dll
-file: startup and support code from msvcrt.lib and vcruntime.lib, and
-possibly aliases from oldnames.lib. This code is copyrighted by Microsoft
-Corporation. The open-source licenses in this archive do not apply to it.
+file: startup and support code from msvcrt.lib and vcruntime.lib. This code
+is copyrighted by Microsoft Corporation. The open-source licenses in this
+archive do not apply to it.
 
 These binaries are a build candidate for testing. Do not redistribute them.
 Releases are built with Visual Studio 2026 and carry their own notice.

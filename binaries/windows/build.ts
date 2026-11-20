@@ -8,8 +8,9 @@
 /** Builds isolated Windows candidates; reassembly never reuses a mismatched source identity. */
 import { closeSync, existsSync, openSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { release, tmpdir } from "node:os";
+import { applyPatchFile } from "../patch.ts";
 import { fetchSources, sources } from "../sources/sources.ts";
 import windowsTools from "./tools.json" with { type: "json" };
 import { hostMeasurementEvidence, visualStudioReleaseGap } from "../artifact/artifact.ts";
@@ -31,15 +32,32 @@ import { buildJobs, capture, run } from "../process.ts";
 // From the repository, because the compiled copy of this module in dist has none of these files.
 const recipeRoot = join(root, "binaries/windows");
 
-/** These scripts, the SQL installer, and the tool pins determine the development installation. */
+/**
+ * Patches applied to the extracted sources before compiling, sorted by path, which is the order they apply in.
+ * A patch in `patches/<source ID>/` changes that source, so the recipe identity, which hashes each file with its
+ * path, also covers what each patch changes and in which order.
+ * docs/native-artifact.md ("Source patches") explains why each one exists and when it goes.
+ */
+export const windowsPatches: ReadonlyArray<{ source: string; file: string }> = [
+  "postgresql/18-radius-in6addr-any.patch",
+].sort().map(path => ({ source: path.split("/")[0]!, file: join(recipeRoot, "patches", path) }));
+
+/**
+ * These scripts, the source patches and the code that applies them, the SQL installer, and the tool pins
+ * determine the development installation.
+ */
 export const windowsRecipe: readonly string[] = [
-  "build.cmd",
-  "build-extensions.cmd",
-  "extensions/CMakeLists.txt",
-  "sql.ts",
-  "requirements.txt",
-  "tools.json",
-].map(file => join(recipeRoot, file));
+  ...[
+    "build.cmd",
+    "build-extensions.cmd",
+    "extensions/CMakeLists.txt",
+    "sql.ts",
+    "requirements.txt",
+    "tools.json",
+  ].map(file => join(recipeRoot, file)),
+  join(root, "binaries/patch.ts"),
+  ...windowsPatches.map(patch => patch.file),
+];
 
 /** The isolated environment whose Meson build.cmd runs, as CONTRIBUTING.md creates it. */
 const toolchainPython = join(workRoot, "windows-toolchain/Scripts/python.exe");
@@ -106,6 +124,10 @@ export async function build(command: string = "build"): Promise<void> {
         "-C",
         destination,
       ]);
+    }
+    for (const patch of windowsPatches) {
+      await applyPatchFile(join(buildWork, "windows-sources", patch.source), patch.file);
+      console.log(`Applied source patch: ${patch.source} ${basename(patch.file)}`);
     }
     await run("7z", [
       "x",

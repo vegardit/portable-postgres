@@ -174,6 +174,30 @@ The owner must be able to execute every core PostgreSQL program.
 Windows validation checks executable file headers, and the installer verifies ACLs.
 The archive SHA-256 check works on either host.
 
+## Source patches
+
+The builds compile the pinned source archives as released, with one exception:
+the Windows build applies the patch files in `binaries/windows/patches/<source ID>/` after it extracts the sources
+and before it compiles.
+`windowsPatches` in `binaries/windows/build.ts` lists them; they apply in path order.
+The patches and the code that applies them are part of the Windows recipe identity.
+A patch changes one file. Each hunk's old lines must occur exactly once in the extracted file and its new lines not at all,
+so the build fails when a source update changed the patched lines or already contains the change.
+
+| Patch                                    | Change                                                                      | Remove when                    |
+| ---------------------------------------- | --------------------------------------------------------------------------- | ------------------------------ |
+| `postgresql/18-radius-in6addr-any.patch` | Deletes the RADIUS client's assignment `localaddr.sin6_addr = in6addr_any;` | The PostgreSQL pin moves to 19 |
+
+The `memset` before that assignment has already zeroed the address, so behaviour is unchanged.
+PostgreSQL 19 has no RADIUS support (upstream commit `a1643d40b3`), so the patch would no longer apply.
+The patch keeps Windows SDK code out of `postgres.exe`:
+its reference to `in6addr_any` made the linker copy `ws2_32.lib(indef.obj)`, a member of a Windows SDK static library.
+In the inventoried builds, that was the only static Windows SDK code in the archive.
+A patch that applies does not prove its absence, because another reference to the same symbol would link it again,
+and the Windows build does not yet check its link maps for such members.
+Import stubs from the Windows SDK import libraries are not static library code,
+and code that the compiler inlines from Windows SDK headers is a documented residual risk.
+
 ## Notices and license gate
 
 Source `license` fields describe source declarations.
@@ -215,7 +239,7 @@ because the linker adds that code to every image:
 | ------- | --------------- | -------------------------------------------------------------------- | -------------------------------- |
 | Linux   | `compiler-rt`   | Clang's runtime builtins and startup objects                         | `Clang major version`            |
 | Linux   | `glibc-startup` | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                          |
-| Windows | `msvc-runtime`  | MSVC code from `msvcrt.lib`, `vcruntime.lib` and `oldnames.lib`      | `Visual Studio product line`     |
+| Windows | `msvc-runtime`  | MSVC code from `msvcrt.lib` and `vcruntime.lib`                      | `Visual Studio product line`     |
 
 The Windows build also records the `Visual Studio edition`, its `Visual Studio channel`, and the `MSVC toolset`.
 It records them for the installation it compiles with, and reassembly reuses them.
@@ -262,8 +286,8 @@ glibc's startup sources add that exception to the LGPL, which permits linking th
 distributing the result; SPDX lists glibc's wording as a reference text for the exception.
 
 The Visual Studio identifier is the only proprietary licence that release validation admits.
-It covers the static code from Visual Studio toolset libraries that the linker copies into every Windows image:
-the startup objects of `msvcrt.lib`, members of `vcruntime.lib`, and aliases from `oldnames.lib`.
+It covers the static code from Visual Studio toolset libraries that the linker copies into every Windows image;
+today these are startup objects of `msvcrt.lib` and members of `vcruntime.lib`.
 Microsoft's Distributable List names runtime files, not this linked code.
 The project applies the conditions of the Distributable Code section to it, and `notices/msvc-runtime.txt` passes them on.
 The identifier belongs to Visual Studio 2026, which reports the product line `18`.

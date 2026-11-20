@@ -72,7 +72,7 @@ Run `pnpm install --frozen-lockfile` from the repository root before building fo
 Every native build uses fresh source, object, and SDK directories.
 Reassembly checks that the saved source identities and build recipe still match the current ones.
 A reassembly that finishes after a newer build has started keeps that build as the last one, and warns that its own candidate is not recorded.
-A change to a build script, the Windows SQL installer, or a build tool pin therefore needs a fresh build.
+A change to a build script, a source patch, the Windows SQL installer, or a build tool pin therefore needs a fresh build.
 Candidate metadata follows [native artifact format 1](docs/native-artifact.md).
 Release validation deliberately fails until the artifact's license inventory and host prerequisites are verified.
 
@@ -147,6 +147,9 @@ and other changes open the next revision once the current one has been released.
 The [Update Sources workflow](.github/workflows/update-sources.yml) runs the command every Monday
 and opens or refreshes a pull request on the `dependencies/sources` branch.
 The Build workflow then checks that every target still compiles and passes the native tests with the new releases.
+The Windows build fails when a source patch in `binaries/windows/patches/` no longer applies.
+Then check whether the updated source still needs the patch, as "Source patches" in
+[native artifact format 1](docs/native-artifact.md) describes, and update or remove it.
 The workflow creates the pull request with a GitHub App, so that its checks run without a manual approval.
 Configure the App's ID as the `PR_UPDATER_APP_ID` variable and its private key as the `PR_UPDATER_APP_PRIVATE_KEY` secret.
 The Windows build tools in `binaries/windows/tools.json` are not covered and are updated by hand.

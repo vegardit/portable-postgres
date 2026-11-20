@@ -4,9 +4,9 @@ Conditions for the Microsoft code in the Windows binaries
 The Windows binaries in this archive were built with the Microsoft C/C++
 compiler of Visual Studio 2026 and use the dynamically linked Microsoft C
 runtime. The linker copies some Microsoft code into every .exe and .dll file:
-startup and support code from msvcrt.lib and vcruntime.lib, and possibly
-aliases from oldnames.lib. This code is copyrighted by Microsoft Corporation.
-The open-source licenses in this archive do not apply to it.
+startup and support code from msvcrt.lib and vcruntime.lib. This code is
+copyrighted by Microsoft Corporation. The open-source licenses in this archive
+do not apply to it.
 
 The Microsoft C runtime libraries, vcruntime140.dll and the Universal C
 Runtime (ucrtbase.dll), are not part of this archive. The computer that runs

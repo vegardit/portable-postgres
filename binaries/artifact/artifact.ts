@@ -95,13 +95,13 @@ export const releaseVisualStudioEditions: readonly string[] = [
 ];
 
 /**
- * Visual Studio product lines whose licence terms were reviewed, and the identifier for the toolset code
- * that their linker copies into every image: the startup objects of msvcrt.lib, members of vcruntime.lib
- * and aliases from oldnames.lib. Microsoft's Distributable List names runtime files, not this linked code;
- * the project applies the conditions of the Distributable Code section to it, and the shipped notice passes
- * them on, as CPython's does. Both Windows notices name these lines: `notices/msvc-runtime.txt` describes
- * them, and `notices/msvc-runtime-candidate.txt` calls them the release line, so admitting another line
- * means reviewing both texts.
+ * Visual Studio product lines whose licence terms were reviewed, and the identifier for the static code from
+ * Visual Studio toolset libraries that their linker copies into every image; today these are startup objects
+ * of msvcrt.lib and members of vcruntime.lib. Microsoft's Distributable List names runtime files, not this
+ * linked code; the project applies the conditions of the Distributable Code section to it, and the shipped
+ * notice passes them on, as CPython's does. Both Windows notices name these lines:
+ * `notices/msvc-runtime.txt` describes them, and `notices/msvc-runtime-candidate.txt` calls them the release
+ * line, so admitting another line means reviewing both texts.
  */
 const visualStudioLicenses: ReadonlyMap<string, string> = new Map([
   ["18", "LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code"],

@@ -1,0 +1,24 @@
+SPDX-FileCopyrightText: Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+SPDX-FileCopyrightText: Portions Copyright (c) 1994, Regents of the University of California
+SPDX-License-Identifier: PostgreSQL
+
+Stop the RADIUS client from linking a Windows SDK library member into postgres.exe.
+
+The assignment copies the all-zero IPv6 address over a structure that the memset two lines
+earlier has already zeroed, so deleting it changes no behaviour. On Windows, its reference
+to in6addr_any is the only reason the linker copies a member of a Windows SDK static library,
+ws2_32.lib(indef.obj), into the archive. See "Source patches" in docs/native-artifact.md.
+
+Remove this patch with the move to PostgreSQL 19, which no longer has RADIUS support
+(upstream commit a1643d40b3).
+
+--- a/src/backend/libpq/auth.c
++++ b/src/backend/libpq/auth.c
+@@ -3065,7 +3065,6 @@
+ 
+ 	memset(&localaddr, 0, sizeof(localaddr));
+ 	localaddr.sin6_family = serveraddrs[0].ai_family;
+-	localaddr.sin6_addr = in6addr_any;
+ 	if (localaddr.sin6_family == AF_INET6)
+ 		addrsize = sizeof(struct sockaddr_in6);
+ 	else
