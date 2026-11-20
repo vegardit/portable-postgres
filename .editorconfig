@@ -1,0 +1,28 @@
+# Gives editors the repository's basic text settings; dprint.jsonc stays the formatting source of truth.
+# Most files take Git's platform-native line endings; only the fixed endings of hand-edited files from .gitattributes
+# appear here.
+
+# top-most EditorConfig (https://EditorConfig.org) file
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+
+[{.gitattributes,.gitignore,Dockerfile,*.Dockerfile,*.bash,*.fish,*.sh,*.zsh}]
+end_of_line = lf
+
+# Context lines in a diff keep their leading space, even on an otherwise empty line.
+[*.patch]
+trim_trailing_whitespace = false
+
+# Codex rules are Starlark with four-space indentation; dprint does not format them.
+[*.rules]
+indent_size = 4

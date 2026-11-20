@@ -1,0 +1,16 @@
+# Excludes local work from the repository.
+
+# Local work folders
+/_*/
+
+.*
+!.editorconfig
+!.git*
+
+# Vim
+*.swo
+*.swp
+
+# patch
+*.orig
+*.rej
