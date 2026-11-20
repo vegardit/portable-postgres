@@ -44,7 +44,7 @@ set "_LINK_=/MAP /VERBOSE:LIB"
 set "PATH=%WORK_ROOT%\windows-tools\winflexbison;%VS_ROOT%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
 REM NOTE: Git's MSYS Perl rewrites MSVC switches as paths; reconsider when using native Windows Perl.
 set "MSYS2_ARG_CONV_EXCL=*"
-"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --buildtype release --backend ninja -Db_vscrt=md -Dreadline=disabled -Dzlib=disabled -Dicu=disabled -Dssl=none -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
+"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=disabled -Dicu=disabled -Dssl=none -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
 if errorlevel 1 (
   type "%WORK_ROOT%\windows-postgresql-configure.log"
   exit /b 1
