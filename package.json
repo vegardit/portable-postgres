@@ -1,0 +1,57 @@
+{
+  "name": "portable-postgres-build-tools",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "format:check": "dprint check",
+    "format:fix": "dprint fmt",
+    "lint": "oxlint --deny-warnings .",
+    "lint:fix": "oxlint --fix --deny-warnings .",
+    "binaries:fetch": "node binaries/linux/build.ts fetch",
+    "binaries:assemble:linux": "node binaries/linux/build.ts assemble",
+    "binaries:assemble:windows": "node binaries/windows/build.ts assemble",
+    "binaries:build:linux": "node binaries/linux/build.ts build",
+    "binaries:build:windows": "node binaries/windows/build.ts build",
+    "binaries:compare": "node binaries/validate.ts compare",
+    "binaries:release": "node binaries/release.ts",
+    "binaries:review": "node binaries/review.ts",
+    "binaries:test:linux": "node binaries/linux/test.ts",
+    "binaries:test:linux:clean": "node binaries/linux/test-clean.ts",
+    "binaries:test:windows": "node binaries/windows/test.ts",
+    "binaries:update-pins": "node binaries/sources/update.ts",
+    "binaries:validate": "node binaries/validate.ts release",
+    "binaries:validate:candidate": "node binaries/validate.ts candidate",
+    "binaries:verify:archive": "node binaries/validate.ts archive",
+    "test": "pnpm build && vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:config": "tsc --showConfig --project"
+  },
+  "devDependencies": {
+    "@dprint/json": "0.26.0",
+    "@dprint/markdown": "0.29.0",
+    "@dprint/typescript": "0.101.0",
+    "@tsconfig/strictest": "2.0.9",
+    "@types/node": ">=26",
+    "dprint": "0.65.0",
+    "dprint-plugin-yaml": "0.6.0",
+    "oxlint": "1.94.0",
+    "oxlint-tsgolint": "7.0.2007",
+    "tap-parser": "18.3.4",
+    "tar": "7.5.23",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0",
+    "zod": "4.6.7"
+  },
+  "packageManager": "pnpm@12.21.0",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=26",
+      "onFail": "error"
+    }
+  }
+}

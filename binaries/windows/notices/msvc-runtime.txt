@@ -1,0 +1,43 @@
+Conditions for the Microsoft code in the Windows binaries
+=========================================================
+
+The Windows binaries in this archive were built with the Microsoft C/C++
+compiler of Visual Studio 2026 and use the dynamically linked Microsoft C
+runtime. The linker copies some Microsoft code into every .exe and .dll file:
+startup and support code from msvcrt.lib and vcruntime.lib, and possibly
+aliases from oldnames.lib. This code is copyrighted by Microsoft Corporation.
+The open-source licenses in this archive do not apply to it.
+
+The Microsoft C runtime libraries, vcruntime140.dll and the Universal C
+Runtime (ucrtbase.dll), are not part of this archive. The computer that runs
+the binaries must provide them. Windows 10 and later include the Universal C
+Runtime.
+
+Microsoft's license terms for Visual Studio 2026 set conditions for
+distributing Microsoft code in programs built with Visual Studio. This project
+applies the conditions of their "Distributable Code" section to the Microsoft
+code in these binaries. Only Microsoft can grant rights in its code; this
+notice does not.
+
+If you distribute these binaries further, you must follow the conditions below
+for the Microsoft code in them. Distributing includes letting third parties
+use the binaries over the internet.
+
+- Distribute the Microsoft code only as part of these binaries, not on its own.
+- Require your distributors and external end users to agree to terms that
+  protect the Microsoft code at least as much as Microsoft's license terms do.
+- Do not use Microsoft's trademarks in your programs' names or in a way that
+  suggests that your programs come from or are endorsed by Microsoft.
+- Do not modify or distribute the source code of the Microsoft code so that
+  any part of it becomes subject to a license that requires, as a condition of
+  use, modification or distribution, that the code is disclosed or distributed
+  in source code form, or that others have the right to modify it.
+
+The full conditions are in the section "Distributable Code" of Microsoft's
+license terms for Visual Studio 2026:
+https://visualstudio.microsoft.com/license-terms/vs2026-ga-community/
+https://visualstudio.microsoft.com/license-terms/vs2026-ga-pro-enterprise/
+
+These conditions apply only to the Microsoft code described above. The other
+files in this directory state the licenses of PostgreSQL and of the included
+extensions.

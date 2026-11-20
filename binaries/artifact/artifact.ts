@@ -1,0 +1,1086 @@
+/*
+ * SPDX-FileCopyrightText: © Vegard IT GmbH (https://vegardit.com)
+ * SPDX-FileContributor: Sebastian Thomschke
+ * SPDX-License-Identifier: Apache-2.0
+ * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
+ */
+
+/** Defines and validates language-neutral runtime metadata; candidate checks never imply release license approval. */
+import {
+  chmod,
+  lstat,
+  open,
+  readdir,
+  readFile,
+  readlink,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { fileSha256 } from "../hash.ts";
+import { sources } from "../sources/sources.ts";
+import { additionalNoticeName } from "./notices.ts";
+import * as z from "zod";
+import {
+  type ArtifactTarget,
+  artifactTargets,
+  corePrograms,
+  extensionNames,
+  includesRuntimePath,
+  requiredModules,
+  sqlOnlyExtensions,
+} from "./runtime-layout.ts";
+
+export const artifactManifestName = "native-artifact.json";
+export type { ArtifactTarget } from "./runtime-layout.ts";
+
+/**
+ * Toolchain code that the linker puts into every native image, besides the code of the source it was
+ * built from. Each part's licence review is a component of its own, which must cover every image.
+ * Its code ships no upstream licence text to compare, so the review is bound to the host evidence naming
+ * the toolchain line; the terms change with the line, not with each toolset update.
+ * A part with a `notice` ships the project's own notice for that code, and its review binds that text too.
+ */
+export const toolchainComponents: Record<
+  ArtifactTarget,
+  ReadonlyArray<{ id: string; evidence: string; notice?: string }>
+> = {
+  "linux-x64-glibc": [
+    { id: "compiler-rt", evidence: "Clang major version" },
+    // Scrt1.o, crti.o, crtn.o and members of libc_nonshared.a are linked statically into every ELF image.
+    { id: "glibc-startup", evidence: "glibc" },
+  ],
+  "windows-x64": [
+    {
+      id: "msvc-runtime",
+      evidence: "Visual Studio product line",
+      notice: "notices/msvc-runtime.txt",
+    },
+  ],
+};
+
+/** Returns the archive paths of the project's notices that the target's toolchain components ship. */
+export function toolchainNotices(target: ArtifactTarget): string[] {
+  return toolchainComponents[target].flatMap(part =>
+    part.notice === undefined ? [] : [part.notice]
+  );
+}
+
+/** Returns the host evidence entry that a toolchain component's review is bound to. */
+export function toolchainEvidence(id: string): string {
+  const part = Object.values(toolchainComponents).flat().find(candidate => candidate.id === id);
+  if (part === undefined) throw new Error("Unknown toolchain component: " + id);
+  return part.evidence;
+}
+
+/**
+ * glibc's startup sources add the GCC linking exception to the LGPL; SPDX lists glibc's wording of it as a
+ * reference text. This is not GCC's own runtime, whose GPL licence stays forbidden.
+ */
+const glibcStartupLicense = "LGPL-2.1-or-later WITH GCC-exception-2.0";
+const compilerRtLicense = "Apache-2.0 WITH LLVM-exception";
+
+/** The host evidence naming the Visual Studio product that compiled a Windows build. */
+export const visualStudioEditionEvidence = "Visual Studio edition";
+
+/**
+ * The Visual Studio products whose licence terms a release review covers; they share one Distributable
+ * Code section. Build Tools have none: they only supplement a licence to one of these products, which a
+ * build machine cannot show. Other products still build candidates, but no release.
+ */
+export const releaseVisualStudioEditions: readonly string[] = [
+  "Microsoft.VisualStudio.Product.Enterprise",
+  "Microsoft.VisualStudio.Product.Professional",
+  "Microsoft.VisualStudio.Product.Community",
+];
+
+/**
+ * Visual Studio product lines whose licence terms were reviewed, and the identifier for the toolset code
+ * that their linker copies into every image: the startup objects of msvcrt.lib, members of vcruntime.lib
+ * and aliases from oldnames.lib. Microsoft's Distributable List names runtime files, not this linked code;
+ * the project applies the conditions of the Distributable Code section to it, and the shipped notice passes
+ * them on, as CPython's does. Both Windows notices name these lines: `notices/msvc-runtime.txt` describes
+ * them, and `notices/msvc-runtime-candidate.txt` calls them the release line, so admitting another line
+ * means reviewing both texts.
+ */
+const visualStudioLicenses: ReadonlyMap<string, string> = new Map([
+  ["18", "LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code"],
+]);
+
+/** Whether the licence terms of a Visual Studio product line, as Visual Studio reports it, were reviewed. */
+export function hasReviewedVisualStudioLine(line: string): boolean {
+  return visualStudioLicenses.has(line);
+}
+
+/**
+ * Returns why release validation refuses the Visual Studio that a Windows build recorded, or `undefined`
+ * when the terms of its product line and edition were reviewed. Builds use it to warn early.
+ */
+export function visualStudioReleaseGap(hostEvidence: readonly HostEvidence[]): string | undefined {
+  const lineEvidence = toolchainEvidence("msvc-runtime");
+  const line = hostEvidence.find(entry => entry.component === lineEvidence)?.version;
+  if (line === undefined) return "missing toolchain evidence: " + lineEvidence;
+  // A new line needs its own review: the terms follow the line, and the identifier names it.
+  if (!hasReviewedVisualStudioLine(line)) {
+    return "Visual Studio product line " + line + " has no reviewed licence terms";
+  }
+  const edition = hostEvidence.find(entry => entry.component === visualStudioEditionEvidence)
+    ?.version;
+  if (edition === undefined) return "missing toolchain evidence: " + visualStudioEditionEvidence;
+  if (!releaseVisualStudioEditions.includes(edition)) {
+    return "Visual Studio edition " + edition + " is not admitted for releases; build with "
+      + releaseVisualStudioEditions.join(", ");
+  }
+  return undefined;
+}
+
+/**
+ * The licence each toolchain component must carry. The glibc startup and MSVC licences are admitted
+ * only for their respective components. The LLVM licence is also permitted for other reviewed code.
+ */
+function toolchainLicenses(manifest: ArtifactManifest): Map<string, string> {
+  const licenses = new Map<string, string>();
+  for (const part of toolchainComponents[manifest.target]) {
+    if (part.id === "compiler-rt") licenses.set(part.id, compilerRtLicense);
+    if (part.id === "glibc-startup") licenses.set(part.id, glibcStartupLicense);
+    if (part.id === "msvc-runtime") {
+      const gap = visualStudioReleaseGap(manifest.hostEvidence);
+      requireCondition(gap === undefined, gap ?? "");
+      const line = manifest.hostEvidence.find(entry => entry.component === part.evidence)!.version;
+      licenses.set(part.id, visualStudioLicenses.get(line)!);
+    }
+  }
+  return licenses;
+}
+
+/** Host libraries that every release review must name for its target. */
+export const requiredHostLibraries: Record<ArtifactTarget, readonly string[]> = {
+  "linux-x64-glibc": ["glibc"],
+  "windows-x64": ["vcruntime140.dll", "ucrtbase.dll"],
+};
+
+/**
+ * The host evidence in which a build records what its packaged images need from the host: the imported
+ * system DLLs on Windows, and the highest glibc symbol version on Linux.
+ */
+export const hostMeasurementEvidence: Record<ArtifactTarget, string> = {
+  "linux-x64-glibc": "ELF glibc symbol requirements",
+  "windows-x64": "PE host library imports",
+};
+
+export type ArtifactOptions = {
+  target: ArtifactTarget;
+  packagingRevision: number;
+  hostEvidence: HostEvidence[];
+  hostRequirements?: HostRequirements | null;
+  licenseInventory?: LicenseInventory;
+};
+
+const executableNames = ["postgres", "initdb", "pg_ctl", "psql"] as const;
+const permittedLicenses = new Set([
+  "PostgreSQL",
+  "Apache-2.0",
+  compilerRtLicense,
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "LicenseRef-IANA-tzdata",
+  "LicenseRef-Public-Domain",
+]);
+const permittedHostLicenses = new Set([
+  ...permittedLicenses,
+  "LGPL-2.1-only",
+  "LGPL-2.1-or-later",
+  "LicenseRef-Microsoft-Windows",
+  "LicenseRef-Microsoft-Visual-Cpp-Runtime",
+]);
+
+const errorPrefix = "Native artifact: ";
+
+function requireCondition(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(errorPrefix + message);
+}
+
+/**
+ * Reports whether a path contains a control character: C0, DEL or C1. An installation and an archive are
+ * checked with this same rule, so that a payload that one accepts the other never refuses.
+ */
+export function hasControlCharacter(path: string): boolean {
+  return /\p{Cc}/u.test(path);
+}
+
+function safePath(path: string): void {
+  requireCondition(
+    !/[<>:"\\|?*]/.test(path) && !hasControlCharacter(path),
+    "unsafe path: " + path,
+  );
+  requireCondition(path.length > 0 && !path.startsWith("/"), "path must be relative: " + path);
+  for (const part of path.split("/")) {
+    requireCondition(
+      part !== "" && part !== "." && part !== ".." && !/[. ]$/.test(part),
+      "unsafe path: " + path,
+    );
+    requireCondition(
+      !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part),
+      "reserved path: " + path,
+    );
+  }
+}
+
+function validatePayloadPath(path: string): void {
+  safePath(path);
+  requireCondition(/^(bin|lib|share|notices)\//.test(path), "unexpected payload path: " + path);
+  requireCondition(
+    !/(^|\/)(include|pgxs|node_modules|_refs)(\/|$)/i.test(path)
+      && !/\.(a|lib|o|obj|pdb|exp|h|py|pl|sh|in)$/i.test(path)
+      && !/(timescaledb[-_]tsl|partman_bgw|pg_prove)/i.test(path),
+    "excluded component or development file: " + path,
+  );
+}
+
+/** Reports whether a file starts like a PE or ELF image; the bytes decide, not the file name. */
+export async function isNativeImage(path: string): Promise<boolean> {
+  const file = await open(path, "r");
+  try {
+    const header = Buffer.alloc(4);
+    const { bytesRead } = await file.read(header);
+    return bytesRead >= 2 && header.toString("latin1", 0, 2) === "MZ"
+      || bytesRead === 4 && header.equals(Buffer.from([0x7F, 0x45, 0x4C, 0x46]));
+  } finally {
+    await file.close();
+  }
+}
+
+function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): void {
+  if (target === "windows-x64") {
+    const pe = binary.length >= 64 ? binary.readUInt32LE(60) : -1;
+    requireCondition(
+      binary.subarray(0, 2).toString() === "MZ" && pe >= 64 && pe + 6 <= binary.length
+        && binary.subarray(pe, pe + 4).equals(Buffer.from([80, 69, 0, 0]))
+        && binary.readUInt16LE(pe + 4) === 0x86_64,
+      "expected a Windows x64 PE image: " + path,
+    );
+  } else {
+    requireCondition(
+      binary.length >= 20 && binary.subarray(0, 4).equals(Buffer.from([127, 69, 76, 70]))
+        && binary[4] === 2 && binary[5] === 1 && binary.readUInt16LE(18) === 62,
+      "expected a Linux x64 ELF image: " + path,
+    );
+  }
+}
+
+function inside(root: string, path: string): boolean {
+  const child = relative(root, path);
+  return child === "" || (!isAbsolute(child) && !child.startsWith(".." + sep) && child !== "..");
+}
+
+/** A pinned source as the manifest records it; where to look for updates is build metadata, not payload. */
+function sourceNotices(source: SourcePin): string[] {
+  const notices = ["notices/" + source.id + ".txt"];
+  const pinned = sources.find(candidate =>
+    candidate.id === source.id && candidate.version === source.version
+    && candidate.sha256 === source.sha256
+  );
+  const additional = new Set([...(source.noticeFiles ?? []), ...(pinned?.noticeFiles ?? [])]);
+  if (source.id === "timescaledb" || source.id === "pg_textsearch") additional.add("NOTICE");
+  for (const file of additional) {
+    safePath(file);
+    notices.push("notices/" + additionalNoticeName(source.id, file));
+  }
+  requireCondition(
+    new Set(notices).size === notices.length,
+    "colliding source notice paths: " + source.id,
+  );
+  return notices;
+}
+
+/** Refuses group- or world-writable and set-ID modes, which content hashes and the executable flag miss. */
+export function validateLinuxPermissions(mode: number, entry: string): void {
+  requireCondition((mode & 0o022) === 0, "writable " + entry);
+  // Content hashes and the executable flag do not capture setuid or setgid bits.
+  requireCondition((mode & 0o6000) === 0, "setuid or setgid " + entry);
+}
+
+export function requireValidationHost(target: ArtifactTarget): void {
+  requireCondition(
+    target !== "linux-x64-glibc" || process.platform !== "win32",
+    "validating a Linux installation requires a POSIX host to read executable permissions",
+  );
+}
+
+async function scan(installation: string, target: ArtifactTarget): Promise<ContentEntry[]> {
+  const root = await realpath(installation);
+  const entries: ContentEntry[] = [];
+  const names = new Set<string>();
+  const checkLinuxPermissions = target === "linux-x64-glibc";
+  async function visit(directory: string, prefix: string): Promise<void> {
+    const directoryInfo = await lstat(directory);
+    if (checkLinuxPermissions) {
+      validateLinuxPermissions(directoryInfo.mode, "directory: " + (prefix || "."));
+    }
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = prefix ? prefix + "/" + entry.name : entry.name;
+      if (path === artifactManifestName) {
+        requireCondition(entry.isFile(), "metadata must be a regular file");
+        continue;
+      }
+      safePath(path);
+      const key = path.toLowerCase();
+      requireCondition(!names.has(key), "case-colliding path: " + path);
+      names.add(key);
+      const fullPath = join(directory, entry.name);
+      const info = await lstat(fullPath);
+      if (!info.isDirectory()) validatePayloadPath(path);
+      requireCondition(includesRuntimePath(path, target), "excluded runtime path: " + path);
+      if (info.isDirectory()) {
+        requireCondition(
+          /^(bin|lib|share|notices)(\/|$)/.test(path),
+          "unexpected directory: " + path,
+        );
+        requireCondition(
+          !/(^|\/)(include|pgxs|_refs|node_modules)(\/|$)/i.test(path),
+          "excluded directory: " + path,
+        );
+        requireCondition(
+          !/^(?:bin|lib|share\/extension|share\/tsearch_data)\//.test(path),
+          "unexpected runtime directory: " + path,
+        );
+        await visit(fullPath, path);
+      } else if (info.isSymbolicLink()) {
+        requireCondition(target !== "windows-x64", "Windows links have not been proven");
+        const link = await readlink(fullPath);
+        requireCondition(
+          !link.startsWith("/") && !link.includes("\\") && !link.includes(":"),
+          "unsafe link: " + path,
+        );
+        const normalized = posix.normalize(posix.join(posix.dirname(path), link));
+        safePath(normalized);
+        requireCondition(
+          inside(root, await realpath(fullPath)),
+          "link escapes installation: " + path,
+        );
+        requireCondition(
+          (await lstat(join(root, normalized))).isFile(),
+          "links must resolve directly to files: " + path,
+        );
+        entries.push({ path, kind: "symlink", target: link });
+      } else {
+        requireCondition(info.isFile() && info.nlink === 1, "special or hard-linked file: " + path);
+        if (checkLinuxPermissions) {
+          validateLinuxPermissions(info.mode, "file: " + path);
+          // Linux bin/ contains only core programs. Their owner needs execute access to run them.
+          if (path.startsWith("bin/")) {
+            requireCondition((info.mode & 0o100) !== 0, "nonexecutable program: " + path);
+          }
+        }
+        entries.push({
+          path,
+          kind: "file",
+          sha256: await fileSha256(fullPath),
+          executable: target === "linux-x64-glibc" && (info.mode & 0o111) !== 0,
+        });
+      }
+    }
+  }
+  await visit(root, "");
+  return entries.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+  );
+}
+
+function controlVersion(text: string): string {
+  const version = (/^\s*default_version\s*=\s*'([^']+)'/m.exec(text))?.[1];
+  requireCondition(
+    version && /^[\d.]+$/.test(version),
+    "missing or unsafe extension default version",
+  );
+  return version;
+}
+
+function hasInstallPath(sql: string[], name: string, version: string): boolean {
+  const reachable = new Set<string>();
+  const upgrades: Array<[string, string]> = [];
+  for (const path of sql) {
+    const parts = posix.basename(path, ".sql").slice(name.length + 2).split("--");
+    if (parts.length === 1) reachable.add(parts[0]!);
+    if (parts.length === 2) upgrades.push([parts[0]!, parts[1]!]);
+  }
+  // One pass per upgrade script is enough to follow the longest upgrade chain.
+  for (const _ of upgrades) {
+    for (const [from, to] of upgrades) if (reachable.has(from)) reachable.add(to);
+  }
+  return reachable.has(version);
+}
+
+async function extensionLayout(
+  installation: string,
+  target: ArtifactTarget,
+  inputs: SourcePin[],
+): Promise<Extension[]> {
+  const suffix = target === "windows-x64" ? ".dll" : ".so";
+  const paths = await readdir(join(installation, "share/extension"));
+  const extensions: Extension[] = [];
+  const installedExtensions = [
+    ["postgresql", "plpgsql"],
+    ...Object.entries(extensionNames),
+  ] as const;
+  for (const [sourceId, name] of installedExtensions) {
+    const source = inputs.find(candidate => candidate.id === sourceId);
+    requireCondition(source, "missing source: " + sourceId);
+    const control = "share/extension/" + name + ".control";
+    const version = controlVersion(await readFile(join(installation, control), "utf8"));
+    const sql = paths.filter(path => path.startsWith(name + "--") && path.endsWith(".sql"))
+      .map(path => "share/extension/" + path).sort();
+    requireCondition(
+      hasInstallPath(sql, name, version),
+      "no SQL installation path to " + name + " " + version,
+    );
+    const libraries = sqlOnlyExtensions.has(sourceId)
+      ? []
+      : ["lib/" + name + suffix];
+    if (sourceId === "timescaledb") libraries.push("lib/timescaledb-" + source.version + suffix);
+    for (const path of libraries) {
+      requireCondition(
+        (await lstat(join(installation, path))).isFile(),
+        "missing library: " + path,
+      );
+    }
+    // PL/pgSQL is a required part of PostgreSQL. The manifest lists separately pinned extensions.
+    if (sourceId !== "postgresql") {
+      extensions.push({ sourceId, name, version, control, sql, libraries });
+    }
+  }
+  return extensions;
+}
+
+const text = z.string().refine(value => value.trim().length > 0, "expected a nonempty string");
+
+function sha256(message: string): z.ZodString {
+  return z.string(message).regex(/^[a-f0-9]{64}$/, message);
+}
+
+/** Applies a path rule that the scan of an installation uses too, so that both judge a path alike. */
+function pathChecked(check: (path: string) => void): z.ZodString {
+  return z.string().check(context => {
+    try {
+      check(context.value);
+    } catch (error) {
+      context.issues.push({
+        code: "custom",
+        input: context.value,
+        message: (error as Error).message.slice(errorPrefix.length),
+      });
+    }
+  });
+}
+
+const contentEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    path: pathChecked(validatePayloadPath),
+    kind: z.literal("file"),
+    sha256: sha256("invalid file SHA-256"),
+    executable: z.boolean("invalid executable flag"),
+  }),
+  z.object({ path: pathChecked(validatePayloadPath), kind: z.literal("symlink"), target: text }),
+], "unsupported entry kind");
+
+/** SQL installation versions can differ from source releases and can require an upgrade chain. */
+const extensionSchema = z.object({
+  sourceId: text,
+  name: text,
+  version: text,
+  control: text,
+  sql: z.array(text),
+  libraries: z.array(text),
+});
+type Extension = z.infer<typeof extensionSchema>;
+
+const sourceSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, "unsafe source ID"),
+  version: z.string().regex(/^\d+(?:\.\d+)+$/, "invalid source release version"),
+  url: z.string().refine(
+    value => URL.canParse(value) && new URL(value).protocol === "https:",
+    "source URL must use HTTPS",
+  ),
+  sha256: sha256("invalid source SHA-256"),
+  license: text,
+  licenseFile: pathChecked(safePath),
+  noticeFiles: z.array(pathChecked(safePath)).exactOptional(),
+  notice: pathChecked(safePath),
+  notices: z.array(text),
+});
+type SourcePin = Omit<z.infer<typeof sourceSchema>, "notice" | "notices">;
+
+const hostEvidenceSchema = z.object({ component: text, version: text, evidence: text });
+/** An observed builder/consumer version is evidence, not an inferred supported minimum. */
+export type HostEvidence = z.infer<typeof hostEvidenceSchema>;
+
+/** A host library as a drafted review lists it: the fields that a reviewer fills in may still be empty. */
+const draftedHostLibrarySchema = z.object({
+  name: text,
+  requirement: z.string(),
+  license: z.string(),
+  evidence: z.string(),
+  /**
+   * Set on a library that the build measured; a reviewer can add others, such as one that another loads.
+   * The field accepts any value and `measuredFlag` checks it on the library, because only the library
+   * knows the name that tells a reviewer which entry of a review file to correct.
+   */
+  measured: z.custom<boolean>().exactOptional(),
+});
+const measuredFlag = {
+  holds: (library: { measured?: unknown }): boolean =>
+    library.measured === undefined || typeof library.measured === "boolean",
+  message: {
+    error: (issue: { input?: unknown }): string =>
+      "invalid measured flag: " + String((issue.input as { name: unknown }).name),
+  },
+};
+
+/**
+ * Refuses a second entry under one key. The release gate and the review merge both use the first entry
+ * for a key, so a second one would be published, or dropped from a review, without being checked.
+ */
+function unique<T>(
+  key: (entry: T) => string,
+  message: (entry: T) => string,
+): (payload: z.core.ParsePayload<T[]>) => void {
+  return payload => {
+    const keys = new Set<string>();
+    for (const entry of payload.value) {
+      if (keys.has(key(entry))) {
+        payload.issues.push({ code: "custom", input: payload.value, message: message(entry) });
+        return;
+      }
+      keys.add(key(entry));
+    }
+  };
+}
+
+/** Library names compare case-insensitively, as Windows resolves DLL names and as the release gate matches them. */
+const uniqueLibraryNames = unique<{ name: string }>(
+  library => library.name.toLowerCase(),
+  library => "duplicate host library: " + library.name,
+);
+
+/** Host requirements in a review file may stay pending, with the fields of a draft still empty. */
+export const reviewedHostRequirementsSchema = z.object({
+  status: z.enum(["pending", "verified"], "invalid host prerequisite review status"),
+  os: z.string(),
+  cpu: z.string(),
+  libraries: z.array(draftedHostLibrarySchema.refine(measuredFlag.holds, measuredFlag.message))
+    .check(uniqueLibraryNames),
+});
+
+/**
+ * Host libraries stay outside the archive and need their own resolved prerequisites and review evidence.
+ * A manifest records only verified requirements, with every field filled in; unresolved ones are `null`.
+ */
+const hostRequirementsSchema = z.object({
+  status: z.literal("verified", "host prerequisite review is unresolved"),
+  os: text,
+  cpu: text,
+  libraries: z.array(
+    draftedHostLibrarySchema.extend({ requirement: text, license: text, evidence: text })
+      .refine(measuredFlag.holds, measuredFlag.message),
+  ).check(uniqueLibraryNames),
+});
+export type HostRequirements = z.infer<typeof hostRequirementsSchema>;
+
+/**
+ * Every shipped file must be assigned to a reviewed component before release validation can pass.
+ * A review stays valid across rebuilds and source updates while the licence texts it read, identified
+ * by `noticeSha256`, and the reviewed `toolchain` line of the toolchain component stay the same.
+ */
+export const licenseInventorySchema = z.object({
+  status: z.enum(["pending", "verified"], "invalid license review status"),
+  components: z.array(z.object({
+    id: text,
+    licenses: z.array(text),
+    status: z.enum(["pending", "verified"], "invalid component review status"),
+    files: z.array(text),
+    notices: z.array(text),
+    noticeSha256: z.record(z.string(), sha256("invalid reviewed notice SHA-256")),
+    toolchain: text.exactOptional(),
+    evidence: z.array(text),
+  })).check(
+    unique(component => component.id, component => "duplicate license component: " + component.id),
+  ),
+});
+export type LicenseInventory = z.infer<typeof licenseInventorySchema>;
+
+/**
+ * The manifest's shape and the rules that its content alone decides; checks against an installation follow
+ * in `inspectArtifact`. Plain objects let a manifest carry keys that this version does not know, and callers
+ * keep the object they passed in, so such keys survive a rewrite of the manifest.
+ */
+const manifestSchema = z.object({
+  format: z.literal("portable-postgres-native", "unsupported artifact format"),
+  formatVersion: z.literal(1, "unsupported artifact format"),
+  packagingRevision: z.int("invalid packaging revision").min(1, "invalid packaging revision"),
+  target: z.enum(artifactTargets, "unsupported target"),
+  postgresqlVersion: z.string().regex(/^18\.\d+$/, "PostgreSQL 18 is required"),
+  executables: z.record(z.enum(executableNames), text),
+  extensions: z.array(extensionSchema).length(8, "expected all eight extensions"),
+  sources: z.array(sourceSchema).min(9, "expected all nine source inputs").check(context => {
+    const ids = context.value.map(source => source.id);
+    const problems = [
+      ...ids.some((id, index) => ids.indexOf(id) !== index) ? ["duplicate source ID"] : [],
+      ...["postgresql", ...Object.keys(extensionNames)].filter(id => !ids.includes(id))
+        .map(id => "missing source: " + id),
+    ];
+    for (const message of problems) {
+      context.issues.push({ code: "custom", input: context.value, message });
+    }
+  }),
+  hostEvidence: z.array(hostEvidenceSchema),
+  hostRequirements: hostRequirementsSchema.nullable(),
+  buildProfile: z.object({
+    timescaledb: z.literal("apache-only", "excluded build profile"),
+    telemetry: z.literal(false, "excluded build profile"),
+    pgPartman: z.literal("sql-only", "excluded build profile"),
+    pgTap: z.literal("sql-only", "excluded build profile"),
+  }),
+  licenseInventory: licenseInventorySchema,
+  files: z.array(contentEntrySchema),
+});
+/** Format version and packaging revision belong to the native product, independently of any wrapper version. */
+export type ArtifactManifest = z.infer<typeof manifestSchema>;
+type ContentEntry = ArtifactManifest["files"][number];
+
+/** Describes the first problem that a schema found, with the place of the value that it rejected. */
+export function firstIssue(error: z.ZodError): string {
+  const issue = error.issues[0]!;
+  const place = issue.path.map(key => typeof key === "number" ? `[${key}]` : "." + String(key))
+    .join("").replace(/^\./, "");
+  return issue.message + (place === "" ? "" : " (at " + place + ")");
+}
+
+function validateShape(value: unknown): asserts value is ArtifactManifest {
+  const result = manifestSchema.safeParse(value);
+  requireCondition(result.success, result.success ? "" : firstIssue(result.error));
+}
+
+/** Parses manifest text into the object as written; whoever reads a manifest from outside must use this. */
+export function parseArtifactManifest(json: string): ArtifactManifest {
+  const manifest: unknown = JSON.parse(json);
+  validateShape(manifest);
+  return manifest;
+}
+
+/** The SHA-256 of each regular payload file; reviews compare licence notices by these hashes. */
+export function payloadHashes(manifest: Pick<ArtifactManifest, "files">): Map<string, string> {
+  return new Map(
+    manifest.files.flatMap(file => file.kind === "file" ? [[file.path, file.sha256]] : []),
+  );
+}
+
+function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
+  requireCondition(
+    manifest.licenseInventory.status === "verified",
+    "release license inventory is unresolved",
+  );
+  requireCondition(manifest.hostRequirements !== null, "minimum host requirements are unresolved");
+  const requiredToolchainLicenses = toolchainLicenses(manifest);
+  const covered = new Set<string>();
+  const inventory = new Set(manifest.files.map(file => file.path));
+  const hashes = payloadHashes(manifest);
+  const components = new Map<string, LicenseInventory["components"][number]>();
+  // The manifest schema has refused a second component under one ID.
+  for (const component of manifest.licenseInventory.components) {
+    components.set(component.id, component);
+    requireCondition(
+      component.status === "verified" && component.licenses.length > 0
+        && component.evidence.length > 0,
+      "unresolved license component: " + component.id,
+    );
+    for (const license of component.licenses) {
+      requireCondition(
+        !/(^|[^A-Z])A?GPL(?:[-\s.(]|$)/i.test(license),
+        "forbidden GPL/AGPL license: " + license,
+      );
+      requireCondition(
+        permittedLicenses.has(license) || requiredToolchainLicenses.get(component.id) === license,
+        "unresolved or unapproved license: " + license,
+      );
+    }
+    for (const notice of component.notices) {
+      // Only a regular payload file has bytes that the review can bind to a digest.
+      const digest = hashes.get(notice);
+      requireCondition(digest !== undefined, "missing regular license notice: " + notice);
+      // A source update keeps its review only while the licence texts that the review read are unchanged.
+      requireCondition(
+        component.noticeSha256[notice] === digest,
+        "license notice changed since review: " + component.id + ": " + notice,
+      );
+    }
+    for (const file of component.files) {
+      requireCondition(inventory.has(file), "invalid license coverage: " + file);
+      covered.add(file);
+    }
+  }
+  // A source component covering an image says nothing about the runtime code linked into it. Checked before
+  // global coverage, so that a missing toolchain review is reported rather than its uncovered notice.
+  const nativeImages = new Set(images);
+  for (const part of toolchainComponents[manifest.target]) {
+    const toolchain = components.get(part.id);
+    requireCondition(toolchain, "unreviewed toolchain component: " + part.id);
+    const line = manifest.hostEvidence.find(entry => entry.component === part.evidence);
+    requireCondition(line, "missing toolchain evidence: " + part.evidence);
+    requireCondition(
+      toolchain.toolchain === line.version,
+      "toolchain changed since review: " + part.id + " was reviewed for "
+        + (toolchain.toolchain ?? "no toolchain") + ", built with " + line.version,
+    );
+    const license = requiredToolchainLicenses.get(part.id);
+    requireCondition(
+      license === undefined || toolchain.licenses.includes(license),
+      "toolchain component " + part.id + " must carry " + license,
+    );
+    // Its licence describes only the linked code and the project's notice for it.
+    for (const file of toolchain.files) {
+      requireCondition(
+        nativeImages.has(file) || file === part.notice,
+        "toolchain component " + part.id + " covers a file that is not a native image: " + file,
+      );
+    }
+    if (part.notice !== undefined) {
+      requireCondition(
+        toolchain.files.includes(part.notice) && toolchain.notices.includes(part.notice),
+        "missing toolchain notice for " + part.id + ": " + part.notice,
+      );
+    }
+    for (const image of images) {
+      requireCondition(
+        toolchain.files.includes(image),
+        "missing toolchain coverage for " + part.id + ": " + image,
+      );
+    }
+  }
+  for (const file of inventory) {
+    requireCondition(covered.has(file), "unreviewed payload file: " + file);
+  }
+  // Global coverage also counts toolchain components, components added by hand, and other sources, none
+  // of which built the image; the source that built it must still be credited with it. Extensions build
+  // the libraries in their layout, which are checked with their other files below, and PostgreSQL's own
+  // build makes every other image.
+  const extensionLibraries = new Set(manifest.extensions.flatMap(extension => extension.libraries));
+  const postgresql = new Set(components.get("postgresql")?.files);
+  for (const image of images) {
+    requireCondition(
+      extensionLibraries.has(image) || postgresql.has(image),
+      "missing license coverage for postgresql: " + image,
+    );
+  }
+  for (const source of manifest.sources) {
+    const component = components.get(source.id);
+    requireCondition(component, "unreviewed source component: " + source.id);
+    requireCondition(
+      permittedLicenses.has(source.license),
+      "unresolved or forbidden source license: " + source.license,
+    );
+    for (const notice of source.notices) {
+      requireCondition(
+        component.notices.includes(notice),
+        "missing license notice for " + source.id + ": " + notice,
+      );
+    }
+  }
+  for (const extension of manifest.extensions) {
+    // Global coverage can hide a missing contribution when another component lists the same file.
+    const files = new Set(components.get(extension.sourceId)!.files);
+    for (const path of [extension.control, ...extension.sql, ...extension.libraries]) {
+      requireCondition(
+        files.has(path),
+        "missing license coverage for " + extension.sourceId + ": " + path,
+      );
+    }
+  }
+  for (const library of manifest.hostRequirements.libraries) {
+    requireCondition(
+      !/(^|[^A-Z])A?GPL(?:[-\s.(]|$)/i.test(library.license),
+      "forbidden linked host license",
+    );
+    requireCondition(
+      permittedHostLicenses.has(library.license),
+      "unresolved host library license: " + library.license,
+    );
+  }
+  // The published requirements must still describe this build, not the one the review was written for.
+  // Drafts fall back to the required libraries alone, but a release must compare against a measurement.
+  const measurement = hostMeasurementEvidence[manifest.target];
+  requireCondition(
+    manifest.hostEvidence.some(entry => entry.component === measurement),
+    "missing host measurement: " + measurement,
+  );
+  const measurements = measuredHostRequirements(manifest);
+  for (const measured of measurements) {
+    const library = manifest.hostRequirements.libraries.find(candidate =>
+      candidate.name.toLowerCase() === measured.name
+    );
+    requireCondition(library, "unresolved host library prerequisite: " + measured.name);
+    requireCondition(
+      measured.requirement === "" || library.requirement === measured.requirement,
+      "host requirement changed since review: " + measured.name + " requires "
+        + measured.requirement,
+    );
+  }
+  // A manual entry can describe an indirect import. Only a measured entry expires with its import.
+  for (const library of manifest.hostRequirements.libraries) {
+    if (library.measured === true) {
+      requireCondition(
+        measurements.some(entry => entry.name === library.name.toLowerCase()),
+        "obsolete measured host library: " + library.name,
+      );
+    }
+  }
+}
+
+/**
+ * Host libraries that a review must name for this build: the required ones and every library the
+ * packaged files import, with the requirement in the form a review states it when the build measured one.
+ */
+export function measuredHostRequirements(
+  manifest: Pick<ArtifactManifest, "target" | "hostEvidence">,
+): Array<{ name: string; requirement: string }> {
+  const measurement = manifest.hostEvidence.find(entry =>
+    entry.component === hostMeasurementEvidence[manifest.target]
+  );
+  const observed = manifest.target === "windows-x64"
+    ? measurement?.version.split(", ") ?? []
+    : [];
+  const glibc = manifest.target === "linux-x64-glibc" ? measurement : undefined;
+  return [...new Set([...requiredHostLibraries[manifest.target], ...observed])].map(name => ({
+    name,
+    requirement: name === "glibc" && glibc ? glibc.version + " or newer" : "",
+  }));
+}
+
+/** Writes metadata to a newly assembled candidate; source license declarations do not approve its payload. */
+export async function writeArtifactManifest(
+  installation: string,
+  options: ArtifactOptions,
+): Promise<ArtifactManifest> {
+  return writeDescribedManifest(installation, await describeArtifact(installation, options));
+}
+
+/**
+ * Describes a newly assembled candidate as its manifest would, without writing anything. Only the
+ * validation in `writeDescribedManifest` checks the candidate, so the description may be of a candidate
+ * that this validation then refuses.
+ */
+export async function describeArtifact(
+  installation: string,
+  options: ArtifactOptions,
+): Promise<ArtifactManifest> {
+  requireValidationHost(options.target);
+  const rootInfo = await lstat(installation);
+  requireCondition(
+    rootInfo.isDirectory() && !rootInfo.isSymbolicLink(),
+    "installation root must be a real directory",
+  );
+  const suffix = options.target === "windows-x64" ? ".exe" : "";
+  const sourceInputs = sources.map(({ upstream: _upstream, ...source }) => ({
+    ...source,
+    notice: "notices/" + source.id + ".txt",
+    notices: sourceNotices(source),
+  }));
+  const manifest: ArtifactManifest = {
+    format: "portable-postgres-native",
+    formatVersion: 1,
+    packagingRevision: options.packagingRevision,
+    target: options.target,
+    postgresqlVersion: sources.find(source => source.id === "postgresql")!.version,
+    executables: Object.fromEntries(
+      executableNames.map(name => [name, "bin/" + name + suffix]),
+    ) as ArtifactManifest["executables"],
+    extensions: await extensionLayout(installation, options.target, sources),
+    sources: sourceInputs,
+    hostEvidence: options.hostEvidence,
+    hostRequirements: options.hostRequirements ?? null,
+    buildProfile: {
+      timescaledb: "apache-only",
+      telemetry: false,
+      pgPartman: "sql-only",
+      pgTap: "sql-only",
+    },
+    licenseInventory: options.licenseInventory ?? { status: "pending", components: [] },
+    files: await scan(installation, options.target),
+  };
+  validateShape(manifest);
+  return manifest;
+}
+
+/** Writes the manifest that `describeArtifact` returned, possibly with a review added, and validates it. */
+export async function writeDescribedManifest(
+  installation: string,
+  manifest: ArtifactManifest,
+): Promise<ArtifactManifest> {
+  validateShape(manifest);
+  await writeFile(
+    join(installation, artifactManifestName),
+    JSON.stringify(manifest, null, 2) + "\n",
+    { flag: "wx", mode: 0o644 },
+  );
+  // The creation mode is masked by the builder's umask; assembly sets every other file's mode the same way.
+  if (process.platform !== "win32") await chmod(join(installation, artifactManifestName), 0o644);
+  // Only the validator checks image machine types, permissions and the extension layout; an archive
+  // must never be packed from a candidate that fails them. The repeated hashing costs about a second.
+  await validateArtifact(installation, manifest.target, { mode: "candidate" });
+  return manifest;
+}
+
+/** Checks an extracted installation. Release mode is the default and refuses incomplete license/host evidence. */
+export async function validateArtifact(
+  installation: string,
+  expectedTarget: ArtifactTarget,
+  options: { mode?: "candidate" | "release" } = {},
+): Promise<ArtifactManifest> {
+  const mode: string = options.mode ?? "release";
+  requireCondition(mode === "candidate" || mode === "release", "invalid validation mode");
+  const { manifest, images } = await inspectArtifact(installation, expectedTarget);
+  if (mode === "release") validateLicenses(manifest, images);
+  return manifest;
+}
+
+/**
+ * Returns why release validation would reject this candidate with the given review, or `undefined` when
+ * it would pass. A review tool uses it so that it never reports coverage that the release then refuses.
+ */
+export async function releaseLicenseGap(
+  installation: string,
+  target: ArtifactTarget,
+  review: Pick<ArtifactManifest, "licenseInventory" | "hostRequirements">,
+): Promise<string | undefined> {
+  const { manifest, images } = await inspectArtifact(installation, target);
+  try {
+    const reviewed = { ...manifest, ...review };
+    validateShape(reviewed);
+    validateLicenses(reviewed, images);
+    return undefined;
+  } catch (error) {
+    return (error as Error).message.replace(errorPrefix, "");
+  }
+}
+
+/** Runs every candidate check and returns the manifest with the native images it found by their bytes. */
+async function inspectArtifact(
+  installation: string,
+  expectedTarget: ArtifactTarget,
+): Promise<{ manifest: ArtifactManifest; images: string[] }> {
+  const rootInfo = await lstat(installation);
+  requireCondition(
+    rootInfo.isDirectory() && !rootInfo.isSymbolicLink(),
+    "installation root must be a real directory",
+  );
+  const metadata = await lstat(join(installation, artifactManifestName));
+  requireCondition(
+    metadata.isFile() && !metadata.isSymbolicLink(),
+    "metadata must be a regular file",
+  );
+  // Like any payload file, a second name outside the installation could change it after validation.
+  requireCondition(metadata.nlink === 1, "hard-linked file: " + artifactManifestName);
+  const manifest = parseArtifactManifest(
+    await readFile(join(installation, artifactManifestName), "utf8"),
+  );
+  requireCondition(manifest.target === expectedTarget, "wrong target: expected " + expectedTarget);
+  requireValidationHost(expectedTarget);
+  if (expectedTarget === "linux-x64-glibc") {
+    validateLinuxPermissions(metadata.mode, "metadata");
+    // Consumers other than the extracting account must be able to discover the programs.
+    requireCondition((metadata.mode & 0o444) === 0o444, "unreadable metadata");
+  }
+  const postgres = manifest.sources.find(source => source.id === "postgresql")!;
+  requireCondition(
+    postgres.version === manifest.postgresqlVersion,
+    "PostgreSQL source/version mismatch",
+  );
+  const suffix = expectedTarget === "windows-x64" ? ".exe" : "";
+  for (const name of executableNames) {
+    requireCondition(
+      manifest.executables[name] === "bin/" + name + suffix,
+      "nonportable executable path: " + name,
+    );
+  }
+  const current = await scan(installation, expectedTarget);
+  requireCondition(
+    current.length === manifest.files.length && current.every((file, index) => {
+      const expected = manifest.files[index]!;
+      return file.path === expected.path && (file.kind === "file"
+        ? expected.kind === "file" && file.sha256 === expected.sha256
+          && file.executable === expected.executable
+        : expected.kind === "symlink" && file.target === expected.target);
+    }),
+    "payload inventory/hash/permission mismatch",
+  );
+  const entries = new Map(current.map(file => [file.path, file]));
+  const images: string[] = [];
+  for (const file of current) {
+    const path = join(installation, file.path);
+    // Native names must be images of the target; any other image is found by its bytes, wherever it lies.
+    if (
+      /\.(exe|dll|dylib|so(?:\.\d+)*)$/i.test(file.path)
+      || Object.values(manifest.executables).includes(file.path)
+      || (file.path.startsWith("bin/") && file.kind === "file" && file.executable)
+      || (file.kind === "file" && await isNativeImage(path))
+    ) {
+      validateMachine(await readFile(path), expectedTarget, file.path);
+      // A symlink is checked through its target, but only the target is an image that needs coverage.
+      if (file.kind === "file") images.push(file.path);
+    }
+  }
+  for (const name of corePrograms) {
+    const path = "bin/" + name + suffix;
+    const file = entries.get(path);
+    requireCondition(
+      file?.kind === "file" && (expectedTarget === "windows-x64" || file.executable),
+      "nonexecutable program: " + path,
+    );
+  }
+  for (const source of manifest.sources) {
+    requireCondition(
+      source.notice === "notices/" + source.id + ".txt"
+        && JSON.stringify(source.notices) === JSON.stringify(sourceNotices(source)),
+      "incorrect source notices: " + source.id,
+    );
+    for (const notice of source.notices) {
+      requireCondition(entries.get(notice)?.kind === "file", "missing source notice: " + notice);
+    }
+  }
+  for (const notice of toolchainNotices(expectedTarget)) {
+    requireCondition(entries.get(notice)?.kind === "file", "missing toolchain notice: " + notice);
+  }
+  // These checks cover the layout, not whether the runtime starts. A missing bootstrap file such as
+  // share/postgres.bki surfaces when CI runs initdb on every archive, which it does before uploading it.
+  const libpq = expectedTarget === "windows-x64" ? "bin/libpq.dll" : "lib/libpq.so.5";
+  requireCondition(entries.has(libpq), "missing PostgreSQL client library: " + libpq);
+  for (const module of requiredModules) {
+    const path = "lib/" + module + (expectedTarget === "windows-x64" ? ".dll" : ".so");
+    requireCondition(entries.get(path)?.kind === "file", "missing library: " + path);
+  }
+  const layout = await extensionLayout(installation, expectedTarget, manifest.sources);
+  for (const [index, extension] of layout.entries()) {
+    const expected = manifest.extensions[index]!;
+    requireCondition(
+      extension.sourceId === expected.sourceId && extension.name === expected.name
+        && extension.version === expected.version && extension.control === expected.control
+        && JSON.stringify(extension.sql) === JSON.stringify(expected.sql)
+        && JSON.stringify(extension.libraries) === JSON.stringify(expected.libraries),
+      "extension layout/version mismatch",
+    );
+  }
+  return { manifest, images };
+}
+
+/** Verifies the entire archive against a digest obtained independently through a trusted descriptor. */
+export async function verifyArtifactArchive(
+  archive: string,
+  expectedSha256: string,
+): Promise<void> {
+  requireCondition(/^[a-f0-9]{64}$/.test(expectedSha256), "invalid trusted archive SHA-256");
+  requireCondition(await fileSha256(archive) === expectedSha256, "archive integrity mismatch");
+}

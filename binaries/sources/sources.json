@@ -1,0 +1,135 @@
+[
+  {
+    "id": "postgresql",
+    "version": "18.7",
+    "url": "https://ftp.postgresql.org/pub/source/v18.7/postgresql-18.7.tar.bz2",
+    "sha256": "441dfae4280cae3e0425e5f876f80559fb0731c140f1aae22b3e5a54d0411bfd",
+    "upstream": {
+      "type": "postgresql",
+      "major": 18
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "COPYRIGHT",
+    "noticeFiles": [
+      "src/backend/regex/COPYRIGHT",
+      "src/include/lib/sort_template.h",
+      "src/port/pgmkdirp.c",
+      "src/port/snprintf.c",
+      "src/backend/snowball/README"
+    ]
+  },
+  {
+    "id": "pgvector",
+    "version": "0.8.7",
+    "url": "https://codeload.github.com/pgvector/pgvector/tar.gz/refs/tags/v0.8.7",
+    "sha256": "cac0b10c360f05b2d521200105ba3697e773d4cd3731f5a915a7e37ebe0bea85",
+    "upstream": {
+      "type": "github",
+      "repository": "pgvector/pgvector",
+      "tagPrefix": "v"
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE"
+  },
+  {
+    "id": "timescaledb",
+    "version": "2.32.0",
+    "url": "https://codeload.github.com/timescale/timescaledb/tar.gz/refs/tags/2.32.0",
+    "sha256": "881b07882719b53b1fe08753a514c5717baaf9644698fd12d58f63a6a86f4ba0",
+    "upstream": {
+      "type": "github",
+      "repository": "timescale/timescaledb",
+      "tagPrefix": ""
+    },
+    "license": "Apache-2.0",
+    "licenseFile": "LICENSE-APACHE",
+    "noticeFiles": [
+      "NOTICE"
+    ]
+  },
+  {
+    "id": "pg_textsearch",
+    "version": "1.5.1",
+    "url": "https://codeload.github.com/timescale/pg_textsearch/tar.gz/refs/tags/v1.5.1",
+    "sha256": "2e7fb76ed96176afc6d16cc5d095ced2cb233ff27fbeaa8c7bfffc82e02f7498",
+    "upstream": {
+      "type": "github",
+      "repository": "timescale/pg_textsearch",
+      "tagPrefix": "v"
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE",
+    "noticeFiles": [
+      "NOTICE"
+    ]
+  },
+  {
+    "id": "hypopg",
+    "version": "1.4.5",
+    "url": "https://codeload.github.com/HypoPG/hypopg/tar.gz/refs/tags/1.4.5",
+    "sha256": "9d1981af0c55ac75ab4e2648e0050ee626c1af4c68b24259e3c744ff5211ce49",
+    "upstream": {
+      "type": "github",
+      "repository": "HypoPG/hypopg",
+      "tagPrefix": ""
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE"
+  },
+  {
+    "id": "plpgsql_check",
+    "version": "2.10.16",
+    "url": "https://codeload.github.com/okbob/plpgsql_check/tar.gz/refs/tags/v2.10.16",
+    "sha256": "b4734ffac4110348e8b963abb5b4f97cf0ade819ab92a74f0ddd47c4141288e3",
+    "upstream": {
+      "type": "github",
+      "repository": "okbob/plpgsql_check",
+      "tagPrefix": "v"
+    },
+    "license": "MIT",
+    "licenseFile": "LICENSE"
+  },
+  {
+    "id": "pg_cron",
+    "version": "1.6.8",
+    "url": "https://codeload.github.com/citusdata/pg_cron/tar.gz/refs/tags/v1.6.8",
+    "sha256": "c19ab9bb35406c60fb51ecda993737c083850abe424acb6c1030439d00a1f8e4",
+    "upstream": {
+      "type": "github",
+      "repository": "citusdata/pg_cron",
+      "tagPrefix": "v"
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE",
+    "noticeFiles": [
+      "src/entry.c",
+      "src/misc.c"
+    ]
+  },
+  {
+    "id": "pg_partman",
+    "version": "5.5.1",
+    "url": "https://codeload.github.com/pgpartman/pg_partman/tar.gz/refs/tags/v5.5.1",
+    "sha256": "03671eb27a0dc0056a3eacf1435c0e2651dfb4d32d235fb3075e066106f68a9b",
+    "upstream": {
+      "type": "github",
+      "repository": "pgpartman/pg_partman",
+      "tagPrefix": "v"
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE.txt"
+  },
+  {
+    "id": "pgtap",
+    "version": "1.3.4",
+    "url": "https://codeload.github.com/theory/pgtap/tar.gz/refs/tags/v1.3.4",
+    "sha256": "d2c951afb296a001d21785611a8e966e3f8fa3f5bfbd929396a5130c0152f314",
+    "upstream": {
+      "type": "github",
+      "repository": "theory/pgtap",
+      "tagPrefix": "v"
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "doc/pgtap.mmd"
+  }
+]

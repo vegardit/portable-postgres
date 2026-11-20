@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.jsonc",
+  "compilerOptions": {
+    // Enable ES2025 standard-library APIs for Node code.
+    // Shared and browser code retain their separate ES2022 API baseline.
+    "lib": [
+      "ES2025"
+    ],
+    // Keep the Node runtime explicit even if the neutral portability floor changes later.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": [
+      "node"
+    ],
+  },
+}

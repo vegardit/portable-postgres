@@ -1,0 +1,34 @@
+/*
+ * see https://www.typescriptlang.org/tsconfig
+ *
+ * Use `pnpm typecheck:config tsconfig.json` to display the effective project configuration.
+ */
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // see https://github.com/tsconfig/bases/blob/main/bases/strictest.json
+  "extends": "@tsconfig/strictest/tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    // Ambient environments are opt-in per package so Node and DOM globals cannot cross boundaries.
+    "types": [],
+    // Neutral code follows Node's stricter ESM resolution as the portability floor; browser code
+    // overrides this pair with bundler resolution through `tsconfig.browser.jsonc`.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // TypeScript is the type authority; Vite and future build configs own emitted output.
+    "noEmit": true,
+    // Allow `.ts`/`.mts` imports in source files so local runtime execution and editor flows
+    // can use the extensions that Node's type-stripping runtime actually loads.
+    "allowImportingTsExtensions": true,
+    // Inert during type-checking (`noEmit: true`). Build configs that enable emit inherit
+    // this setting to rewrite relative TypeScript imports to runnable JavaScript extensions.
+    "rewriteRelativeImportExtensions": true,
+    // Avoid platform-specific path casing bugs across the workspace.
+    "forceConsistentCasingInFileNames": true,
+    // Stay close to Node's type-stripping model and avoid non-erasable TypeScript syntax in runtime code.
+    "erasableSyntaxOnly": true,
+    // Preserve import/export syntax as written so TypeScript stays aligned with Node ESM behavior.
+    "verbatimModuleSyntax": true,
+  },
+}

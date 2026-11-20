@@ -1,0 +1,700 @@
+// Oxlint owns checks it supports natively. Keep ESLint only for residual plugin rules
+// and sources Oxlint does not lint directly, such as scripts extracted from HTML.
+// Review package-specific exemptions and path-based overrides before copying this file.
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "eslint",
+    "import",
+    "jsdoc",
+    "node",
+    "oxc",
+    "promise",
+    "typescript",
+    "unicorn",
+  ],
+  /*
+  IMPORTANT: Oxlint extends only rules, plugins, and overrides; root configs must declare
+             categories and options themselves instead of relying on this shared base.
+
+  "categories": {
+    // https://oxc.rs/docs/guide/usage/linter/config.html#enable-groups-of-rules-with-categories
+    "correctness": "error",
+    "nursery": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "restriction": "error",
+    "style": "error",
+    "suspicious": "error",
+  },
+  "options": {
+    "typeAware": true,
+  },
+  */
+  "rules": {
+    // https://oxc.rs/docs/guide/usage/linter/rules.html?sort=name&dir=asc
+    //
+    /**************************
+     * category: correctness
+     **************************/
+    //
+    // Generic conversion boundaries need a deliberate policy: reject objects, serialize them,
+    // or accept native stringification. Enforcing one choice globally can change output contracts.
+    "no-base-to-string": "off",
+    // Keep this off when `prop?: T | undefined` is intentional under
+    // exactOptionalPropertyTypes; the rule treats explicit undefined as a duplicate.
+    "no-duplicate-type-constituents": "off",
+    "no-floating-promises": [
+      "error",
+      {
+        // node:test owns top-level test() registration promises. Exempt only that API so
+        // promises created inside test bodies remain checked.
+        "allowForKnownSafeCalls": [
+          {
+            "from": "package",
+            "name": "test",
+            "package": "node:test",
+          },
+        ],
+      },
+    ],
+    "no-unused-vars": [
+      "error",
+      {
+        // Leading underscores explicitly mark intentionally unused values.
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+      },
+    ],
+    // Method syntax in type declarations does not imply runtime receiver use. This rule can
+    // mistake detached access to receiver-free callbacks for
+    // unsafe `this` usage and drives wrappers or type rewrites that do not improve runtime safety.
+    "unbound-method": "off",
+    // Oxlint and ESLint Unicorn currently report different diagnostics for these rules.
+    // Keep one linter as the sole owner to avoid conflicting results.
+    "unicorn/no-useless-error-capture-stack-trace": "off",
+    "unicorn/no-useless-undefined": "off",
+    /**************************
+     * category: perf
+     **************************/
+    //
+    // Sequential awaits can preserve polling, retry, shutdown, and bounded I/O semantics.
+    // Enforcing parallelism globally would require suppressions for intentional ordering.
+    "no-await-in-loop": "off",
+    // Map spreads can create immutable snapshots at output and trust boundaries. The rule's
+    // suggested in-place mutation conflicts with that ownership model.
+    "no-map-spread": "off",
+    //
+    /**************************
+     * category: restrictions
+     **************************/
+    //
+    // Instance-local helpers and framework-facing getters can remain on their
+    // owning classes; moving them to static or module APIs would add churn without improving correctness.
+    "class-methods-use-this": "off",
+    // Cyclomatic complexity is intentionally not a quality gate. It overcounts branch-heavy
+    // boundary and orchestration code and encourages arbitrary extraction or suppressions.
+    "complexity": "off",
+    // Defaults are context-dependent: open-ended inputs may need one, while closed
+    // unions should not silently absorb newly added members. Review each switch individually.
+    "default-case": "off",
+    // Explicit `any` is governed separately; this rule should enforce declared return
+    // types without conflating intentional decisions at dynamic boundaries.
+    "explicit-module-boundary-types": [
+      "error",
+      {
+        "allowArgumentsExplicitlyTypedAsAny": true,
+      },
+    ],
+    // Native dialogs remain useful for rare confirmations and fallback errors.
+    "no-alert": "off",
+    // Array.reduce keeps straightforward aggregations concise; forcing loops is stylistic churn.
+    "no-array-reduce": "off",
+    // Async/await is the preferred readable asynchronous control flow.
+    "no-async-await": "off",
+    // Bitwise operations are intentional for file modes, protocol flags, hashes, and byte-level logic.
+    "no-bitwise": "off",
+    // Tooling and framework contracts may require default exports, so a global
+    // named-export requirement would create exceptions without improving module APIs.
+    "no-default-export": "off",
+    // Environment maps require deleting runtime-computed names to represent true
+    // absence; Reflect.deleteProperty would only disguise the same operation.
+    "no-dynamic-delete": "off",
+    // Intentional no-op callbacks are common for cleanup handlers, lifecycle
+    // defaults, adapters, and test doubles; dummy bodies would only add noise.
+    "no-empty-function": "off",
+    // Oxlint currently flags valid Promise.withResolvers<void>() calls even when
+    // generic void arguments are allowed.
+    "no-invalid-void-type": "off",
+    // Optional chaining is supported by all target runtimes and avoids duplicated,
+    // error-prone nullish guards around optional properties and callbacks.
+    "no-optional-chaining": "off",
+    // Increment and decrement operators are clear for counters and indexes;
+    // rewriting them as += 1 or -= 1 adds no safety.
+    "no-plusplus": "off",
+    // Direct environment access is valid at bootstrap, subprocess sanitization,
+    // integration boundaries, and in tests.
+    "no-process-env": "off",
+    // Relative parent imports can make dependency location explicit; forcing aliases
+    // or barrel modules can add unnecessary indirection.
+    "no-relative-parent-imports": "off",
+    // Object rest and spread are used for immutable snapshots, conditional fields,
+    // and option forwarding; equivalent manual copying would add boilerplate.
+    "no-rest-spread-properties": "off",
+    // Top-level await is appropriate when all deployment targets support ESM.
+    // Enable this restriction when CommonJS interoperability is required.
+    "no-top-level-await": "off",
+    // Undefined is the preferred absence value, including explicit optional
+    // properties under exactOptionalPropertyTypes.
+    "no-undefined": "off",
+    // Hoisted helpers and closures intentionally reference later declarations;
+    // TypeScript already reports unsafe block-scoped initialization.
+    "no-use-before-define": "off",
+    // Standalone void marks intentionally unawaited work; reject expression uses
+    // such as void 0, where explicit undefined is clearer.
+    "no-void": [
+      "error",
+      {
+        "allowAsStatement": true,
+      },
+    ],
+    // Returning existing promises directly avoids wrapper promises and preserves identity.
+    "promise-function-async": "off",
+    // File extensions and package.json already determine module parsing.
+    "unambiguous": "off",
+    "typescript/explicit-function-return-type": [
+      "error",
+      {
+        "allowExpressions": true,
+      },
+    ],
+    "typescript/explicit-member-accessibility": [
+      "error",
+      {
+        "accessibility": "no-public",
+      },
+    ],
+    // noUncheckedIndexedAccess cannot always follow preceding length, bounds, or presence checks.
+    // Permit non-null assertions where nearby control flow establishes the invariant.
+    "typescript/no-non-null-assertion": "off",
+    "typescript/no-unnecessary-condition": [
+      "error",
+      {
+        "allowConstantLoopConditions": "only-allowed-literals"
+      },
+    ],
+    // Keep concise global `NaN` while still preferring non-coercing Number methods.
+    "unicorn/prefer-number-properties": [
+      "error",
+      {
+        "checkNaN": false,
+      },
+    ],
+    //
+    /**************************
+     * category: suspicious
+     **************************/
+    //
+    // Terminal then callbacks may intentionally perform side effects; intermediate
+    // callbacks must still return or throw so promise-chain ordering is preserved.
+    "always-return": [
+      "error",
+      {
+        "ignoreLastCallback": true,
+      },
+    ],
+    // Nested helpers stay close to the operation they explain; hoisting every
+    // non-capturing function would fragment local logic for speculative savings.
+    "consistent-function-scoping": "off",
+    // Sorting often mutates fresh working arrays intentionally; requiring toSorted()
+    // would cause broad churn without protecting shared inputs.
+    "no-array-sort": "off",
+    // The rule treats mutually exclusive reject/resolve branches in callback
+    // wrappers as repeated settlement, producing false positives.
+    "no-multiple-resolved": "off",
+    "no-shadow": [
+      "error",
+      {
+        "allow": [
+          "_", // _ is an intentional discard name.
+        ],
+      },
+    ],
+    // External contracts and intentional private names can require leading underscores;
+    // a global ban would create noisy exceptions.
+    "no-underscore-dangle": "off",
+    // Generic helpers and validated boundaries produce many intentional assertions.
+    // Audit trust-boundary assertions directly instead of enforcing mechanical rewrites.
+    "no-unsafe-type-assertion": "off",
+    // Default exports may legitimately expose properties that duplicate named exports;
+    // ESLint plugins commonly do this for `plugin.configs`, which this heuristic misreports.
+    "import/no-named-as-default-member": "off",
+    // Early-exit callbacks intentionally return undefined, while closed-union switches
+    // omit dead defaults; the rule cannot distinguish these contracts without broad churn.
+    "typescript/consistent-return": "off",
+    // Explicit default arguments document no-context and boundary types and pin public
+    // API intent instead of silently following future generic-default changes.
+    "typescript/no-unnecessary-type-arguments": "off",
+    // Runtime coercion can be deliberate at configuration, protocol, transport, and UI boundaries,
+    // even where static types are narrower than the external data.
+    "typescript/no-unnecessary-type-conversion": "off",
+    // Single-use generics carry caller-selected result types and callback relationships;
+    // replacing them with constraints would weaken inference or require assertions.
+    "typescript/no-unnecessary-type-parameters": "off",
+    //
+    /**************************
+     * category: pedantic
+     **************************/
+    //
+    // Small, closely related classes are often clearer when colocated;
+    // file boundaries should follow cohesion rather than class count.
+    "max-classes-per-file": "off",
+    "max-depth": [
+      "error",
+      {
+        // A higher ceiling still prevents extreme nesting;
+        // lower limits can fragment code without improving clarity.
+        "max": 7,
+      },
+    ],
+    "max-lines": [
+      "error",
+      {
+        // Use a high safety ceiling; tighten it only when smaller files improve cohesion.
+        "max": 2500,
+        "skipBlankLines": true,
+        "skipComments": true,
+      },
+    ],
+    "max-lines-per-function": [
+      "error",
+      {
+        // Use a high safety ceiling; lower limits can fragment cohesive workflows.
+        "max": 500,
+        "skipBlankLines": true,
+        "skipComments": true,
+      },
+    ],
+    // Direct unary callback references keep map/filter pipelines concise. Wrapper arrows
+    // are only needed when a callback can consume extra positional arguments.
+    "no-array-callback-reference": "off",
+    // Inline comments keep short context next to the code or data they explain.
+    "no-inline-comments": "off",
+    // Block-scoped declarations are well-defined in modern modules and keep helpers local.
+    "no-inner-declarations": "off",
+    // The rule also flags safe block-scoped and awaited closures, causing many false positives in modern code.
+    "no-loop-func": "off",
+    // Promise executors commonly wrap Node callback APIs with concise expression
+    // bodies. Their return values are intentionally ignored; enforcing this rule
+    // would add block bodies or void markers without changing settlement behavior.
+    "no-promise-executor-return": "off",
+    // The syntax-only rule is deprecated because it misreports validated Error variables.
+    // The type-aware typescript/only-throw-error rule remains enabled by the pedantic category.
+    "no-throw-literal": "off",
+    // Allow maintenance markers such as TODO, FIXME, and XXX.
+    "no-warning-comments": "off",
+    // The type-aware TypeScript rule permits intentional async wrappers that
+    // return promises; the base rule incorrectly reports them for lacking await.
+    "require-await": "off",
+    // Many patterns intentionally match ASCII protocols, paths, identifiers, or
+    // UTF-16 code units. Require Unicode mode only where code-point semantics matter.
+    "require-unicode-regexp": "off",
+    "import/max-dependencies": [
+      "error",
+      {
+        // Composition modules may coordinate many focused dependencies.
+        // This ceiling catches excessive coupling without encouraging barrel imports or artificial indirection.
+        "max": 40,
+      },
+    ],
+    // TypeScript signatures already document parameters; use JSDoc when it adds meaning.
+    "jsdoc/require-param": "off",
+    // TypeScript return types already document outputs; use JSDoc when it adds meaning.
+    "jsdoc/require-returns": "off",
+    "typescript/ban-ts-comment": [
+      "error",
+      {
+        "ts-ignore": true,
+        "ts-expect-error": "allow-with-description",
+        "ts-nocheck": true,
+        "ts-check": false,
+        "minimumDescriptionLength": 10,
+      },
+    ],
+    // Deprecated upstream; its focused replacement rules remain enabled. Avoid
+    // ambiguous broad types directly instead of retaining the legacy aggregate rule.
+    "typescript/ban-types": "off",
+    // Void-returning callbacks and adapters are intentionally concise expressions;
+    // requiring block bodies would add widespread churn without clarifying behavior.
+    "typescript/no-confusing-void-expression": "off",
+    // Untyped APIs may provide valid arguments after boundary checks; global enforcement encourages repetitive casts.
+    "typescript/no-unsafe-argument": "off",
+    // Assignments from untyped APIs are validated at boundaries; the rule often adds type-only intermediates.
+    "typescript/no-unsafe-assignment": "off",
+    // Some interoperability APIs are callable only through dynamic types; runtime checks provide the actual safety.
+    "typescript/no-unsafe-call": "off",
+    // Dynamic object shapes must be inspected during validation; forced assertions can obscure that validation.
+    "typescript/no-unsafe-member-access": "off",
+    // Choosing between || and ?? depends on whether other falsy values are meaningful.
+    "typescript/prefer-nullish-coalescing": "off",
+    // Promise adapters preserve upstream rejection reasons; forcing Error wrappers
+    // would change observable error identity and metadata.
+    "typescript/prefer-promise-reject-errors": "off",
+    // Readonly parameters are an API design choice; requiring them everywhere adds type noise.
+    "typescript/prefer-readonly-parameter-types": "off",
+    // JS truthiness is intentional; explicit comparisons would only add noise.
+    "typescript/strict-boolean-expressions": "off",
+    // Void callbacks may use expression bodies; returned values are intentionally ignored.
+    "typescript/strict-void-return": "off",
+    // Not every union switch is exhaustive; enforce it only where the contract requires it.
+    "typescript/switch-exhaustiveness-check": "off",
+    // Incrementally building local objects and arrays is often clearer than repeated reconstruction.
+    "unicorn/no-immediate-mutation": "off",
+    // The base no-negated-condition rule already owns this check; enabling both reports each finding twice.
+    "unicorn/no-negated-condition": "off",
+    //
+    /**************************
+     * category: nursery
+     **************************/
+    //
+    // Oxlint currently misclassifies valid retry, queue-drain, redirect, and
+    // batched-processing loops that contain try/catch/finally.
+    "no-unreachable-loop": "off",
+    //
+    /**************************
+     * category: style
+     **************************/
+    //
+    // Comment casing may follow identifiers, code, protocols, or generated text; enforcing capitalization creates noise.
+    "capitalized-comments": "off",
+    // Allow concise unbraced guards and braced single-statement branches
+    // when braces improve readability. The `curly` rule cannot express this combination:
+    // its modes require or reject braces based only on statement count and line layout.
+    "curly": "off",
+    // Descriptive wrapper and adapter names may intentionally differ from the property to which they are assigned.
+    "func-name-matching": "off",
+    // Assigned functions receive inferred names in modern JavaScript; explicit names often duplicate their surrounding context.
+    "func-names": "off",
+    // Declarations and expressions serve different hoisting and scoping needs; requiring one form is unnecessarily restrictive.
+    "func-style": "off",
+    // Short identifiers are appropriate for indexes, coordinates, type parameters, and small callback scopes.
+    "id-length": "off",
+    // Delayed initialization can clearly represent branch-dependent assignment without introducing dummy values.
+    "init-declarations": "off",
+    // Lower limits can create boilerplate parameter objects without improving clarity;
+    // six still catches APIs that are difficult to call and maintain.
+    "max-params": [
+      "error",
+      {
+        "max": 6
+      }
+    ],
+    // Statement count is a weak measure of complexity; lower limits can fragment cohesive code without improving clarity.
+    "max-statements": "off",
+    // Continue keeps loop filters and early skips flat; banning it adds nesting
+    // without improving correctness.
+    "no-continue": "off",
+    "no-duplicate-imports": [
+      "error",
+      {
+        "allowSeparateTypeImports": true,
+      },
+    ],
+    "no-implicit-coercion": [
+      "error",
+      {
+        // `!!` is a concise boolean conversion; continue checking implicit numeric and string coercions.
+        "allow": [
+          "!!"
+        ],
+      },
+    ],
+    // Loop labels allow direct outer break/continue without flags or added nesting;
+    // arbitrary labels and switch labels remain rejected.
+    "no-labels": [
+      "error",
+      {
+        "allowLoop": true,
+      },
+    ],
+    // Numeric literals are often clearest for local calculations, indexes, test data,
+    // and protocol values. Extract constants when reuse or domain meaning warrants it.
+    "no-magic-numbers": "off",
+    // Nested ternaries can keep local value selection concise; review unclear cases
+    // individually instead of forcing extra variables or branches.
+    "no-nested-ternary": "off",
+    // Literal ${...} tokens are part of configuration, template, and fixture formats;
+    // this rule cannot distinguish them from accidental interpolation.
+    "no-template-curly-in-string": "off",
+    // Ternaries keep simple value selection local and expression-based; review complex
+    // cases individually instead of forcing verbose if/else assignments.
+    "no-ternary": "off",
+    // Separate declarations keep each variable close to its value and avoid coupling
+    // unrelated changes in a single statement.
+    "one-var": "off",
+    "prefer-arrow-callback": [
+      "error",
+      {
+        // Named functions may model methods or preserve useful diagnostic names.
+        "allowNamedFunctions": true,
+      },
+    ],
+    // Direct access can better preserve provenance, narrowing, and mutation intent;
+    // use destructuring where it improves the local code instead of enforcing it globally.
+    "prefer-destructuring": "off",
+    // Positional captures remain concise for small regexes and replacement callbacks;
+    // use named groups where pattern complexity makes them materially clearer.
+    "prefer-named-capture-group": "off",
+    // Concatenation can be clearer for appending delimiters, assembling generated
+    // source, and incrementally building text; use templates where they improve readability.
+    "prefer-template": "off",
+    // Explicit Promise construction is required when adapting callback-, event-,
+    // timer-, and stream-based APIs.
+    "promise/avoid-new": "off",
+    "promise/param-names": [
+      "error",
+      {
+        // Allow `_` for unused resolvers and `r` in compact Promise adapters.
+        "resolvePattern": "^(_|resolve|r)$"
+      }
+    ],
+    // Callbacks remain necessary for event listeners and callback-based platform APIs.
+    "promise/prefer-await-to-callbacks": "off",
+    // Promise chains are useful for queued work, detached handling, and cleanup
+    // without making the enclosing API async.
+    "promise/prefer-await-to-then": "off",
+    // `then(onOk, onError)` handles only the failure of the original promise. A following
+    // `catch` would also receive errors thrown by `onOk` and report them as that failure.
+    "promise/prefer-catch": "off",
+    // Import order may reflect dependency groups and required side-effect sequencing;
+    // alphabetical order is not a correctness invariant.
+    "sort-imports": "off",
+    // Object insertion order is observable and often expresses schema, output, or
+    // domain order; forced alphabetical sorting can obscure or change that intent.
+    "sort-keys": "off",
+    // Inline and top-level type specifiers are both clear and correctly erased.
+    "import/consistent-type-specifier-style": "off",
+    // Keeping exports beside declarations makes the module API easier to follow.
+    "import/exports-last": "off",
+    // Exporting declarations in place avoids a redundant export list.
+    "import/group-exports": "off",
+    // Named exports support reliable refactoring and remain useful in single-export modules.
+    "import/no-named-export": "off",
+    // Namespace imports are useful for cohesive module APIs and utility collections.
+    "import/no-namespace": "off",
+    // Node-targeted code intentionally uses built-in modules.
+    "import/no-nodejs-modules": "off",
+    // Named exports remain consistent when a module gains additional exports.
+    "import/prefer-default-export": "off",
+    // Callback parameters also represent iterators and multi-message consumers;
+    // returning after every invocation would incorrectly stop processing.
+    "node/callback-return": "off",
+    // Synchronous APIs can be appropriate during startup, crash reporting, refactoring,
+    // and tests; the rule also misidentifies user-defined methods ending in "Sync".
+    "node/no-sync": "off",
+    "typescript/array-type": [
+      "error",
+      {
+        // Use T[] for named types, but Array<{...}> when the element type is declared inline.
+        "default": "array-simple",
+        // Apply the same distinction to readonly arrays.
+        "readonly": "array-simple",
+      },
+    ],
+    // Type placement depends on context: class fields use annotations to state their
+    // contract, while local variables use constructor generics to avoid repetition.
+    // This rule can enforce only one style globally.
+    "typescript/consistent-generic-constructors": "off",
+    "typescript/consistent-type-assertions": [
+      "error",
+      {
+        "assertionStyle": "as",
+        "objectLiteralTypeAssertions": "never",
+        "arrayLiteralTypeAssertions": "never",
+      },
+    ],
+    // Type aliases and interfaces have different capabilities; choose based on
+    // unions, composition, extension, and declaration-merging requirements.
+    "typescript/consistent-type-definitions": "off",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        // Type-only symbols must not become runtime imports under type stripping
+        // or verbatim module syntax.
+        "prefer": "type-imports",
+        "fixStyle": "inline-type-imports",
+        // import("./mod").Type can reference a type without adding a runtime import.
+        "disallowTypeAnnotations": false,
+      },
+    ],
+    // Bracket notation intentionally identifies index-signature, configuration,
+    // protocol, and externally supplied property names.
+    "typescript/dot-notation": "off",
+    // Function properties keep interface and object-type parameters under strictFunctionTypes.
+    // This rule intentionally does not govern classes: normal methods stay on the prototype,
+    // while arrow fields allocate per instance and are reserved for stable receiver binding.
+    "typescript/method-signature-style": [
+      "error",
+      "property",
+    ],
+    // Explicit annotations can document public, override, and callback contracts
+    // even when the initializer or default value permits inference.
+    "typescript/no-inferrable-types": "off",
+    // `err` is conventional, while context-specific names such as `cause` and
+    // `rollbackErr` can be more informative than forcing every binding to `error`.
+    "unicorn/catch-error-name": "off",
+    "unicorn/explicit-timer-delay": [
+      "error",
+      "always"
+    ],
+    // Filename conventions can vary by directory and tooling; one global case can
+    // conflict with generated files or externally fixed names.
+    "unicorn/filename-case": "off",
+    // Fluent APIs, schemas, and assertions often read better inline; a fixed call
+    // depth encourages temporary variables without reducing actual complexity.
+    "unicorn/max-nested-calls": "off",
+    // Direct member access on a one-use awaited result is concise; requiring an
+    // intermediate variable usually adds no clarity.
+    "unicorn/no-await-expression-member": "off",
+    // Short, formatted nested ternaries can express value selection more clearly
+    // than expanded branches.
+    "unicorn/no-nested-ternary": "off",
+    "unicorn/no-null": [
+      "error",
+      {
+        "checkArguments": true,
+        "checkStrictEquality": false,
+      },
+    ],
+    "unicorn/no-typeof-undefined": [
+      "error",
+      {
+        "checkGlobalVariables": false,
+      },
+    ],
+    "unicorn/numeric-separators-style": [
+      "error",
+      {
+        "onlyIfContainsSeparator": false,
+        "binary": {
+          "minimumDigits": 0,
+          "groupLength": 4,
+        },
+        "octal": {
+          "minimumDigits": 0,
+          "groupLength": 4,
+        },
+        "hexadecimal": {
+          "minimumDigits": 0,
+          "groupLength": 2,
+        },
+        "number": {
+          "minimumDigits": 5,
+          "groupLength": 3,
+          "fractionGroupLength": null,
+        },
+      },
+    ],
+    "unicorn/prefer-at": [
+      "error",
+      {
+        "getLastElementFunctions": [],
+        "checkAllIndexAccess": false
+      },
+    ],
+    "unicorn/prefer-export-from": [
+      "error",
+      {
+        "checkUsedVariables": true
+      },
+    ],
+    "unicorn/prefer-object-from-entries": [
+      "error",
+      {
+        // An empty list avoids silently enabling additional helper-name defaults
+        // that differ between linters.
+        "functions": []
+      },
+    ],
+    "unicorn/prefer-single-call": [
+      "error",
+      {
+        "ignore": []
+      },
+    ],
+    // Escaped literals are clearer for short backslash mappings; String.raw is
+    // reserved for longer patterns where escaping would obscure the content.
+    "unicorn/prefer-string-raw": "off",
+    "unicorn/prefer-structured-clone": [
+      "error",
+      {
+        // An empty list avoids helper-name heuristics that differ between linters.
+        "functions": []
+      }
+    ],
+    "unicorn/prefer-ternary": [
+      "error",
+      "always"
+    ],
+    "unicorn/relative-url-style": [
+      "error",
+      "never"
+    ],
+    "unicorn/switch-case-braces": [
+      "error",
+      "avoid"
+    ],
+    "unicorn/text-encoding-identifier-case": [
+      "error",
+      {
+        "withDash": false,
+      },
+    ],
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.{js,cjs,mjs}"
+      ],
+      "rules": {
+        // JavaScript files cannot express parameter and return types in TypeScript syntax,
+        // so require their JSDoc equivalents here.
+        "jsdoc/require-param": "error",
+        "jsdoc/require-returns": "error",
+        // JavaScript has no readonly field modifier.
+        "typescript/prefer-readonly": "off",
+        // This rule does not interpret JSDoc @returns annotations.
+        "typescript/explicit-function-return-type": "off",
+      },
+    },
+    {
+      "files": [
+        "**/*.test.{js,cjs,mjs,ts,cts,mts,tsx}",
+        "**/*.generated.ts"
+      ],
+      "rules": {
+        // Tests keep complete scenarios together, while generators own generated-file shape;
+        // production line-count limits are not useful quality gates for either.
+        "max-lines": "off",
+        "max-lines-per-function": "off",
+        "no-shadow": [
+          "error",
+          {
+            // Nested test callbacks conventionally reuse `t`; retain `_` from the base
+            // allowlist as the intentional-discard name.
+            "allow": [
+              "t",
+              "_"
+            ]
+          }
+        ],
+        // Tests may import many fixtures; generated dependency sets are generator-owned.
+        "import/max-dependencies": "off",
+        // Test helpers favor inferred local types, while generators own generated signatures;
+        // explicit return types remain required for hand-authored production code.
+        "typescript/explicit-function-return-type": "off",
+      },
+    },
+  ],
+}

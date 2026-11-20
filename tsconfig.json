@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.node.jsonc",
+  "compilerOptions": {
+    // The build drivers import their pins and baselines as JSON modules.
+    "resolveJsonModule": true
+  },
+  "include": [
+    "vitest.config.ts",
+    "binaries/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "binaries/work",
+    "binaries/output",
+    "_refs",
+    "dist",
+    "node_modules"
+  ]
+}

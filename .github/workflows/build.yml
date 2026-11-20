@@ -1,0 +1,237 @@
+# SPDX-FileCopyrightText: © Vegard IT GmbH (https://vegardit.com)
+# SPDX-FileContributor: Sebastian Thomschke
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
+#
+# Builds native PostgreSQL archives and tests each archive after extraction.
+#
+# https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+name: Build
+
+on: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+  push:
+    branches-ignore:
+      # Bot branches build through their pull requests.
+      - "dependabot/**"
+      - "dependencies/**" # Update Sources workflow
+    tags-ignore:
+      - "**"
+    paths-ignore:
+      - "**/*.md"
+      - ".github/workflows/stale.yml"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - ".github/workflows/stale.yml"
+  workflow_dispatch:
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
+    inputs:
+      validation:
+        description: "candidate checks the archive layout; release also requires the reviewed licences and host requirements"
+        type: choice
+        options:
+          - candidate
+          - release
+        default: candidate
+  workflow_call:
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations
+    inputs:
+      validation:
+        description: "candidate checks the archive layout; release also requires the reviewed licences and host requirements"
+        type: string
+        default: candidate
+      upload:
+        description: "uploads the archives for the release job, which publishes them only after it checks them all"
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  ###########################################################
+  build:
+    ###########################################################
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # https://github.com/actions/runner-images#available-images
+        include:
+          - os: ubuntu-latest
+            target: linux-x64-glibc
+            output: linux-x64
+            test-command: binaries:test:linux
+          - os: windows-2025
+            target: windows-x64
+            output: windows-x64
+            test-command: binaries:test:windows
+
+    steps:
+      - name: Git Checkout
+        # https://github.com/actions/checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: "Install: Node.js"
+        # https://github.com/actions/setup-node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: "package.json"
+
+      - name: "Install: pnpm"
+        # https://github.com/pnpm/action-setup
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: "Install: Node.js dependencies"
+        run: pnpm install --frozen-lockfile
+
+      - name: "Check: build tooling"
+        run: pnpm check
+
+      - name: "Prepare: Linux build image"
+        if: runner.os == 'Linux'
+        run: |
+          image=$(node -p 'require("./binaries/linux/base.json").image')
+          llvm=$(node -p 'require("./binaries/linux/base.json").llvm')
+          docker build --platform linux/amd64 --tag portable-postgres-linux-build \
+            --build-arg "UBUNTU_IMAGE=$image" --build-arg "LLVM_MAJOR=$llvm" binaries/linux/image
+
+      - name: "Build: Linux native archive"
+        id: linux-build
+        if: runner.os == 'Linux'
+        run: |
+          # PGXS makefiles split paths containing spaces, including the SDK prefix.
+          workspace="type=bind,source=$PWD,target=/workspace"
+          if [[ ${ACT:-} == true ]]; then
+            # act can hold the checkout in a Docker volume on the host daemon.
+            volume=$(findmnt -n -o SOURCE -T "$PWD" | sed -nE 's@.*/volumes/(act-[^/]+)/_data\]$@\1@p')
+            if [[ -n "$volume" ]]; then workspace="type=volume,source=$volume,target=/workspace"; fi
+          fi
+          docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
+            --mount "$workspace" --workdir /workspace --env BUILD_JOBS="$(nproc)" \
+            portable-postgres-linux-build node binaries/linux/build.ts build
+
+      - name: "Install: Windows build prerequisites"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "$env:ProgramFiles\Git\usr\bin" >> $env:GITHUB_PATH
+          "$env:ProgramFiles\7-Zip" >> $env:GITHUB_PATH
+          python -m venv binaries/work/windows-toolchain
+          & binaries/work/windows-toolchain/Scripts/python.exe -m pip install --require-hashes --only-binary=:all: -r binaries/windows/requirements.txt
+
+      - name: "Build: Windows native archive"
+        id: windows-build
+        if: runner.os == 'Windows'
+        run: pnpm binaries:build:windows
+
+      - name: "Report: native build failure"
+        if: failure() && (steps.linux-build.outcome == 'failure' || steps.windows-build.outcome == 'failure')
+        run: |
+          shopt -s nullglob
+          for log in binaries/work/*-build-*/*-{configure,build,install,toolchain}.log; do
+            printf '\n%s\n' "$log"
+            tail -n 20 "$log"
+          done
+
+      - name: "Prepare: archive and SHA-256"
+        id: archive
+        env:
+          OUTPUT: ${{ matrix.output }}
+        run: |
+          output_dir="binaries/output/$OUTPUT"
+          archive_dir=$(mktemp -d "$output_dir/ci-XXXXXX")
+          # The Linux proof drops root privileges when running under act.
+          chmod 0755 "$archive_dir"
+          # This job is the only build in this output directory, so its record names the archive built above.
+          # The record keeps paths relative to the directory, because the Linux build container sees the checkout under another path.
+          archive=$(cd "$output_dir" && node -p 'require("node:path").resolve(require("./last-build.json").archive)')
+          archive_name=$(basename "$archive")
+          cp "$archive" "$archive_dir/$archive_name"
+          (cd "$archive_dir" && sha256sum "$archive_name" > "$archive_name.sha256")
+          mkdir "$archive_dir/installation"
+          # -p keeps the archive's modes, so that the tests and the release check see them, not the runner's umask.
+          tar -xpzf "$archive_dir/$archive_name" -C "$archive_dir/installation"
+          {
+            echo "path=$archive_dir/$archive_name"
+            echo "checksum=$archive_dir/$archive_name.sha256"
+            echo "installation=$archive_dir/installation"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: "Test: extracted PostgreSQL archive"
+        env:
+          TEST_COMMAND: ${{ matrix.test-command }}
+          INSTALLATION: ${{ steps.archive.outputs.installation }}
+        run: pnpm "$TEST_COMMAND" "$INSTALLATION"
+
+      - name: "Test: archive on Ubuntu 22.04"
+        if: runner.os == 'Linux'
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.path }}
+        run: |
+          # A restrictive umask, as some developer machines have: the proof copies its scripts into the
+          # consumer, where an unprivileged user must still be able to read them.
+          umask 077
+          pnpm binaries:test:linux:clean "$ARCHIVE"
+
+      - name: "Report: archive SHA-256"
+        env:
+          CHECKSUM: ${{ steps.archive.outputs.checksum }}
+        run: tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}" < "$CHECKSUM"
+
+      - name: "Report: licence review changes"
+        # Lists what this build reopens in the tracked review, so a pull request shows what needs a review.
+        env:
+          TARGET: ${{ matrix.target }}
+          INSTALLATION: ${{ steps.archive.outputs.installation }}
+        run: >-
+          pnpm binaries:review "$TARGET" "$INSTALLATION"
+          --output "$RUNNER_TEMP/review-draft-$TARGET.json"
+          --summary "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+      - name: "Share: licence review draft"
+        # The draft holds file names, hashes and licences but no binaries, so public CI shares it as well.
+        # act's artifact server rejects this upload action.
+        if: ${{ !env.ACT }}
+        # https://github.com/actions/upload-artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-draft-${{ matrix.target }}
+          path: ${{ runner.temp }}/review-draft-${{ matrix.target }}.json
+          if-no-files-found: error
+
+      - name: "Check: release review"
+        if: inputs.validation == 'release'
+        env:
+          TARGET: ${{ matrix.target }}
+          INSTALLATION: ${{ steps.archive.outputs.installation }}
+        run: pnpm binaries:validate "$TARGET" "$INSTALLATION"
+
+      - name: "Share: native archive"
+        # Public distribution requires the license and host compatibility checks in docs/native-artifact.md,
+        # so only the release job asks for archives in a public repository; a manual release-mode run checks them
+        # without making them downloadable. act's artifact server rejects this upload action.
+        # A public upload also needs release validation, which the step above runs only in release mode.
+        # Such an upload is a workflow artifact that signed-in users can download as soon as this job ends, before
+        # the other targets finish or anyone approves the release; it has already passed this target's checks.
+        if: (inputs.upload && inputs.validation == 'release') || (github.event.repository.private && !env.ACT)
+        # https://github.com/actions/upload-artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: portable-postgres-${{ matrix.target }}
+          path: |
+            ${{ steps.archive.outputs.path }}
+            ${{ steps.archive.outputs.checksum }}
+          if-no-files-found: error
+          compression-level: 0
+          # The repository's retention applies: the release job downloads these only once the release is
+          # approved, which may be days later.

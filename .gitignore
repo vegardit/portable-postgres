@@ -1,11 +1,16 @@
-# Excludes local work from the repository.
+# Excludes local work, dependencies, and generated output from the repository.
 
 # Local work folders
 /_*/
 
 .*
+!.actrc
+!.dockerignore
 !.editorconfig
+!.eslintignore
 !.git*
+!.oxlint*
+!.rumdl.*
 
 # Vim
 *.swo
@@ -14,3 +19,24 @@
 # patch
 *.orig
 *.rej
+
+# merged lock file on main
+pnpm-lock.main.yaml
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+
+# build output
+coverage/
+dist/
+*.tsbuildinfo
+
+# Native build inputs, installations, archives, and disposable clusters.
+/binaries/work/
+/binaries/output/
+/artifacts/
+*.tgz

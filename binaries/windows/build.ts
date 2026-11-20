@@ -1,0 +1,172 @@
+/*
+ * SPDX-FileCopyrightText: © Vegard IT GmbH (https://vegardit.com)
+ * SPDX-FileContributor: Sebastian Thomschke
+ * SPDX-License-Identifier: Apache-2.0
+ * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
+ */
+
+/** Builds isolated Windows candidates; reassembly never reuses a mismatched source identity. */
+import { closeSync, existsSync, openSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { release, tmpdir } from "node:os";
+import { fetchSources, sources } from "../sources/sources.ts";
+import windowsTools from "./tools.json" with { type: "json" };
+import { hostMeasurementEvidence, visualStudioReleaseGap } from "../artifact/artifact.ts";
+import { reviewFiles } from "../artifact/review.ts";
+import { inspectWindowsRuntime } from "./imports.ts";
+import { installWindowsSql } from "./sql.ts";
+import { msvcRuntimeNotice, selectVisualStudio, visualStudioEvidence } from "./visual-studio.ts";
+import {
+  type NativeBuild,
+  packageCandidate,
+  readBuild,
+  recipeIdentity,
+  recordBuild,
+  recordedToolchain,
+} from "../package.ts";
+import { outputRoot, root, workRoot } from "../paths.ts";
+import { buildJobs, capture, run } from "../process.ts";
+
+// From the repository, because the compiled copy of this module in dist has none of these files.
+const recipeRoot = join(root, "binaries/windows");
+
+/** These scripts, the SQL installer, and the tool pins determine the development installation. */
+export const windowsRecipe: readonly string[] = [
+  "build.cmd",
+  "build-extensions.cmd",
+  "extensions/CMakeLists.txt",
+  "sql.ts",
+  "requirements.txt",
+  "tools.json",
+].map(file => join(recipeRoot, file));
+
+/** The isolated environment whose Meson build.cmd runs, as CONTRIBUTING.md creates it. */
+const toolchainPython = join(workRoot, "windows-toolchain/Scripts/python.exe");
+const installRequirements = "& binaries/work/windows-toolchain/Scripts/python.exe -m pip install"
+  + " --require-hashes --only-binary=:all: -r binaries/windows/requirements.txt";
+
+/**
+ * Stops a fresh build whose Meson is not the pinned one. The recipe identity covers the pin rather than the
+ * installed tool, so the build would otherwise be recorded as made by a recipe that it did not follow.
+ */
+export function requirePinnedMeson(installed: string, requirements: string): void {
+  const pinned = /^meson==(\S+)/m.exec(requirements)?.[1];
+  if (pinned === undefined) throw new Error("binaries/windows/requirements.txt must pin meson.");
+  if (installed !== pinned) {
+    throw new Error(
+      `The Windows build environment has Meson ${installed}, but binaries/windows/requirements.txt pins`
+        + ` ${pinned}. Install the pinned requirements:\n${installRequirements}`,
+    );
+  }
+}
+
+export async function build(command: string = "build"): Promise<void> {
+  if (command !== "build" && command !== "assemble") throw new Error("Expected build or assemble.");
+  if (process.platform !== "win32" || process.arch !== "x64") {
+    throw new Error("Windows x64 is required.");
+  }
+  const downloads = join(workRoot, "downloads");
+  const output = join(outputRoot, "windows-x64");
+  const systemTar = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32/tar.exe");
+  const recipe = await recipeIdentity(windowsRecipe);
+  let current: NativeBuild;
+  if (command === "build") {
+    if (!existsSync(toolchainPython)) {
+      throw new Error(
+        "Create the isolated Meson environment first, as CONTRIBUTING.md shows: " + toolchainPython,
+      );
+    }
+    requirePinnedMeson(
+      capture(toolchainPython, ["-m", "mesonbuild.mesonmain", "--version"]).trim(),
+      await readFile(join(recipeRoot, "requirements.txt"), "utf8"),
+    );
+    // Extraction must read the exact files that fetching verified.
+    const archives = await fetchSources(downloads);
+    const tools = await fetchSources(downloads, windowsTools);
+    // Sources, objects, and the SDK must never carry material from a previous input identity.
+    const buildWork = await mkdtemp(join(workRoot, "windows-build-"));
+    // Meson uses the PostgreSQL name in the prefix to keep the SDK directories flat.
+    current = { buildWork, developmentInstallation: join(buildWork, "postgresql-sdk"), recipe };
+    // NOTE: Windows bsdtar's external bzip2 helper stalled locally. Reconsider 7-Zip when native decoding works.
+    const expandedArchive = join(buildWork, "windows-postgresql.tar");
+    const archiveOutput = openSync(expandedArchive, "w");
+    try {
+      await run("7z", ["x", "-so", archives.get("postgresql")!], { stdout: archiveOutput });
+    } finally {
+      closeSync(archiveOutput);
+    }
+    for (const source of sources) {
+      const destination = join(buildWork, "windows-sources", source.id);
+      await mkdir(destination, { recursive: true });
+      await run(systemTar, [
+        "-xf",
+        source.id === "postgresql" ? expandedArchive : archives.get(source.id)!,
+        "--strip-components=1",
+        "-C",
+        destination,
+      ]);
+    }
+    await run("7z", [
+      "x",
+      tools.get("winflexbison")!,
+      "-o" + join(buildWork, "windows-tools/winflexbison"),
+      "-y",
+    ]);
+    const visualStudio = selectVisualStudio();
+    // Relative to the repository root, where run() starts every tool: cmd.exe would split an absolute
+    // path at a character such as "&", which a checkout directory may contain.
+    await run("cmd.exe", ["/d", "/c", relative(root, join(recipeRoot, "build.cmd"))], {
+      env: {
+        ...process.env,
+        PORTABLE_PG_WORK: buildWork,
+        PORTABLE_PG_PREFIX: current.developmentInstallation,
+        PORTABLE_PG_VISUAL_STUDIO: visualStudio,
+        BUILD_JOBS: buildJobs(),
+      },
+    });
+    const toolset = (await readFile(join(buildWork, "windows-msvc-toolset.txt"), "utf8")).trim();
+    current.toolchainEvidence = visualStudioEvidence(visualStudio, toolset);
+    await installWindowsSql(join(buildWork, "windows-sources"), current.developmentInstallation);
+    await recordBuild(output, current);
+  } else {
+    current = await readBuild(output, recipe);
+  }
+  const toolchain = recordedToolchain(current);
+  const gap = visualStudioReleaseGap(toolchain);
+  if (gap !== undefined) {
+    console.warn("This build can only produce a candidate, not a release: " + gap);
+  }
+  // A candidate notice is written per assembly, so that two assemblies of one build never share a file.
+  const notices = await mkdtemp(join(tmpdir(), "portable-postgres-notices-"));
+  try {
+    const candidate = await packageCandidate({
+      target: "windows-x64",
+      output,
+      reviewFile: reviewFiles["windows-x64"],
+      sourceRoot: join(current.buildWork, "windows-sources"),
+      build: current,
+      toolchainNotices: [await msvcRuntimeNotice(toolchain, notices)],
+      hostEvidence: async installation => [
+        ...toolchain,
+        {
+          component: "Windows kernel",
+          version: release(),
+          evidence:
+            "os.release on the build host; supported minima require clean-consumer evidence",
+        },
+        {
+          component: hostMeasurementEvidence["windows-x64"],
+          version: (await inspectWindowsRuntime(installation)).join(", "),
+          evidence:
+            "DLL names in the import and delay-import tables of every packaged PE file that the bundle does not supply",
+        },
+      ],
+    });
+    console.log("Assembled Windows runtime candidate: " + candidate);
+  } finally {
+    await rm(notices, { recursive: true, force: true });
+  }
+}
+
+if (import.meta.main) await build(process.argv[2]);

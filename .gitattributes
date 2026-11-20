@@ -142,3 +142,7 @@
 .gitattributes export-ignore
 .gitignore     export-ignore
 .gitkeep       export-ignore
+
+
+# Licence reviews bind the hash of the project's shipped notices, so their bytes must not depend on the checkout.
+/binaries/windows/notices/*.txt text eol=lf

@@ -1,0 +1,125 @@
+// Defines repository-wide Oxlint policy
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./.oxlintrc.base.jsonc"],
+  // Oxlint does not inherit categories or options. Keep these settings in the root
+  // config so category and type-aware checks do not silently fall back to defaults.
+  "categories": {
+    // https://oxc.rs/docs/guide/usage/linter/config.html#enable-groups-of-rules-with-categories
+    "correctness": "error",
+    "nursery": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "restriction": "error",
+    "style": "error",
+    "suspicious": "error",
+  },
+  "options": {
+    "typeAware": true,
+  },
+  // Local proof notes and upstream checkouts are not project code; build work and output are generated.
+  "ignorePatterns": [
+    "_LOCAL/**",
+    "_refs/**",
+    "binaries/work/**",
+    "binaries/output/**",
+    "dist/**",
+    "node_modules/**",
+  ],
+  // Every file in this repository is Node.js build tooling or its tests.
+  "env": {
+    "node": true,
+  },
+  "rules": {
+    /**************************
+     * category: style
+     **************************/
+    //
+    // The artifact manifest uses null for unresolved values, and Node reports some results as null.
+    // Project code still prefers undefined when absence is internal.
+    "unicorn/no-null": "off",
+    // Many build functions name a local variable `path`, so `node:path` stays a named import.
+    "unicorn/import-style": "off",
+    //
+    /**************************
+     * category: restriction
+     **************************/
+    //
+    // The build, test and release commands report their progress on the console.
+    "no-console": "off",
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.{js,cjs,mjs,ts,cts,mts,tsx}"],
+      // Loading Vitest only in this override keeps its category-enabled rules out of Playwright,
+      // browser harness, and runtime source files.
+      "plugins": ["vitest"],
+      "rules": {
+        /**************************
+         * category: correctness
+         **************************/
+        // Repository assertion helpers use an `expect...` prefix. Teaching the rule that convention
+        // keeps helper-backed tests visible without adding empty `expect.hasAssertions()` calls.
+        "vitest/expect-expect": [
+          "error",
+          { "assertFunctionNames": ["expect*", "assert", "assertType"] }
+        ],
+        // Error messages are asserted when they are part of the contract, not for every throw.
+        "vitest/require-to-throw-message": "off",
+        // The tests run on Linux and Windows and check file modes only where the host has them.
+        "vitest/no-conditional-expect": "off",
+        // Vitest supports a second argument as failure context; many repository assertions use it
+        // to retain subprocess diagnostics without weakening the asserted value.
+        "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+        //
+        /**************************
+         * category: pedantic
+         **************************/
+        // EventEmitter doubles mirror Node ChildProcess and stream contracts.
+        "unicorn/prefer-event-target": "off",
+        // Tests use branches after runtime narrowing and cleanup checks where splitting the case would
+        // duplicate setup or hide the invariant under examination.
+        "vitest/no-conditional-in-test": "off",
+        //
+        /**************************
+         * category: restriction
+         **************************/
+        // Suite-level runner timeouts avoid repeating policy in every test declaration.
+        "vitest/require-test-timeout": "off",
+        //
+        /**************************
+         * category: style
+         **************************/
+        // Vitest mocks must run before importing the module under test.
+        "import/first": "off",
+        // Preserve the repository's `it` spelling at both top level and inside suites.
+        "vitest/consistent-test-it": ["error", { "fn": "it", "withinDescribe": "it" }],
+        // Shared setup and cleanup hooks own expensive resources and prevent lifecycle duplication.
+        "vitest/no-hooks": "off",
+        // Behavioral string titles remain clearer than deriving suite titles from callback function names.
+        "vitest/prefer-describe-function-title": "off",
+        // Titles may begin with product names, protocols, or identifiers whose casing is intentional.
+        "vitest/prefer-lowercase-title": "off",
+        // Local setup belongs in a test when sharing it through a hook would hide the tested precondition.
+        "vitest/require-hook": "off",
+        // Small focused files do not need a redundant top-level `describe` wrapper.
+        "vitest/require-top-level-describe": "off",
+        // Explicit Vitest imports keep test dependencies visible and preserve editor type information.
+        "vitest/no-importing-vitest-globals": "off",
+        // Complex invariants may need several assertions; an arbitrary ceiling would reward test splitting only.
+        "vitest/max-expects": "off",
+        // Syntax-only callback and loop detection also flags awaited helpers that guarantee execution;
+        // `expect.hasAssertions()` can then be satisfied by an unrelated assertion outside that body.
+        "vitest/prefer-expect-assertions": "off",
+        // `prefer-called-times` conflicts with the enabled `prefer-called-once` rule for single calls.
+        "vitest/prefer-called-times": "off",
+        // Structured comparisons intentionally use `toEqual` unless prototype and sparse-array identity matter.
+        "vitest/prefer-strict-equal": "off",
+        // Exact `false` assertions must not be weakened to accept every falsy value.
+        "vitest/prefer-to-be-falsy": "off",
+        // Exact `true` assertions must not be weakened to accept every truthy value.
+        "vitest/prefer-to-be-truthy": "off",
+      },
+    },
+  ],
+}

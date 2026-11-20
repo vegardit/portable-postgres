@@ -1,0 +1,51 @@
+// Configures repository formatting with platform-native working-tree line endings.
+{
+  "$schema": "https://dprint.dev/schemas/v0.json",
+  "lineWidth": 100,
+  // Pretty YAML receives `system` as concrete LF or CRLF; its adapter currently maps `auto` to LF.
+  "newLineKind": "system",
+  "excludes": [
+    // pnpm owns the generated lockfile; reformatting it would create large, disposable update diffs.
+    "pnpm-lock.yaml",
+  ],
+  "markdown": {
+    // https://dprint.dev/plugins/markdown/config/
+    // Preserve each file's existing EOL policy.
+    "newLineKind": "auto",
+    "textWrap": "maintain",
+  },
+  "yaml": {
+    // Keep the prevalent double-quoted YAML style and compact inline collections stable.
+    "quotes": "preferDouble",
+    "flowSequence.preferSingleLine": true,
+    "flowMap.preferSingleLine": true,
+  },
+  "typescript": {
+    // https://dprint.dev/plugins/typescript/config/
+    "conditionalExpression.useNestedIndentation": true,
+    "importDeclaration.preferSingleLine": false,
+    "forStatement.useBraces": "maintain",
+    "forInStatement.useBraces": "maintain",
+    "forOfStatement.useBraces": "maintain",
+    "whileStatement.useBraces": "maintain",
+    //
+    "module.sortImportDeclarations": "maintain",
+    "module.sortExportDeclarations": "maintain",
+    "importDeclaration.sortNamedImports": "maintain",
+    "exportDeclaration.sortNamedExports": "maintain",
+    //
+    "arguments.preferHanging": "always",
+    "forOfStatement.preferHanging": true,
+    "ifStatement.preferHanging": true,
+    //
+    "quoteStyle": "preferDouble",
+    "semicolons": "prefer",
+    "trailingCommas": "onlyMultiLine",
+  },
+  "plugins": [
+    "npm:@dprint/json",
+    "npm:@dprint/markdown",
+    "npm:@dprint/typescript",
+    "npm:dprint-plugin-yaml",
+  ]
+}

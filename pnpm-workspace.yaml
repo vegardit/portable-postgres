@@ -1,0 +1,9 @@
+# Defines pnpm 12 installation policy for the private binary build toolkit.
+# The Node.js wrapper is a separate package, not a discovered workspace member.
+strictPeerDependencies: true
+allowBuilds:
+  dprint: true
+# Keep the Node.js floor in devEngines a range; pnpm update would otherwise rewrite it to the newest exact release.
+updateConfig:
+  ignoreDependencies:
+    - node
