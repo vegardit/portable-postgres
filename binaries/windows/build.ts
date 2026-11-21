@@ -14,6 +14,7 @@ import { applyPatchFile } from "../patch.ts";
 import { fetchSources, sources } from "../sources/sources.ts";
 import windowsTools from "./tools.json" with { type: "json" };
 import { hostMeasurementEvidence, visualStudioReleaseGap } from "../artifact/artifact.ts";
+import { verifyNoticeAnchors } from "../artifact/notices.ts";
 import { reviewFiles } from "../artifact/review.ts";
 import { inspectWindowsRuntime } from "./imports.ts";
 import { auditWindowsLinks, linkEnvironmentFile, parseLinkEnvironment } from "./links.ts";
@@ -128,6 +129,8 @@ export async function build(command: string = "build"): Promise<void> {
         destination,
       ]);
     }
+    // Before patching and compiling: a source update that changed a fact behind a project notice fails here.
+    await verifyNoticeAnchors(join(buildWork, "windows-sources"));
     for (const patch of windowsPatches) {
       await applyPatchFile(join(buildWork, "windows-sources", patch.source), patch.file);
       console.log(`Applied source patch: ${patch.source} ${basename(patch.file)}`);
@@ -159,6 +162,8 @@ export async function build(command: string = "build"): Promise<void> {
     await recordBuild(output, current);
   } else {
     current = await readBuild(output, recipe);
+    // Notice pins can change while the source archives and compiled SDK stay the same.
+    await verifyNoticeAnchors(join(current.buildWork, "windows-sources"));
   }
   const toolchain = recordedToolchain(current);
   const gap = visualStudioReleaseGap(toolchain);

@@ -71,6 +71,7 @@ In a public repository it uploads no archive; only the Release workflow does, af
 Run `pnpm install --frozen-lockfile` from the repository root before building for either target.
 Every native build uses fresh source, object, and SDK directories.
 Reassembly checks that the saved source identities and build recipe still match the current ones.
+It also verifies the current project-notice anchors against the saved sources.
 A reassembly that finishes after a newer build has started keeps that build as the last one, and warns that its own candidate is not recorded.
 A change to a build script, a source patch, the Windows SQL installer, or a build tool pin therefore needs a fresh build.
 Candidate metadata follows [native artifact format 1](docs/native-artifact.md).
@@ -152,6 +153,9 @@ and other changes open the next revision once the current one has been released.
 The [Update Sources workflow](.github/workflows/update-sources.yml) runs the command every Monday
 and opens or refreshes a pull request on the `dependencies/sources` branch.
 The Build workflow then checks that every target still compiles and passes the native tests with the new releases.
+The build also fails when a notice file that `noticeFiles` pins no longer exists in the updated source:
+find where its text moved, or whether the code it covers went, and update the pin.
+A notice whose text changed ships under the same path, and the review lists its component as reopened.
 The Windows build fails when a source patch in `binaries/windows/patches/` no longer applies.
 Then check whether the updated source still needs the patch, as "Source patches" in
 [native artifact format 1](docs/native-artifact.md) describes, and update or remove it.

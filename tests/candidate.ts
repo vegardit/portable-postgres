@@ -7,7 +7,7 @@
 
 /** Writes minimal candidate installations whose layout passes candidate validation; the files are not real programs. */
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   type ArtifactManifest,
@@ -15,9 +15,10 @@ import {
   type ArtifactTarget,
   type HostEvidence,
   type LicenseInventory,
+  sourceComponentLicenses,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
-import { additionalNoticeName } from "../binaries/artifact/notices.ts";
+import { additionalNoticeName, projectNoticeRoot } from "../binaries/artifact/notices.ts";
 import { type Review, writeReviewedManifest } from "../binaries/artifact/review.ts";
 import { corePrograms, requiredModules } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
@@ -183,6 +184,13 @@ export async function createCandidate(
         "test-only notice",
       );
     }
+    // Candidate validation compares project notices with their pinned bytes, so these are the real texts.
+    for (const notice of "projectNotices" in source ? source.projectNotices : []) {
+      await writeFile(
+        join(root, "notices", additionalNoticeName(source.id, notice.file)),
+        await readFile(join(projectNoticeRoot, source.id, notice.file)),
+      );
+    }
     if (source.id === "postgresql") continue;
     const name = source.id === "pgvector" ? "vector" : source.id;
     // pg_cron and plpgsql_check expose SQL versions independently from their source release.
@@ -250,7 +258,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
     const files = extension ? [extension.control, ...extension.sql, ...extension.libraries] : [];
     return {
       id: source.id,
-      licenses: ["MIT"],
+      licenses: ["MIT", ...sourceComponentLicenses.get(source.id) ?? []],
       status: "verified",
       evidence: ["Owned contract-test fixture"],
       files: [...source.notices, ...files],
@@ -291,7 +299,10 @@ export function complete(draft: Review): Review {
       status: "verified",
       components: draft.licenseInventory.components.map(component => ({
         ...component,
-        licenses: [toolchainLicenses[component.id] ?? "MIT"],
+        licenses: [
+          toolchainLicenses[component.id] ?? "MIT",
+          ...sourceComponentLicenses.get(component.id) ?? [],
+        ],
         status: "verified",
         evidence: ["Owned contract-test fixture"],
       })),

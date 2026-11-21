@@ -1,0 +1,17 @@
+## EUC-JIS-2004 (JIS X 0213:2004 Appendix 3) vs Unicode mapping table
+## 
+## Date: 3 May 2009
+## License:
+## 	Copyright (C) 2001 earthian@tama.or.jp, All Rights Reserved.
+## 	Copyright (C) 2001 I'O, All Rights Reserved.
+## 	Copyright (C) 2006, 2009 Project X0213, All Rights Reserved.
+## 	You can use, modify, distribute this table freely.
+
+## Shift_JIS-2004 (JIS X 0213:2004 Appendix 1) vs Unicode mapping table
+## 
+## Date: 3 May 2009
+## License:
+## 	Copyright (C) 2001 earthian@tama.or.jp, All Rights Reserved.
+## 	Copyright (C) 2001 I'O, All Rights Reserved.
+## 	Copyright (C) 2006, 2009 Project X0213, All Rights Reserved.
+## 	You can use, modify, distribute this table freely.

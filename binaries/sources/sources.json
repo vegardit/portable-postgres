@@ -15,7 +15,109 @@
       "src/include/lib/sort_template.h",
       "src/port/pgmkdirp.c",
       "src/port/snprintf.c",
-      "src/backend/snowball/README"
+      "src/backend/snowball/README",
+      "src/port/getopt.c",
+      "src/port/getopt_long.c",
+      "src/port/bsearch_arg.c",
+      "src/port/mkdtemp.c",
+      "src/port/inet_aton.c",
+      "src/backend/utils/mb/wstrcmp.c",
+      "src/backend/utils/mb/wstrncmp.c",
+      "src/timezone/strftime.c",
+      "src/common/md5.c",
+      "src/common/sha1.c",
+      "src/common/sha2.c",
+      "src/port/inet_net_ntop.c",
+      "src/backend/utils/adt/inet_cidr_ntop.c",
+      "src/backend/utils/adt/inet_net_pton.c",
+      "src/port/strlcpy.c",
+      "src/port/strlcat.c",
+      "src/port/timingsafe_bcmp.c",
+      "src/include/common/hashfn_unstable.h",
+      "src/backend/lib/hyperloglog.c",
+      "src/port/win32gettimeofday.c",
+      "src/backend/optimizer/geqo/geqo_cx.c",
+      "src/bin/pg_dump/pg_backup_archiver.c",
+      "src/backend/lib/rbtree.c",
+      "src/backend/regex/regc_locale.c",
+      "src/bin/pg_controldata/pg_controldata.c"
+    ],
+    "projectNotices": [
+      {
+        "file": "unicode-license-v3.txt",
+        "origin": "https://www.unicode.org/license.txt (retrieved 2026-11-21)",
+        "covers": "Unicode data in PostgreSQL's Unicode tables (UCD 16.0) and encoding conversion maps (Unicode mapping files, ICU data)",
+        "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+        "anchors": [
+          {
+            "file": "src/include/common/unicode_version.h",
+            "match": "^#define PG_UNICODE_VERSION",
+            "text": "#define PG_UNICODE_VERSION\t\t\"16.0\""
+          },
+          {
+            "file": "src/backend/utils/mb/Unicode/Makefile",
+            "match": "^\\s*[^\\s#]",
+            "sha256": "9d77b7a46147c7dc6055adce9076255dd72ab6f376854c1a798e5ca243b6c3c2"
+          }
+        ]
+      },
+      {
+        "file": "snowball-copying.txt",
+        "origin": "https://raw.githubusercontent.com/snowballstem/snowball/d19326ac6c1b9a417fc872f7c2f845265a5e9ece/COPYING",
+        "covers": "The Snowball stemmers in src/backend/snowball/libstemmer",
+        "sha256": "f6f9e4c0e737728ca980de8595ded046d5e077017c1bb0ee05dc794a01434dae",
+        "anchors": [
+          {
+            "file": "src/backend/snowball/README",
+            "match": "^[0-9a-f]{40}$",
+            "text": "d19326ac6c1b9a417fc872f7c2f845265a5e9ece"
+          }
+        ]
+      },
+      {
+        "file": "snowball-website-license.txt",
+        "origin": "https://raw.githubusercontent.com/snowballstem/snowball-website/2cff1f88c8dbcd8e0c9bdbbc5ae20de77a4e11b6/license.tt (the licence block)",
+        "covers": "Stopword lists from the Snowball website in share/tsearch_data, excluding nepali.stop. PostgreSQL received the Nepali list in a 2018 patch. Its earlier provenance is unverified.",
+        "sha256": "d714d7b98b852b2dfd066e8648596f5ff5bb44d41fc93e20f94f0a333131b2b2",
+        "anchors": [
+          {
+            "files": "src/backend/snowball/stopwords/*.stop",
+            "sha256": "353d8c95da48d368a3d2ff3659b4792512697c4455660d95d2808e785d6032fa"
+          }
+        ]
+      },
+      {
+        "file": "fast-crc32-license.txt",
+        "origin": "https://raw.githubusercontent.com/corsix/fast-crc32/13f5289ceb6065d014f9e1e64f161ea7a926c3b7/LICENSE.MIT.md",
+        "covers": "The fast-crc32 output in src/port/pg_crc32c_sse42.c, compiled where the build enables AVX-512 CRC",
+        "sha256": "2a089b18ed6324886d134edbf9c5e9cde62e13458f30a10200a1f78089f90be7",
+        "anchors": [
+          {
+            "file": "src/port/pg_crc32c_sse42.c",
+            "from": "There is no copyright notice in the following generated code",
+            "to": "^#endif",
+            "sha256": "c066fed6ba4c1f36233f24047d0ec392e526c49f8ef97fd2691047542fbc26eb"
+          }
+        ]
+      },
+      {
+        "file": "x0213-tables.txt",
+        "origin": "The headers of src/backend/utils/mb/Unicode/euc-jis-2004-std.txt and sjis-0213-2004-std.txt in the pinned source",
+        "covers": "The EUC-JIS-2004 and Shift_JIS-2004 conversion maps",
+        "sha256": "8dd3204470f568a7b8292fcd003fd366b8d26186ef53458925609d33a3fd7a5d",
+        "anchors": [
+          {
+            "file": "src/backend/utils/mb/Unicode/euc-jis-2004-std.txt",
+            "match": "^##",
+            "sha256": "63a224a7ea67034b73feeb9c4f1d1d437c65485a41289818598d4316287e6d6a"
+          },
+          {
+            "file": "src/backend/utils/mb/Unicode/sjis-0213-2004-std.txt",
+            "match": "^##",
+            "sha256": "797aec33d8dab16c6900c3a7e38e0a5bb103f7db0c48d5936db7384a27b03002"
+          }
+        ]
+      }
     ]
   },
   {
@@ -103,7 +205,9 @@
     "licenseFile": "LICENSE",
     "noticeFiles": [
       "src/entry.c",
-      "src/misc.c"
+      "src/misc.c",
+      "include/bitstring.h",
+      "include/cron.h"
     ]
   },
   {

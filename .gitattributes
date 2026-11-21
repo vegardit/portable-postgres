@@ -146,5 +146,7 @@
 
 # Licence reviews bind the hash of the project's shipped notices, so their bytes must not depend on the checkout.
 /binaries/windows/notices/*.txt text eol=lf
+# Upstream licence texts that sources.json pins by SHA-256; kept byte for byte as retrieved.
+/binaries/sources/notices/** -text
 # Source patches are part of the recipe identity, and the sources they apply to use LF.
 /binaries/windows/patches/**/*.patch text eol=lf

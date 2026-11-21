@@ -212,6 +212,37 @@ A source notice ending in `.h` receives an additional `.txt` suffix in the archi
 The pinned TimescaleDB and pg_textsearch NOTICE files are mandatory.
 Configured exact-pin notices remain mandatory even if a later metadata edit omits their declaration.
 
+Some code needs a licence text that its source does not contain.
+PostgreSQL uses Unicode data in its tables and encoding maps, fast-crc32 in its AVX-512 CRC code,
+and Project X0213 data in two Japanese encoding maps.
+It also uses stemmers from the Snowball project and stopword lists published on its website.
+
+The project excludes `share/tsearch_data/nepali.stop` from the scope of the Snowball website notice.
+PostgreSQL received that list in a 2018 patch submitted under the project's patch-submission terms.
+Its provenance before submission remains unverified.
+See the [original patch](https://www.postgresql.org/message-id/attachment/58772/nepali_snowball.patch)
+and [PostgreSQL's submission terms](https://wiki.postgresql.org/wiki/Submitting_a_Patch).
+
+The repository keeps these texts in `binaries/sources/notices/<source-id>/`, byte for byte as retrieved,
+and the source's `projectNotices` in `sources.json` pin each one with its origin, what it covers, and its SHA-256.
+They ship as `notices/<source-id>-<file>` and count among the source's required notices.
+Packaging refuses a text whose bytes differ from its pin.
+Candidate validation requires a manifest digest for each project notice required by a matching upstream pin
+and compares the shipped bytes with the digest recorded for that packaging revision.
+To update a notice, replace the text, update its SHA-256 and origin, and review the change.
+A new digest reopens the component's review.
+
+Each project notice also pins the source facts it depends on as `anchors`:
+the Snowball commit in PostgreSQL's `src/backend/snowball/README`, PostgreSQL's Unicode version and the inputs of
+its encoding maps, the stopword lists, the attributed fast-crc32 block, and the headers of the Project X0213 tables.
+An anchor selects lines of one file (matching a pattern, or a block from one start line through the next end line)
+and pins them as text or by SHA-256, or it pins a set of files by their names and contents.
+A fresh build checks every anchor right after extracting the sources, before compiling.
+Reassembly checks the current anchors against the saved source tree before packaging.
+An anchor mismatch names the changed fact so the reviewer can check the notice before updating its pin.
+Release preparation compares the archived manifest's required notice paths, project-notice origins,
+coverage, digests, and anchors with the release checkout.
+
 The complete payload inventory includes notices and their hashes.
 Upstream text remains intact.
 A renamed copy does not change its legal terms.
@@ -316,6 +347,24 @@ because only these editions share the reviewed Distributable Code section.
 Such builds still produce candidates, and the build warns about them.
 The recorded edition shows what was installed, not which licence its user holds.
 The build never selects a preview or Insiders installation of Visual Studio.
+
+Some reviewed source code is under licences outside the permitted set.
+Each is admitted only for the source component that contains it, and that component must carry it,
+because the code ships in every build of the source:
+
+| Component    | Licence                     | Code                                                                 |
+| ------------ | --------------------------- | -------------------------------------------------------------------- |
+| `postgresql` | `Spencer-99`, `TCL`         | Henry Spencer's regex package and the Tcl code in it                 |
+| `postgresql` | `BSL-1.0`                   | Ryu (`src/common/d2s.c`, `f2s.c`), used under the Boost licence      |
+| `postgresql` | `LicenseRef-GEQO-Whitley`   | GEQO (`src/backend/optimizer/geqo`), granted for free distribution   |
+| `postgresql` | `LicenseRef-pg-dump-Warner` | parts of pg_dump                                                     |
+| `postgresql` | `LicenseRef-rbtree-Niemann` | `src/backend/lib/rbtree.c`                                           |
+| `postgresql` | `LicenseRef-X0213`          | the EUC-JIS-2004 and Shift_JIS-2004 conversion maps                  |
+| `pg_cron`    | `Vixie-Cron`                | Paul Vixie's cron code, which may be sold only with buildable source |
+| `pg_cron`    | `BSD-4.3TAHOE`              | `bitstring.h`, developed by the University of California, Berkeley   |
+
+The `LicenseRef-` texts and the other notices ship among the source's retained notices.
+These licences are not host licences either.
 
 Other additions require a deliberate repository policy change and review.
 

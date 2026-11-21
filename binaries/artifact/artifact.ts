@@ -17,6 +17,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { fileSha256 } from "../hash.ts";
 import { sources } from "../sources/sources.ts";
 import { additionalNoticeName } from "./notices.ts";
@@ -199,6 +200,28 @@ const permittedHostLicenses = new Set([
   "LicenseRef-Microsoft-Visual-Cpp-Runtime",
 ]);
 
+/**
+ * Licences that one source component may carry and must carry, because reviewed code under them ships in every
+ * build of that source. They are admitted nowhere else, not even as host licences; the owner decided each one
+ * (docs/native-artifact.md, "Notices and license gate"). The `LicenseRef-` texts ship as retained notices.
+ */
+export const sourceComponentLicenses: ReadonlyMap<string, readonly string[]> = new Map([
+  ["postgresql", [
+    // Henry Spencer's regex package and the Tcl code in regc_locale.c.
+    "Spencer-99",
+    "TCL",
+    // Ryu (src/common/d2s.c, f2s.c), which PostgreSQL uses under the Boost licence.
+    "BSL-1.0",
+    // GEQO (src/backend/optimizer/geqo), pg_dump, rbtree.c, and the JIS X 0213 conversion tables.
+    "LicenseRef-GEQO-Whitley",
+    "LicenseRef-pg-dump-Warner",
+    "LicenseRef-rbtree-Niemann",
+    "LicenseRef-X0213",
+  ]],
+  // Paul Vixie's cron code and the Berkeley bitstring.h.
+  ["pg_cron", ["Vixie-Cron", "BSD-4.3TAHOE"]],
+]);
+
 const errorPrefix = "Native artifact: ";
 
 function requireCondition(condition: unknown, message: string): asserts condition {
@@ -278,14 +301,15 @@ function inside(root: string, path: string): boolean {
   return child === "" || (!isAbsolute(child) && !child.startsWith(".." + sep) && child !== "..");
 }
 
-/** A pinned source as the manifest records it; where to look for updates is build metadata, not payload. */
-function sourceNotices(source: SourcePin): string[] {
+/** Required payload paths in manifest order, including notices the matching upstream pin requires. */
+function sourceNotices(source: SourcePin, requiredFiles: readonly string[] = []): string[] {
   const notices = ["notices/" + source.id + ".txt"];
-  const pinned = sources.find(candidate =>
-    candidate.id === source.id && candidate.version === source.version
-    && candidate.sha256 === source.sha256
-  );
-  const additional = new Set([...(source.noticeFiles ?? []), ...(pinned?.noticeFiles ?? [])]);
+  const additional = new Set([
+    ...(source.noticeFiles ?? []),
+    ...requiredFiles,
+    // The project's own copies of texts that the source needs but does not contain.
+    ...(source.projectNotices ?? []).map(notice => notice.file),
+  ]);
   if (source.id === "timescaledb" || source.id === "pg_textsearch") additional.add("NOTICE");
   for (const file of additional) {
     safePath(file);
@@ -510,10 +534,36 @@ const sourceSchema = z.object({
   license: text,
   licenseFile: pathChecked(safePath),
   noticeFiles: z.array(pathChecked(safePath)).exactOptional(),
+  /** Pinned project copies of licence texts that the source needs but does not contain. */
+  projectNotices: z.array(z.object({
+    file: pathChecked(safePath),
+    origin: text,
+    covers: text,
+    sha256: sha256("invalid project notice SHA-256"),
+    // The source facts that the build checks before compiling (verifyNoticeAnchors); recorded, not rechecked here.
+    anchors: z.array(z.record(z.string(), z.string())).exactOptional(),
+  })).exactOptional(),
   notice: pathChecked(safePath),
   notices: z.array(text),
 });
 type SourcePin = Omit<z.infer<typeof sourceSchema>, "notice" | "notices">;
+
+function sameSourceArchive(left: SourcePin, right: SourcePin): boolean {
+  return left.id === right.id && left.version === right.version && left.sha256 === right.sha256;
+}
+
+/** Whether the archive records the source identity and required notices of the release checkout. */
+export function matchesReleaseSource(
+  built: ArtifactManifest["sources"][number],
+  pin: SourcePin,
+): boolean {
+  // Compare known notice fields structurally so a later manifest can still carry additional metadata.
+  const notices = sourceSchema.shape.projectNotices;
+  return sameSourceArchive(built, pin)
+    && isDeepStrictEqual(built.notices, sourceNotices(pin))
+    && isDeepStrictEqual(notices.parse(built.projectNotices ?? []),
+      notices.parse(pin.projectNotices ?? []));
+}
 
 const hostEvidenceSchema = z.object({ component: text, version: text, evidence: text });
 /** An observed builder/consumer version is evidence, not an inferred supported minimum. */
@@ -704,7 +754,8 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
         "forbidden GPL/AGPL license: " + license,
       );
       requireCondition(
-        permittedLicenses.has(license) || requiredToolchainLicenses.get(component.id) === license,
+        permittedLicenses.has(license) || requiredToolchainLicenses.get(component.id) === license
+          || sourceComponentLicenses.get(component.id)?.includes(license) === true,
         "unresolved or unapproved license: " + license,
       );
     }
@@ -787,6 +838,13 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
       requireCondition(
         component.notices.includes(notice),
         "missing license notice for " + source.id + ": " + notice,
+      );
+    }
+    // A permitted licence in its place would pass every other rule and misdescribe the reviewed code.
+    for (const license of sourceComponentLicenses.get(source.id) ?? []) {
+      requireCondition(
+        component.licenses.includes(license),
+        "source component " + source.id + " must carry " + license,
       );
     }
   }
@@ -1042,13 +1100,32 @@ async function inspectArtifact(
     );
   }
   for (const source of manifest.sources) {
+    const pinned: SourcePin | undefined = sources.find(candidate =>
+      sameSourceArchive(candidate, source)
+    );
+    // The upstream pin requires the declaration. The artifact's packaging revision supplies its digest.
+    for (const notice of pinned?.projectNotices ?? []) {
+      requireCondition(
+        source.projectNotices?.some(recorded => recorded.file === notice.file),
+        "missing project notice pin: notices/" + additionalNoticeName(source.id, notice.file),
+      );
+    }
     requireCondition(
       source.notice === "notices/" + source.id + ".txt"
-        && JSON.stringify(source.notices) === JSON.stringify(sourceNotices(source)),
+        && isDeepStrictEqual(source.notices, sourceNotices(source, pinned?.noticeFiles)),
       "incorrect source notices: " + source.id,
     );
     for (const notice of source.notices) {
       requireCondition(entries.get(notice)?.kind === "file", "missing source notice: " + notice);
+    }
+    // The manifest pins each project notice's bytes; the review only binds whatever bytes it read.
+    for (const notice of source.projectNotices ?? []) {
+      const path = "notices/" + additionalNoticeName(source.id, notice.file);
+      const entry = entries.get(path);
+      requireCondition(
+        entry?.kind === "file" && entry.sha256 === notice.sha256,
+        "project notice differs from its pin: " + path,
+      );
     }
   }
   for (const notice of toolchainNotices(expectedTarget)) {

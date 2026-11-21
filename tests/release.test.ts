@@ -220,6 +220,25 @@ it("an archive built from other source pins is refused under the current release
   );
 });
 
+it.each(["anchors", "covers", "origin", "sha256", "notice path"] as const)(
+  "refuses an earlier notice pin with different %s under the same release name",
+  async difference => {
+    const assets = await directory();
+    await archive(assets, "windows-x64", {
+      alter: manifest => {
+        const pg = manifest.sources.find(source => source.id === "postgresql")!;
+        const notice = pg.projectNotices![0]!;
+        if (difference === "anchors") delete notice.anchors;
+        else if (difference === "notice path") pg.notices.pop();
+        else notice[difference] = "0".repeat(64);
+      },
+    });
+    await expect(prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
+      requireAllTargets: false,
+    })).rejects.toThrow("other source pins than this checkout: postgresql");
+  },
+);
+
 it("release preparation writes its assets to a new directory and leaves the downloads as they are", async () => {
   const assets = await directory();
   await archive(assets, "windows-x64");
@@ -279,7 +298,12 @@ it("an archive from another packaging revision is refused", async () => {
 it("a manifest key that this version does not know reaches the published manifest", async () => {
   const assets = await directory();
   await archive(assets, "windows-x64", {
-    alter: manifest => Object.assign(manifest, { addedByLaterFormat: { kept: true } }),
+    alter: manifest => {
+      Object.assign(manifest, { addedByLaterFormat: { kept: true } });
+      const notice = manifest.sources.find(source => source.id === "postgresql")!
+        .projectNotices![0]!;
+      Object.assign(notice, { laterNoticeField: true });
+    },
   });
   await prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
     requireAllTargets: false,
@@ -292,6 +316,8 @@ it("a manifest key that this version does not know reaches the published manifes
     ),
   );
   expect(published.addedByLaterFormat).toEqual({ kept: true });
+  expect(published.sources.find((source: { id: string }) => source.id === "postgresql")
+    .projectNotices[0].laterNoticeField).toBe(true);
 });
 
 it("an archive whose manifest does not have the manifest's shape is refused, even in a dry run", async () => {

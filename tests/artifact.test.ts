@@ -26,6 +26,7 @@ import {
   type ArtifactManifest,
   artifactManifestName,
   type ArtifactTarget,
+  sourceComponentLicenses,
   validateArtifact,
   verifyArtifactArchive,
   writeArtifactManifest,
@@ -940,4 +941,79 @@ it.each([
   await expect(
     writeArtifactManifest(root, { target: "windows-x64", packagingRevision: 1, hostEvidence: [] }),
   ).rejects.toThrow("expected a Windows x64 PE image: share/timezone/Helper");
+});
+
+it("a source component's scoped licences are required on it and admitted nowhere else", async () => {
+  const { root, manifest } = await fixture();
+  manifest.hostRequirements = hostRequirementsFixture();
+  manifest.licenseInventory = reviewedFixture(manifest);
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).resolves.toMatchObject({ formatVersion: 1 });
+  const component = (id: string) =>
+    manifest.licenseInventory.components.find(candidate => candidate.id === id)!;
+
+  // Omitted: the reviewed code ships in every build, so its licence must be named.
+  component("pg_cron").licenses = component("pg_cron").licenses.filter(license =>
+    license !== "Vixie-Cron"
+  );
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "source component pg_cron must carry Vixie-Cron",
+  );
+  // Substituted by a permitted licence, which every other rule would accept.
+  manifest.licenseInventory = reviewedFixture(manifest);
+  component("postgresql").licenses = ["MIT"];
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "source component postgresql must carry " + sourceComponentLicenses.get("postgresql")![0],
+  );
+  // On another component.
+  manifest.licenseInventory = reviewedFixture(manifest);
+  component("pgvector").licenses.push("Spencer-99");
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "unresolved or unapproved license: Spencer-99",
+  );
+  // As a host licence.
+  manifest.licenseInventory = reviewedFixture(manifest);
+  manifest.hostRequirements.libraries[0]!.license = "BSL-1.0";
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "unresolved host library license: BSL-1.0",
+  );
+});
+
+it("a candidate ships every project notice with the bytes that its pin names", async () => {
+  const postgresql = sources.find(source => source.id === "postgresql")!;
+  const [notice] = "projectNotices" in postgresql ? postgresql.projectNotices : [];
+  expect(notice, "PostgreSQL pins project notices").toBeDefined();
+  const path = "notices/postgresql-" + notice!.file;
+  const changed = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
+  temporary.push(changed);
+  await expect(createCandidate(changed, "windows-x64", { files: { [path]: "edited text" } }))
+    .rejects.toThrow("project notice differs from its pin: " + path);
+  const missing = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
+  temporary.push(missing);
+  await expect(createCandidate(missing, "windows-x64", { remove: [path] }))
+    .rejects.toThrow("missing source notice: " + path);
+
+  const { root, manifest } = await fixture();
+  const pg = manifest.sources.find(source => source.id === "postgresql")!;
+  // Another packaging of the same upstream release can carry a different reviewed notice.
+  const earlier = "Earlier pinned text";
+  const digest = createHash("sha256").update(earlier).digest("hex");
+  await writeFile(join(root, path), earlier);
+  pg.projectNotices = pg.projectNotices!.map(pin =>
+    pin.file === notice!.file ? { ...pin, sha256: digest } : pin
+  );
+  const entry = manifest.files.find(file => file.path === path)!;
+  if (entry.kind !== "file") throw new Error("Expected a regular notice");
+  entry.sha256 = digest;
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).resolves.toBeDefined();
+  delete pg.projectNotices;
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow(
+    "missing project notice pin: " + path,
+  );
 });

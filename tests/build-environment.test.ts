@@ -6,17 +6,27 @@
  */
 
 /**
- * Checks that a fresh build stops when its tools differ from the recipe that its record will name, because
- * the recipe identity covers the tool pins, not the tools that are installed.
+ * Checks the tools of a fresh build and the source facts a saved build must still satisfy on reassembly.
  */
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
-import { imageRecipeDirectory, requireCurrentImage } from "../binaries/linux/build.ts";
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  build as buildLinux,
+  imageRecipeDirectory,
+  linuxRecipe,
+  requireCurrentImage,
+} from "../binaries/linux/build.ts";
+import { recipeIdentity, recordBuild } from "../binaries/package.ts";
 import { root } from "../binaries/paths.ts";
-import { requirePinnedMeson } from "../binaries/windows/build.ts";
+import {
+  build as buildWindows,
+  requirePinnedMeson,
+  windowsRecipe,
+} from "../binaries/windows/build.ts";
 import baseline from "../binaries/linux/base.json" with { type: "json" };
+import { fixtureEvidence } from "./candidate.ts";
 
 const temporary: string[] = [];
 afterEach(async () => {
@@ -26,6 +36,34 @@ afterEach(async () => {
 });
 
 const requirements = "meson==1.12.1 --hash=sha256:" + "0".repeat(64) + "\n";
+
+it.skipIf(process.arch !== "x64" || !["linux", "win32"].includes(process.platform))(
+  "reassembly checks the notice anchors of a matching saved build before packaging",
+  async () => {
+    const output = await mkdtemp(join(tmpdir(), "portable-postgres-reassemble-"));
+    temporary.push(output);
+    const windows = process.platform === "win32";
+    const targetOutput = join(output, windows ? "windows-x64" : "linux-x64");
+    const pg = join(output, windows ? "windows-sources" : "sources", "postgresql");
+    await mkdir(join(pg, "src/backend/snowball"), { recursive: true });
+    await writeFile(join(pg, "src/backend/snowball/README"), "0".repeat(40));
+    await recordBuild(targetOutput, {
+      recipe: await recipeIdentity(windows ? windowsRecipe : linuxRecipe),
+      buildWork: output,
+      developmentInstallation: join(output, "sdk"),
+      toolchainEvidence: fixtureEvidence(windows ? "windows-x64" : "linux-x64-glibc"),
+    });
+    const paths = await import("../binaries/paths.ts");
+    const outputRoot = vi.spyOn(paths, "outputRoot", "get").mockReturnValue(output);
+    try {
+      await expect((windows ? buildWindows : buildLinux)("assemble")).rejects.toThrow(
+        "snowball-copying.txt: src/backend/snowball/README now has",
+      );
+    } finally {
+      outputRoot.mockRestore();
+    }
+  },
+);
 
 it("a fresh Windows build stops when the installed Meson differs from the pin", () => {
   expect(() => requirePinnedMeson("1.12.1", requirements)).not.toThrow();

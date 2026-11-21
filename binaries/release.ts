@@ -22,6 +22,7 @@ import {
   type ArtifactManifest,
   artifactManifestName,
   type ArtifactTarget,
+  matchesReleaseSource,
   parseArtifactManifest,
   toolchainNotices,
 } from "./artifact/artifact.ts";
@@ -131,11 +132,11 @@ export async function prepareRelease(
           `${name} describes ${manifest.target} ${manifest.postgresqlVersion}-r${manifest.packagingRevision}`,
         );
       }
-      // An extension update keeps an unreleased revision, so an archive built before it carries this name too.
+      // Source updates and notice corrections can share an unreleased revision with an earlier archive.
       const stale = [
         ...sources.filter(source => {
           const built = manifest.sources.find(entry => entry.id === source.id);
-          return built?.version !== source.version || built.sha256 !== source.sha256;
+          return built === undefined || !matchesReleaseSource(built, source);
         }),
         ...manifest.sources.filter(entry => !sources.some(source => source.id === entry.id)),
       ].map(source => source.id);

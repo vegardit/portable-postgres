@@ -14,6 +14,7 @@ import {
   hostMeasurementEvidence,
   toolchainEvidence,
 } from "../artifact/artifact.ts";
+import { verifyNoticeAnchors } from "../artifact/notices.ts";
 import { reviewFiles } from "../artifact/review.ts";
 import { readOptionalText } from "../files.ts";
 import { fetchSources, sources } from "../sources/sources.ts";
@@ -106,6 +107,8 @@ export async function build(command: string | undefined): Promise<void> {
         destination,
       ]);
     }
+    // Before compiling: a source update that changed a fact behind a project notice fails here, quickly.
+    await verifyNoticeAnchors(join(buildWork, "sources"));
     await run("bash", [join(recipeRoot, "build.sh")], {
       env: {
         ...process.env,
@@ -119,6 +122,8 @@ export async function build(command: string | undefined): Promise<void> {
     await recordBuild(output, current);
   } else {
     current = await readBuild(output, recipe);
+    // Notice pins can change while the source archives and compiled SDK stay the same.
+    await verifyNoticeAnchors(join(current.buildWork, "sources"));
   }
   const toolchain = recordedToolchain(current);
   const records = join(current.buildWork, linkRecordsDirectory);
