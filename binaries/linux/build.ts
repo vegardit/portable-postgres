@@ -14,9 +14,11 @@ import {
   hostMeasurementEvidence,
   toolchainEvidence,
 } from "../artifact/artifact.ts";
+import { sourceNoticesFile, writeSourceNoticeScan } from "../artifact/notice-scan.ts";
 import { verifyNoticeAnchors } from "../artifact/notices.ts";
 import { reviewFiles } from "../artifact/review.ts";
 import { readOptionalText } from "../files.ts";
+import { requireApacheOnlyTimescaleDB } from "../timescaledb.ts";
 import { fetchSources, sources } from "../sources/sources.ts";
 import { inspectLinuxRuntime } from "./abi.ts";
 import { auditLinks, linkRecordsDirectory } from "./links.ts";
@@ -35,13 +37,17 @@ import baseline from "./base.json" with { type: "json" };
 // From the repository, because the compiled copy of this module in dist has none of these files.
 const recipeRoot = join(root, "binaries/linux");
 
-/** The build image, its pinned base, and the compile script determine the development installation. */
+/**
+ * The build image, its pinned base, and the compile script determine the development installation.
+ * Reassembly also relies on the fresh build's notice scan and TimescaleDB check.
+ */
 export const linuxRecipe: readonly string[] = [
-  "build.sh",
-  "image/Dockerfile",
-  "image/traced-ld.sh",
-  "base.json",
-].map(file => join(recipeRoot, file));
+  ...["build.sh", "image/Dockerfile", "image/traced-ld.sh", "base.json"].map(file =>
+    join(recipeRoot, file)
+  ),
+  join(root, "binaries/artifact/notice-scan.ts"),
+  join(root, "binaries/timescaledb.ts"),
+];
 
 /** Where the build image keeps the recipe files and the build arguments that it was built from. */
 export const imageRecipeDirectory = "/usr/local/share/portable-postgres/recipe";
@@ -109,6 +115,12 @@ export async function build(command: string | undefined): Promise<void> {
     }
     // Before compiling: a source update that changed a fact behind a project notice fails here, quickly.
     await verifyNoticeAnchors(join(buildWork, "sources"));
+    // Also before compiling, which writes generated files into the source trees.
+    await writeSourceNoticeScan(
+      join(buildWork, "sources"),
+      sources.map(source => source.id),
+      join(buildWork, sourceNoticesFile),
+    );
     await run("bash", [join(recipeRoot, "build.sh")], {
       env: {
         ...process.env,
@@ -118,6 +130,10 @@ export async function build(command: string | undefined): Promise<void> {
         LLVM_MAJOR: baseline.llvm,
       },
     });
+    await requireApacheOnlyTimescaleDB(
+      join(buildWork, "timescaledb-build"),
+      join(buildWork, "sources", "timescaledb"),
+    );
     current.toolchainEvidence = measureToolchain();
     await recordBuild(output, current);
   } else {

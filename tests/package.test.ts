@@ -30,10 +30,12 @@ import {
   type ArtifactManifest,
   artifactManifestName,
   type ArtifactTarget,
+  type HostEvidence,
   parseArtifactManifest,
   toolchainNotices,
 } from "../binaries/artifact/artifact.ts";
 import { draftReview } from "../binaries/artifact/review.ts";
+import { sourceNoticesFile } from "../binaries/artifact/notice-scan.ts";
 import {
   lastCandidate,
   packageCandidate,
@@ -47,8 +49,10 @@ import {
   complete,
   createCandidate,
   fixtureEvidence,
+  fixtureNoticeScan,
   remeasured,
   sourceTree,
+  writeFixtureNoticeScan,
 } from "./candidate.ts";
 
 // A test can hold back a replacement of the build record to let another writer run in between, or make
@@ -114,6 +118,7 @@ it("resolves the build and candidate from the record's current checkout", async 
   await mkdir(work, { recursive: true });
   await mkdir(sdk, { mode: 0o700 });
   await createCandidate(sdk, target);
+  await writeFixtureNoticeScan(work);
   await packageCandidate({
     target,
     output,
@@ -149,6 +154,41 @@ it("continues to read absolute paths from an earlier build record", async () => 
   await writeFile(path, JSON.stringify({ ...record, ...build, installation }));
   await expect(readBuild(output, "recipe")).resolves.toMatchObject({ ...build, installation });
   await expect(lastCandidate(output)).resolves.toBe(installation);
+});
+
+it.each([
+  ["missing", "no source notice scan"],
+  ["malformed", "Malformed source notice scan"],
+  ["incomplete", "missing notice scan for source: pgvector"],
+  ["blank signature", "Malformed source notice scan"],
+  ["blank path", "Malformed source notice scan"],
+])("a source scan that is %s stops packaging before assembly", async (state, message) => {
+  const work = await directory();
+  const output = await directory();
+  const target = process.platform === "win32" ? "windows-x64" : "linux-x64-glibc";
+  if (state === "malformed") await writeFile(join(work, sourceNoticesFile), "[]");
+  if (state === "incomplete" || state.startsWith("blank")) {
+    const scan = fixtureNoticeScan();
+    if (state === "incomplete") delete scan["pgvector"];
+    else if (state === "blank signature") scan["pgvector"] = { " \t": ["README"] };
+    else scan["pgvector"] = { "Copyright Acme": [" \t"] };
+    await writeFile(join(work, sourceNoticesFile), JSON.stringify(scan));
+  }
+  const sdk = await directory();
+  await createCandidate(sdk, target);
+  const hostEvidence = vi.fn<() => Promise<HostEvidence[]>>().mockResolvedValue(
+    fixtureEvidence(target),
+  );
+  await expect(packageCandidate({
+    target,
+    output,
+    sourceRoot: await sourceTree(await directory()),
+    reviewFile: join(work, "missing-review.json"),
+    build: { developmentInstallation: sdk, buildWork: work, recipe: "recipe" },
+    hostEvidence,
+  })).rejects.toThrow(message);
+  expect(hostEvidence).not.toHaveBeenCalled();
+  await expect(readdir(output)).resolves.toEqual([]);
 });
 
 it("reassembly uses the toolchain evidence of the build and refuses a build that recorded none", () => {
@@ -189,6 +229,7 @@ it("packaging writes the notices into the candidate and leaves the development i
   const before = await snapshot(developmentInstallation);
 
   const output = await directory();
+  await writeFixtureNoticeScan(work);
   const candidate = await packageCandidate({
     target,
     output,
@@ -240,6 +281,7 @@ it(
     const output = await directory();
     const reviewFile = join(work, "review.json");
     const packaged = async (hostEvidence = fixtureEvidence(target)) => {
+      await writeFixtureNoticeScan(work);
       const candidate = await packageCandidate({
         target,
         output,
@@ -320,6 +362,7 @@ it("a reassembly of an older build leaves a newer build's record in place", asyn
     warnings.push(message);
   });
   try {
+    await writeFixtureNoticeScan(build.buildWork);
     await packageCandidate({
       target,
       output,
@@ -367,6 +410,7 @@ it("a fresh build that records itself while a reassembly replaces the record sta
     return replace(from, to);
   });
   try {
+    await writeFixtureNoticeScan(build.buildWork);
     await packageCandidate({
       target,
       output,
@@ -410,6 +454,7 @@ it("packaging stops instead of replacing a build record that it cannot read", as
   );
   let outcome: unknown;
   try {
+    await writeFixtureNoticeScan(build.buildWork);
     outcome = await packageCandidate({
       target,
       output,

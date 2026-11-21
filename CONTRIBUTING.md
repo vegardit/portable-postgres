@@ -198,15 +198,26 @@ Without the file, the build produces a candidate whose review is pending.
    of the source component that built it.
 4. Rebuild and run `pnpm binaries:validate <target> <installation>`.
 
-A review stays valid while the shipped files, the licence texts it read, and the toolchain line are unchanged.
+A review stays valid while the shipped files, the licence texts it read, the notice signatures of each source tree,
+and the toolchain line are unchanged.
 Most source updates therefore keep their review.
 The Build workflow lists the reopened parts in its job summary and uploads the draft as `review-draft-<target>`,
 so a pull request shows what needs a review without a local build.
 To review a reopened source, compare its licence, copyright, and notice files between the two releases,
 look for newly bundled third-party code with its own licence, and skim the release notes.
-The notice comparison cannot detect such bundled code while the main licence files stay unchanged,
-so also skim the release notes of every other updated source for it, and add a component for any that you find.
-A new copyright year in a licence file also reopens its component.
+The job summary shows up to 20 notice signature changes per component.
+It lists additions first as `licence text added`, with up to three example paths each,
+then removals as `licence text gone`.
+If the previous review has no signature list, the summary gives the number of signatures to review.
+To see every change, compare each component's `noticeSignatures` in the uploaded draft
+with the same component in the target's tracked review.
+Read the added text in the upstream source, decide whether it ships and under which licence,
+and add a component or a retained notice where needed.
+Keep the reviewed signature list in the target's review.
+Newly bundled code can reuse an existing notice or carry no detected notice,
+so check every updated source's release notes for it.
+A year-only change on a copyright line leaves its signature unchanged.
+It still reopens the component if the changed file is a pinned notice.
 
 The toolchain components carry fixed licences.
 `compiler-rt` carries `Apache-2.0 WITH LLVM-exception`.

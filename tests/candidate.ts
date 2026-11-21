@@ -18,10 +18,29 @@ import {
   sourceComponentLicenses,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
+import {
+  noticeSignatureExamples,
+  type SourceNoticeScan,
+  sourceNoticesFile,
+} from "../binaries/artifact/notice-scan.ts";
 import { additionalNoticeName, projectNoticeRoot } from "../binaries/artifact/notices.ts";
 import { type Review, writeReviewedManifest } from "../binaries/artifact/review.ts";
 import { corePrograms, requiredModules } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
+
+/** The notice scan of the fixture sources: one signature each, in its licence file. */
+export function fixtureNoticeScan(): SourceNoticeScan {
+  return Object.fromEntries(sources.map(source => [
+    source.id,
+    { [`Copyright (c) YYYY ${source.id} fixture authors`]: [source.licenseFile] },
+  ]));
+}
+
+/** Stores the fixture scan in a build's work directory, where a fresh build stores its scan. */
+export async function writeFixtureNoticeScan(buildWork: string): Promise<void> {
+  await mkdir(buildWork, { recursive: true });
+  await writeFile(join(buildWork, sourceNoticesFile), JSON.stringify(fixtureNoticeScan()));
+}
 
 export function peFixture(): Buffer {
   // A header fixture tests format/architecture discovery; only native integration proves executable behavior.
@@ -139,7 +158,11 @@ export async function createCandidate(
     & Partial<
       Pick<
         ArtifactOptions,
-        "hostEvidence" | "hostRequirements" | "licenseInventory" | "packagingRevision"
+        | "hostEvidence"
+        | "hostRequirements"
+        | "licenseInventory"
+        | "noticeSignatures"
+        | "packagingRevision"
       >
     >
     & {
@@ -243,6 +266,7 @@ export async function createCandidate(
     target,
     packagingRevision: 1,
     hostEvidence: fixtureEvidence(target),
+    noticeSignatures: noticeSignatureExamples(fixtureNoticeScan()),
     ...artifactOptions,
   };
   return trackedReview === undefined
@@ -264,6 +288,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
       files: [...source.notices, ...files],
       notices: [...source.notices],
       noticeSha256: noticeHashes(manifest, source.notices),
+      noticeSignatures: source.noticeSignatures?.map(entry => entry.signature) ?? [],
     };
   });
   const toolchainNotices = toolchainParts[manifest.target].flatMap(part =>

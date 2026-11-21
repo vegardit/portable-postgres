@@ -49,7 +49,7 @@ for extension in pgvector pg_textsearch hypopg plpgsql_check pg_cron; do
 done
 
 cmake -S "$source_root/timescaledb" -B "$work_root/timescaledb-build" \
-  -DCMAKE_BUILD_TYPE=Release -DPG_CONFIG="$install_root/bin/pg_config" -DAPACHE_ONLY=ON \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPG_CONFIG="$install_root/bin/pg_config" -DAPACHE_ONLY=ON \
   -DUSE_OPENSSL=OFF -DUSE_TELEMETRY=OFF -DSEND_TELEMETRY_DEFAULT=OFF -DREGRESS_CHECKS=OFF \
   > "$work_root/timescaledb-configure.log" 2>&1
 cmake --build "$work_root/timescaledb-build" --parallel "$build_jobs" \

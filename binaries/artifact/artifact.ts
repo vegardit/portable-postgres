@@ -20,6 +20,12 @@ import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileSha256 } from "../hash.ts";
 import { sources } from "../sources/sources.ts";
+import {
+  compareOrdinal,
+  maxNoticeExamples,
+  nonblankText as text,
+  type NoticeSignatureExample,
+} from "./notice-scan.ts";
 import { additionalNoticeName } from "./notices.ts";
 import * as z from "zod";
 import {
@@ -175,6 +181,11 @@ export type ArtifactOptions = {
   hostEvidence: HostEvidence[];
   hostRequirements?: HostRequirements | null;
   licenseInventory?: LicenseInventory;
+  /**
+   * Each source's notice signatures from the build's scan, with example files (`noticeSignatureExamples`).
+   * A candidate may lack them; release validation requires them for every source.
+   */
+  noticeSignatures?: Readonly<Record<string, NoticeSignatureExample[]>>;
 };
 
 const executableNames = ["postgres", "initdb", "pg_ctl", "psql"] as const;
@@ -416,8 +427,8 @@ async function scan(installation: string, target: ArtifactTarget): Promise<Conte
   );
 }
 
-function controlVersion(text: string): string {
-  const version = (/^\s*default_version\s*=\s*'([^']+)'/m.exec(text))?.[1];
+function controlVersion(contents: string): string {
+  const version = (/^\s*default_version\s*=\s*'([^']+)'/m.exec(contents))?.[1];
   requireCondition(
     version && /^[\d.]+$/.test(version),
     "missing or unsafe extension default version",
@@ -481,8 +492,6 @@ async function extensionLayout(
   return extensions;
 }
 
-const text = z.string().refine(value => value.trim().length > 0, "expected a nonempty string");
-
 function sha256(message: string): z.ZodString {
   return z.string(message).regex(/^[a-f0-9]{64}$/, message);
 }
@@ -545,8 +554,18 @@ const sourceSchema = z.object({
   })).exactOptional(),
   notice: pathChecked(safePath),
   notices: z.array(text),
+  /**
+   * The notice signatures that the build's scan found in the source tree, each with example files. The
+   * source's review component must list exactly these signatures, so new licence text reopens it.
+   */
+  noticeSignatures: z.array(z.object({
+    signature: text,
+    files: z.array(text).max(maxNoticeExamples, "expected at most three example paths"),
+  })).check(
+    unique(entry => entry.signature, entry => "duplicate notice signature: " + entry.signature),
+  ).exactOptional(),
 });
-type SourcePin = Omit<z.infer<typeof sourceSchema>, "notice" | "notices">;
+type SourcePin = Omit<z.infer<typeof sourceSchema>, "notice" | "notices" | "noticeSignatures">;
 
 function sameSourceArchive(left: SourcePin, right: SourcePin): boolean {
   return left.id === right.id && left.version === right.version && left.sha256 === right.sha256;
@@ -655,6 +674,8 @@ export const licenseInventorySchema = z.object({
     files: z.array(text),
     notices: z.array(text),
     noticeSha256: z.record(z.string(), sha256("invalid reviewed notice SHA-256")),
+    /** The notice signatures of the source's tree that the review covered; see the manifest's sources. */
+    noticeSignatures: z.array(text).exactOptional(),
     toolchain: text.exactOptional(),
     evidence: z.array(text),
   })).check(
@@ -847,6 +868,15 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
         "source component " + source.id + " must carry " + license,
       );
     }
+    // The review must have covered the licence text that the source tree carries now. Without a scan, a
+    // build could not show that no new licence text arrived, so it cannot be released either.
+    requireCondition(source.noticeSignatures, "missing notice scan for source: " + source.id);
+    const scanned = source.noticeSignatures.map(entry => entry.signature).sort(compareOrdinal);
+    requireCondition(
+      component.noticeSignatures !== undefined
+        && isDeepStrictEqual([...component.noticeSignatures].sort(compareOrdinal), scanned),
+      "reviewed notice signatures differ from the source tree: " + source.id,
+    );
   }
   for (const extension of manifest.extensions) {
     // Global coverage can hide a missing contribution when another component lists the same file.
@@ -942,11 +972,15 @@ export async function describeArtifact(
     "installation root must be a real directory",
   );
   const suffix = options.target === "windows-x64" ? ".exe" : "";
-  const sourceInputs = sources.map(({ upstream: _upstream, ...source }) => ({
-    ...source,
-    notice: "notices/" + source.id + ".txt",
-    notices: sourceNotices(source),
-  }));
+  const sourceInputs = sources.map(({ upstream: _upstream, ...source }) => {
+    const noticeSignatures = options.noticeSignatures?.[source.id];
+    return {
+      ...source,
+      notice: "notices/" + source.id + ".txt",
+      notices: sourceNotices(source),
+      ...noticeSignatures === undefined ? {} : { noticeSignatures },
+    };
+  });
   const manifest: ArtifactManifest = {
     format: "portable-postgres-native",
     formatVersion: 1,

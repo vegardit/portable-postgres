@@ -14,10 +14,12 @@ import { applyPatchFile } from "../patch.ts";
 import { fetchSources, sources } from "../sources/sources.ts";
 import windowsTools from "./tools.json" with { type: "json" };
 import { hostMeasurementEvidence, visualStudioReleaseGap } from "../artifact/artifact.ts";
+import { sourceNoticesFile, writeSourceNoticeScan } from "../artifact/notice-scan.ts";
 import { verifyNoticeAnchors } from "../artifact/notices.ts";
 import { reviewFiles } from "../artifact/review.ts";
 import { inspectWindowsRuntime } from "./imports.ts";
 import { auditWindowsLinks, linkEnvironmentFile, parseLinkEnvironment } from "./links.ts";
+import { requireApacheOnlyTimescaleDB } from "../timescaledb.ts";
 import { installWindowsSql } from "./sql.ts";
 import { msvcRuntimeNotice, selectVisualStudio, visualStudioEvidence } from "./visual-studio.ts";
 import {
@@ -46,7 +48,8 @@ export const windowsPatches: ReadonlyArray<{ source: string; file: string }> = [
 
 /**
  * These scripts, the source patches and the code that applies them, the SQL installer, and the tool pins
- * determine the development installation.
+ * determine the development installation. Reassembly also relies on the fresh build's notice scan and
+ * TimescaleDB check.
  */
 export const windowsRecipe: readonly string[] = [
   ...[
@@ -60,6 +63,8 @@ export const windowsRecipe: readonly string[] = [
     "tools.json",
   ].map(file => join(recipeRoot, file)),
   join(root, "binaries/patch.ts"),
+  join(root, "binaries/artifact/notice-scan.ts"),
+  join(root, "binaries/timescaledb.ts"),
   ...windowsPatches.map(patch => patch.file),
 ];
 
@@ -131,6 +136,12 @@ export async function build(command: string = "build"): Promise<void> {
     }
     // Before patching and compiling: a source update that changed a fact behind a project notice fails here.
     await verifyNoticeAnchors(join(buildWork, "windows-sources"));
+    // The upstream text, before the project's patches change it.
+    await writeSourceNoticeScan(
+      join(buildWork, "windows-sources"),
+      sources.map(source => source.id),
+      join(buildWork, sourceNoticesFile),
+    );
     for (const patch of windowsPatches) {
       await applyPatchFile(join(buildWork, "windows-sources", patch.source), patch.file);
       console.log(`Applied source patch: ${patch.source} ${basename(patch.file)}`);
@@ -153,6 +164,10 @@ export async function build(command: string = "build"): Promise<void> {
         BUILD_JOBS: buildJobs(),
       },
     });
+    await requireApacheOnlyTimescaleDB(
+      join(buildWork, "windows-timescaledb"),
+      join(buildWork, "windows-sources", "timescaledb"),
+    );
     const toolset = (await readFile(join(buildWork, "windows-msvc-toolset.txt"), "utf8")).trim();
     const { sdkVersion } = parseLinkEnvironment(
       await readFile(join(buildWork, linkEnvironmentFile), "utf8"),

@@ -37,6 +37,13 @@ afterEach(async () => {
 
 const requirements = "meson==1.12.1 --hash=sha256:" + "0".repeat(64) + "\n";
 
+it.each([["Linux", linuxRecipe], ["Windows", windowsRecipe]] as const)(
+  "the %s recipe binds reassembly to its TimescaleDB licence check",
+  (_, recipe) => {
+    expect(recipe).toContain(join(root, "binaries/timescaledb.ts"));
+  },
+);
+
 it.skipIf(process.arch !== "x64" || !["linux", "win32"].includes(process.platform))(
   "reassembly checks the notice anchors of a matching saved build before packaging",
   async () => {

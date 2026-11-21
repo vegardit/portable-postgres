@@ -13,6 +13,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { writeNativeArchive } from "./artifact/archive.ts";
 import type { ArtifactTarget, HostEvidence } from "./artifact/artifact.ts";
 import { assembleRuntime } from "./artifact/assemble.ts";
+import {
+  noticeSignatureExamples,
+  readSourceNoticeScan,
+  sourceNoticesFile,
+} from "./artifact/notice-scan.ts";
 import { copySourceNotices } from "./artifact/notices.ts";
 import { readTrackedReview, writeReviewedManifest } from "./artifact/review.ts";
 import { readOptionalText } from "./files.ts";
@@ -181,8 +186,14 @@ export async function packageCandidate(options: {
   hostEvidence: (candidate: string) => Promise<HostEvidence[]>;
 }): Promise<string> {
   const { output, build } = options;
-  // Read before assembly, so that a malformed review file stops packaging before the slow part.
+  // Both inputs must be readable before creating a candidate or auditing its native images.
   const tracked = await readTrackedReview(options.reviewFile);
+  const scan = await readSourceNoticeScan(join(build.buildWork, sourceNoticesFile));
+  for (const { id } of sources) {
+    // An empty entry records a completed scan. An absent entry leaves the source unaccounted for.
+    if (!Object.hasOwn(scan, id)) throw new Error("Build is missing notice scan for source: " + id);
+  }
+  const noticeSignatures = noticeSignatureExamples(scan);
   await mkdir(output, { recursive: true });
   // A fresh directory prevents stale build files from leaking into a later candidate.
   const candidate = await mkdtemp(join(output, "candidate installation-"));
@@ -194,6 +205,7 @@ export async function packageCandidate(options: {
     target: options.target,
     packagingRevision,
     hostEvidence: await options.hostEvidence(candidate),
+    noticeSignatures,
   }, tracked);
   // The archive keeps its release name, so each build gets its own directory instead of a unique file name.
   const archiveDirectory = join(output, "archive-" + basename(candidate).split("-").at(-1));

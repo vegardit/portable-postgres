@@ -216,10 +216,9 @@ if (import.meta.main) {
       ...changes.map(change => `| ${change.id} | ${change.from} | ${change.to} |`),
       "",
       "The build checks that every target still compiles and passes the native tests.",
-      "Its job summary lists the licence review parts that this update reopens, such as a changed",
-      "licence text or new files; if it lists none, the shipped files and licence texts still match",
-      "the tracked reviews. That comparison cannot see newly bundled third-party code while the",
-      "licence files stay the same, so skim the release notes of each updated source for it.",
+      "Its job summary lists reopened licence reviews and up to 20 notice signature changes per component.",
+      "Compare each uploaded review draft with the target's tracked review to see every change.",
+      "Check each updated source's release notes for bundled code that brings no new detected notice.",
       "Review reopened parts before the next release, as described in CONTRIBUTING.md.",
     ].join("\n") + "\n";
     console.log(summary);

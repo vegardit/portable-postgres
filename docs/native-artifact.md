@@ -59,9 +59,9 @@ It does not hash itself recursively.
 Every other payload file or symlink is listed in `files`.
 The archive digest must be calculated after metadata is written.
 Changing any archive content invalidates the earlier digest.
-The licence review covers the list of payload files and the licence texts it read, rather than exact bytes.
-A rebuild or source update with the same file list and unchanged licence notices keeps its review.
-A new or renamed file, a changed notice, or a new toolchain line needs a review first.
+The licence review covers the payload file list, the hashes of retained notices,
+the notice signatures in each upstream source tree, and the toolchain line.
+A change to any of these reopens the affected component.
 
 An installation validator operates after extraction.
 It does not protect an extractor that has already followed an unsafe tar entry.
@@ -146,6 +146,9 @@ Deleting a required script or native library invalidates the installation.
 
 Libraries use `.so` on the current Linux target and `.dll` on Windows.
 TimescaleDB includes both its loader and the library named for its exact source release.
+Each fresh build checks the source files in CMake's compilation database.
+It rejects a file under `tsl/` or one whose leading C comment contains upstream's Timescale License declaration.
+After changing this check, rebuild each target before reassembling it.
 The PostgreSQL client library is also required: `lib/libpq.so.5` on Linux and `bin/libpq.dll` on Windows.
 
 Bundling makes extensions available.
@@ -245,6 +248,52 @@ An anchor mismatch names the changed fact so the reviewer can check the notice b
 Release preparation compares the archived manifest's required notice paths, project-notice origins,
 coverage, digests, and anchors with the release checkout.
 
+A source update can also bring licence text that no pinned notice contains, such as newly bundled third-party code.
+So each fresh build scans every file of every source tree for copyright, licence and grant lines,
+right after extraction and before patching or compiling.
+A file's signature includes its distinct notice lines and their continuations in comments.
+For example, a holder or a grant can span several consecutive one-line C comments.
+In a C header, attribution and responsibility clauses can appear between a copyright and its grant,
+or in later paragraphs of the notice.
+In M4 files, a licence notice can span consecutive `dnl` comments or consecutive `#` comments.
+A bare comment marker separates paragraphs, and a physical blank line ends the block.
+In both shell scripts and M4 files, the scanner keeps hash-comment grant paragraphs such as
+Autoconf's permission to copy its generated script, along with warranty and redistribution conditions.
+In other consecutive one-line comments, a full stop ends a continuation unless the next line
+states a notice or starts a numbered clause.
+An SPDX tag line also ends it, because each tag is complete on one line.
+This keeps ordinary translator credits and SQL test descriptions out of the preceding notice.
+In a README, Markdown document, or plain text file, a heading such as `Copyright and License`
+includes the whole section up to the next heading of equal or higher level.
+In C comments containing Perl POD, the scanner keeps the labelled licence section through its
+last paragraph and skips the Perl implementation that can follow the documentation.
+In SGML, it records the holder and legal notice from the `<copyright>` and `<legalnotice>` elements,
+ignoring copyright years and the document date.
+The scanner normalizes comment markers, spacing, and years on copyright lines.
+A licence file of its own, such as `LICENSE`, `COPYING` or `NOTICE`, is fingerprinted whole instead,
+by its path and the SHA-256 of its normalized text, because its conditions often sit in lines without a keyword.
+The scan covers the whole tree, not only the compiled files:
+tracing what each image compiles needs heuristics that an upstream build change can break,
+and the release's source bundle redistributes the whole tree anyway.
+The build stores the scan in its work directory.
+After changing the scanner, rebuild each target before reassembling it.
+Before creating a candidate or auditing its native images, packaging checks that the saved scan
+has an entry for every pinned source and that its signatures and example paths contain nonblank text.
+Each source entry of the manifest records `noticeSignatures` as an array.
+Each entry has a `signature` string and a `files` array with up to three example paths from the source tree.
+A signature is unique within its source, and capitalization is significant.
+Manifest validation also enforces the three-path limit on supplied candidates.
+Storing the text as a value lets Windows PowerShell 5.1 read case-distinct signatures with `ConvertFrom-Json`.
+The review component of the source lists the signatures that its review covered.
+A signature that comes or goes reopens the component.
+The summary shows up to 20 changes per component, additions first, with up to three example paths per addition.
+For the full change, compare the component's `noticeSignatures` in the uploaded `review-draft-<target>`
+with its list in the target's tracked review.
+Release validation requires a scan and an explicit matching signature list for every source,
+including an empty list when the scan found none.
+Newly bundled code can reuse an existing notice or carry no detected notice.
+Reviewers must also check which files a directory's licence covers.
+
 The complete payload inventory includes notices and their hashes.
 Upstream text remains intact.
 A renamed copy does not change its legal terms.
@@ -259,6 +308,7 @@ Each component contains:
 - `files`: payload paths to which this component contributes.
 - `notices`: retained notice paths.
 - `noticeSha256`: the SHA-256 of each notice as the review read it.
+- `noticeSignatures`: for a source component, the notice signatures of the source tree that the review covered.
 - `toolchain`: for the toolchain component only, the toolchain line that the review covers.
 - `evidence`: references explaining the exact review and contribution.
 
@@ -321,9 +371,7 @@ It compares the host prerequisites with the build's measurement, so it also requ
 `PE host library imports` on Windows and `ELF glibc symbol requirements` on Linux.
 Each cited notice must be a regular file whose SHA-256 matches the reviewed digest.
 Each toolchain component must match its reviewed toolchain line.
-A notice comparison does not detect bundled third-party code that brings its own licence
-while the source's main licence files stay unchanged.
-It rejects GPL/AGPL contributions, including GCC's own runtime under
+Release validation rejects GPL/AGPL contributions, including GCC's own runtime under
 `GPL-3.0-or-later WITH GCC-exception-3.1`, unresolved components, and licenses outside the explicit permitted set.
 The Linux `compiler-rt` component must carry `Apache-2.0 WITH LLVM-exception`.
 Other components can also use this licence.

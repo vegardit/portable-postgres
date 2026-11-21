@@ -55,6 +55,8 @@ type Component = LicenseInventory["components"][number];
 export type Draft = {
   review: Review;
   payloadSha256: ReadonlyMap<string, string>;
+  /** Example files of each source's notice signatures, which tell a reviewer where new licence text is. */
+  noticeExamples?: ReadonlyMap<string, Readonly<Record<string, readonly string[]>>>;
   toolchainGap?: string;
 };
 
@@ -144,8 +146,13 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
   // Validating the candidate reports a notice that does not ship as missing.
   const noticeSha256 = (notices: readonly string[]): Record<string, string> =>
     shippedNoticeSha256(hashes, notices);
+  const noticeExamples = new Map<string, Record<string, string[]>>();
   const components: LicenseInventory["components"] = manifest.sources.map(source => {
     const extension = manifest.extensions.find(candidate => candidate.sourceId === source.id);
+    const examples = source.noticeSignatures === undefined ? undefined : Object.fromEntries(
+      source.noticeSignatures.map(({ signature, files }) => [signature, files]),
+    );
+    if (examples !== undefined) noticeExamples.set(source.id, examples);
     return {
       id: source.id,
       licenses: [],
@@ -156,6 +163,8 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       ],
       notices: [...source.notices],
       noticeSha256: noticeSha256(source.notices),
+      // The licence text that the source tree carries, which the review covers along with the notices.
+      ...examples === undefined ? {} : { noticeSignatures: Object.keys(examples) },
       evidence: [],
     };
   });
@@ -204,6 +213,7 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       hostRequirements: { status: "pending", os: "", cpu: "", libraries },
     },
     payloadSha256: hashes,
+    noticeExamples,
     ...toolchainGap === undefined ? {} : { toolchainGap },
   };
 }
@@ -249,9 +259,52 @@ function shippedNoticeSha256(
   );
 }
 
+/** How many changed notice signatures a reopened component lists; a major update can change many. */
+const listedSignatures = 20;
+
+/**
+ * Explains how the licence text in a source tree changed since its review: each signature that is new, with
+ * files that carry it, and each that is gone. A signature is a file's normalized notice lines, or a licence
+ * file's path and digest (see notice-scan.ts).
+ */
+function signatureChanges(
+  previous: readonly string[] | undefined,
+  current: readonly string[] | undefined,
+  examples: Readonly<Record<string, readonly string[]>> | undefined,
+): string[] {
+  if (current === undefined) {
+    return previous === undefined ? [] : ["this build has no notice scan of the source tree"];
+  }
+  if (previous === undefined) {
+    return [`notice signatures of the source tree not reviewed yet (${current.length})`];
+  }
+  const shorten = (signature: string): string =>
+    JSON.stringify(signature.length > 300 ? signature.slice(0, 300) + "…" : signature);
+  const changes = [
+    ...difference(current, previous).map(signature => {
+      const files = examples?.[signature] ?? [];
+      return "licence text added: " + shorten(signature)
+        + (files.length > 0 ? " in " + files.join(", ") : "");
+    }),
+    ...difference(previous, current).map(signature => "licence text gone: " + shorten(signature)),
+  ];
+  return changes.length <= listedSignatures ? changes : [
+    ...changes.slice(0, listedSignatures),
+    `${changes.length - listedSignatures} more notice signature changes`,
+  ];
+}
+
 /** Explains why a previously reviewed component no longer matches the build; empty when it still does. */
-function componentChanges(previous: Component, current: Component): string[] {
-  const changes: string[] = [];
+function componentChanges(
+  previous: Component,
+  current: Component,
+  examples?: Readonly<Record<string, readonly string[]>>,
+): string[] {
+  const changes: string[] = signatureChanges(
+    previous.noticeSignatures,
+    current.noticeSignatures,
+    examples,
+  );
   const changedNotices = [...new Set([...previous.notices, ...current.notices])].filter(notice =>
     previous.noticeSha256[notice] !== current.noticeSha256[notice]
   );
@@ -292,12 +345,12 @@ const toolchainIds: ReadonlySet<string> = new Set(
  * A component none of whose files still ship is dropped.
  */
 export function mergeReview(
-  { review: draft, payloadSha256 }: Draft,
+  { review: draft, payloadSha256, noticeExamples }: Draft,
   previous: Review,
 ): { review: Review; changes: string[] } {
   const changes: string[] = [];
   const reopen = (reviewed: Component, current: Component): Component => {
-    const reasons = componentChanges(reviewed, current);
+    const reasons = componentChanges(reviewed, current, noticeExamples?.get(current.id));
     if (reasons.length === 0) {
       // A review in progress keeps its evidence, which still describes the same values.
       if (reviewed.status !== "verified") changes.push(reviewed.id + ": not verified yet");

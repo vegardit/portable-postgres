@@ -983,6 +983,72 @@ it("a source component's scoped licences are required on it and admitted nowhere
   );
 });
 
+it("a release needs each source tree's notice scan and a review that covers all of it", async () => {
+  const { root, manifest } = await fixture();
+  manifest.hostRequirements = hostRequirementsFixture();
+  manifest.licenseInventory = reviewedFixture(manifest);
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).resolves.toMatchObject({ formatVersion: 1 });
+  const source = (id: string) => manifest.sources.find(candidate => candidate.id === id)!;
+  const component = (id: string) =>
+    manifest.licenseInventory.components.find(candidate => candidate.id === id)!;
+
+  // HypoPG's SQL and C notices differ only in the capitalization of "license".
+  const cNotice = "This program is open source, licensed under the PostgreSQL license."
+    + " | For license terms, see the LICENSE file. | Copyright (C) YYYY: Julien Rouhaud";
+  const sqlNotice = cNotice.replace("PostgreSQL license", "PostgreSQL License");
+  const examples = [
+    { signature: sqlNotice, files: ["a.sql", "b.sql", "hypopg--1.3.1.sql"] },
+    { signature: cNotice, files: ["hypopg.c"] },
+  ];
+  source("hypopg").noticeSignatures = examples;
+  component("hypopg").noticeSignatures = [cNotice, sqlNotice];
+  await rewrite(root, manifest);
+  const parsed = await validateArtifact(root, "windows-x64");
+  expect(parsed.sources.find(entry => entry.id === "hypopg")?.noticeSignatures).toEqual(examples);
+  examples[0]!.files.push("fourth.sql");
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow(
+    "at most three example paths",
+  );
+  examples[0]!.files.pop();
+  examples.push({ signature: cNotice, files: ["include/hypopg.h"] });
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow("duplicate notice signature");
+  examples.pop();
+
+  // Text that the review has not seen, such as one that a source update brought.
+  source("postgresql").noticeSignatures!.push({
+    signature: "Copyright (c) YYYY Newcomer",
+    files: ["src/new.c"],
+  });
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "reviewed notice signatures differ from the source tree: postgresql",
+  );
+  // Covered once the review lists it, in any order.
+  component("postgresql").noticeSignatures!.unshift("Copyright (c) YYYY Newcomer");
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).resolves.toMatchObject({ formatVersion: 1 });
+
+  // Without a scan, nothing shows that no new licence text arrived, even when the review lists none either.
+  delete source("pgvector").noticeSignatures;
+  component("pgvector").noticeSignatures = [];
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "missing notice scan for source: pgvector",
+  );
+
+  source("pgvector").noticeSignatures = [];
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).resolves.toBeDefined();
+  delete component("pgvector").noticeSignatures;
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+    "reviewed notice signatures differ from the source tree: pgvector",
+  );
+});
+
 it("a candidate ships every project notice with the bytes that its pin names", async () => {
   const postgresql = sources.find(source => source.id === "postgresql")!;
   const [notice] = "projectNotices" in postgresql ? postgresql.projectNotices : [];

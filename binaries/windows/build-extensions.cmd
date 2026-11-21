@@ -28,7 +28,7 @@ if errorlevel 1 exit /b 1
 "%PYTHON_BUILD%" -m mesonbuild.mesonmain install -C "%WORK_ROOT%\windows-plpgsql-check" --no-rebuild > "%WORK_ROOT%\windows-plpgsql-check-install.log" 2>&1
 if errorlevel 1 exit /b 1
 
-cmake -S "%WORK_ROOT%\windows-sources\timescaledb" -B "%WORK_ROOT%\windows-timescaledb" -G Ninja "-DPG_CONFIG=%PG_PREFIX%\bin\pg_config.exe" -DCMAKE_BUILD_TYPE=Release -DAPACHE_ONLY=ON -DUSE_OPENSSL=OFF -DUSE_TELEMETRY=OFF -DSEND_TELEMETRY_DEFAULT=OFF -DREGRESS_CHECKS=OFF > "%WORK_ROOT%\windows-timescaledb-configure.log" 2>&1
+cmake -S "%WORK_ROOT%\windows-sources\timescaledb" -B "%WORK_ROOT%\windows-timescaledb" -G Ninja "-DPG_CONFIG=%PG_PREFIX%\bin\pg_config.exe" -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DAPACHE_ONLY=ON -DUSE_OPENSSL=OFF -DUSE_TELEMETRY=OFF -DSEND_TELEMETRY_DEFAULT=OFF -DREGRESS_CHECKS=OFF > "%WORK_ROOT%\windows-timescaledb-configure.log" 2>&1
 if errorlevel 1 exit /b 1
 node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-timescaledb\CMakeFiles\rules.ninja"
 if errorlevel 1 exit /b 1

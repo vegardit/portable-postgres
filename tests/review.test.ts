@@ -26,11 +26,13 @@ import {
   type Review,
   reviewCandidate,
 } from "../binaries/artifact/review.ts";
+import { noticeSignatureExamples } from "../binaries/artifact/notice-scan.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import {
   complete,
   createCandidate,
   fixtureEvidence,
+  fixtureNoticeScan,
   noticeHashes,
   remeasured,
   toolchainParts,
@@ -745,4 +747,46 @@ it("a missing review file reads as none, and a malformed one is refused", async 
 
   await writeFile(reviewFile, JSON.stringify({ licenseInventory: pending.licenseInventory }));
   await expect(readTrackedReview(reviewFile)).rejects.toThrow("must contain licenseInventory");
+});
+
+it("new or vanished licence text in a source tree reopens that source's review and says where", async () => {
+  const target = "windows-x64";
+  const first = await directory();
+  await createCandidate(first, target, { hostEvidence: fixtureEvidence(target) });
+  const tracked = complete((await draftReview(first, target)).review);
+
+  const vixie =
+    "Copyright YYYY by Paul Vixie | May be sold if buildable source is provided to buyer";
+  const scan = fixtureNoticeScan();
+  scan["pg_cron"] = { [vixie]: ["src/entry.c", "src/misc.c", "include/cron.h", "src/job.c"] };
+  const changed = await directory();
+  await createCandidate(changed, target, {
+    hostEvidence: fixtureEvidence(target),
+    noticeSignatures: noticeSignatureExamples(scan),
+  });
+  const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
+  // Three example files point the reviewer to the new text.
+  expect(changes).toEqual([
+    `pg_cron: licence text added: ${
+      JSON.stringify(vixie)
+    } in src/entry.c, src/misc.c, include/cron.h`,
+    'pg_cron: licence text gone: "Copyright (c) YYYY pg_cron fixture authors"',
+  ]);
+  const pending = review.licenseInventory.components.filter(component =>
+    component.status === "pending"
+  );
+  expect(pending.map(component => component.id)).toEqual(["pg_cron"]);
+  expect(pending[0]).toMatchObject({
+    noticeSignatures: [vixie],
+    evidence: [],
+    licenses: ["MIT", "Vixie-Cron", "BSD-4.3TAHOE"],
+  });
+
+  // A review from before the scan existed has no signatures, so the whole set is still to be reviewed.
+  const legacy = structuredClone(tracked);
+  delete legacy.licenseInventory.components.find(component => component.id === "postgresql")!
+    .noticeSignatures;
+  expect(mergeReview(await draftReview(first, target), legacy).changes).toEqual([
+    "postgresql: notice signatures of the source tree not reviewed yet (1)",
+  ]);
 });
