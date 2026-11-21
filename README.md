@@ -189,6 +189,14 @@ This enables machine processing of license information based on the SPDX License
 
 PostgreSQL, extensions, and their dependencies retain their own licenses and notices.
 The archives include those notices in their `notices/` directory.
+If you redistribute an archive, follow the applicable license terms for each component.
+These include the following conditions.
+
+- PostgreSQL's genetic query optimizer contains code by Darrell L. Whitley, granted "for free distribution" on condition that his name and notice are included in any copy (`notices/postgresql-src-backend-optimizer-geqo-geqo_cx.c`).
+- pg_cron contains Paul Vixie's cron code, which "May be sold if buildable source is provided to buyer" (`notices/pg_cron-src-entry.c`).
+  Every release attaches `portable-postgres-<version>-sources.tar.gz` for this: this repository at the release commit, with the source archives that its archives were built from.
+
+pg_cron includes software developed by the University of California, Berkeley (`notices/pg_cron-include-bitstring.h.txt`).
 
 ### Microsoft code in the Windows archives
 

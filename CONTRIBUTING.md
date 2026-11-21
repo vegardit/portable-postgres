@@ -56,7 +56,7 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 - `pnpm binaries:verify:archive <archive> <trusted-sha256>`: verify archive bytes before trusting their metadata.
 - `pnpm binaries:compare <installation> <installation>`: report extension versions and files that differ between two targets.
 - `pnpm binaries:review <target> [installation] [--output file] [--summary file]`: write a licence review draft for the last or given candidate, starting from the tracked review, and list what still blocks a release.
-- `pnpm binaries:release <downloads> <output> <owner/repository> [--require-all-targets]`: prepare release assets from downloaded archives in a new output directory; with `--require-all-targets`, every archive must also carry a verified review, and every target must be present.
+- `pnpm binaries:release <downloads> <output> <owner/repository> [--require-all-targets]`: prepare release assets, including the source bundle, from downloaded archives in a new output directory; with `--require-all-targets`, every archive must also carry a verified review, and every target must be present.
 - `pnpm binaries:update-pins [--summary <file>]`: pin the newest upstream release of every source and set the packaging revision.
 
 ## Building native archives
@@ -233,7 +233,12 @@ The release job trusts the archives of its own run and does not unpack them agai
 It checks that every archive belongs to the computed version and to the checkout's source pins and carries a verified review,
 checks that no target is missing, compares the targets,
 writes `SHA256SUMS`, a descriptor with each archive's URL and SHA-256, and the release notes,
-attests the build provenance, and publishes the release from a draft.
+packs the source bundle, attests the build provenance, and publishes the release from a draft.
+The source bundle, `portable-postgres-<version>-sources.tar.gz`, holds the release commit's files
+with the pinned source archives in `binaries/work/downloads/`, where a build from it finds and verifies them,
+so that whoever passes an archive on can also pass on the source it was built from.
+The bundle leaves out build tools. For prerequisites and setup, see [Building native archives](#building-native-archives).
+Creating the bundle requires a clean tracked working tree.
 A release also needs a macOS arm64 archive, which has no recipe yet.
 Until the macOS target exists, the release job therefore fails after the build jobs, and only dry runs succeed.
 Protect the `release` environment with required reviewers so publication needs a manual approval.

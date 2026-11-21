@@ -6,7 +6,8 @@
  */
 
 /**
- * Checks built archives against the release version and writes the checksums, descriptor, and notes to publish.
+ * Checks built archives against the release version and writes the checksums, descriptor, notes, and source
+ * bundle to publish.
  *
  * It does not extract or validate the archives again. Each build job validates its archive after packing:
  * it unpacks the finished archive with GNU tar, runs the native tests on that tree, and in release mode runs
@@ -29,7 +30,9 @@ import {
 import { compareTargets } from "./artifact/compare.ts";
 import { fileSha256 } from "./hash.ts";
 import { artifactTargets } from "./artifact/runtime-layout.ts";
-import { sources } from "./sources/sources.ts";
+import { root, workRoot } from "./paths.ts";
+import { sourceBundleName, writeSourceBundle } from "./source-bundle.ts";
+import { fetchSources, sources } from "./sources/sources.ts";
 import {
   nativeArchiveName,
   nativeReleaseTag,
@@ -70,12 +73,14 @@ const releaseTargets: readonly string[] = [...artifactTargets, "macos-arm64"];
  * to `downloads`. The downloads stay as they are, and publication reads only the output, so a download that
  * changes later cannot change what was checked.
  * A real release needs every target; a dry run accepts the targets that a local runner could build.
+ * `writeSourceBundle` writes the release's source bundle to the file it is given; the command below always
+ * passes one, and tests that cover only the archive checks leave it out.
  */
 export async function prepareRelease(
   downloads: string,
   output: string,
   repository: string,
-  options: { requireAllTargets: boolean },
+  options: { requireAllTargets: boolean; writeSourceBundle?: (file: string) => Promise<void> },
 ): Promise<PreparedRelease> {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error("Expected owner/repository");
   const version = nativeVersion();
@@ -178,6 +183,13 @@ export async function prepareRelease(
         throw new Error("Targets ship different contents:\n" + differences.join("\n"));
       }
     }
+    // After the archive checks, so that a bundle is only packed for archives that may be published.
+    const bundle = sourceBundleName(version);
+    if (options.writeSourceBundle !== undefined) {
+      await options.writeSourceBundle(join(output, bundle));
+      checksums.push(`${await fileSha256(join(output, bundle))}  ${bundle}`);
+      assets.push(bundle);
+    }
     await writeFile(join(output, "SHA256SUMS"), checksums.sort().join("\n") + "\n");
     const descriptorName = `portable-postgres-${version}.json`;
     await writeFile(
@@ -202,6 +214,12 @@ export async function prepareRelease(
           + `Read \`${notice}\` in the archive before you redistribute it.`,
         ])
         : [],
+      ...options.writeSourceBundle === undefined ? [] : [
+        "",
+        `\`${bundle}\` contains what these archives were built from: this repository at the release commit, `
+        + "with the pinned PostgreSQL and extension source archives in the download cache that the build reads. "
+        + "It contains no build tools and none of the toolchain code that linking adds.",
+      ],
     ];
     await writeFile(join(output, "release-notes.md"), lines.join("\n") + "\n");
     return { tag, assets: assets.sort() };
@@ -220,6 +238,14 @@ if (import.meta.main) {
   }
   const prepared = await prepareRelease(resolve(downloads), resolve(output), repository, {
     requireAllTargets: flag === "--require-all-targets",
+    // Fetching verifies each archive against the pins that the release checked the archives against.
+    writeSourceBundle: async file =>
+      writeSourceBundle({
+        repository: root,
+        directory: `portable-postgres-${nativeVersion()}-sources`,
+        archives: (await fetchSources(join(workRoot, "downloads"))).values(),
+        file,
+      }),
   });
   console.log(`Prepared ${prepared.tag}: ${prepared.assets.join(", ")}`);
   if (process.env["GITHUB_OUTPUT"]) {

@@ -23,6 +23,8 @@ because whoever could change an archive there could also change the manifest and
 It checks what a build job cannot: that every archive belongs to the release version and the checkout's source pins,
 carries a verified review, exists for every target, and ships the same contents as the others.
 The build provenance attestation and `SHA256SUMS` then identify the published bytes.
+The release's source bundle comes from the same checkout:
+its committed files and the source archives that its pins name, packed like an archive, so one commit gives one bundle.
 The packager writes entries in ordinal path order, with empty owner fields and a fixed modification time of 2000-01-01 UTC.
 Tar readers treat the empty owner fields as UID and GID 0, so the archive names no builder account.
 This normalization covers archive metadata. The bytes inside each file depend on the native build.

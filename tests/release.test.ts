@@ -137,6 +137,28 @@ it("a dry run prepares checksums, descriptor, and notes from the archives presen
   );
 });
 
+it("a release publishes its source bundle with a checksum and a pointer in the notes", async () => {
+  const assets = await directory();
+  await archive(assets, "windows-x64");
+  const release = join(assets, "release");
+  const bundle = `portable-postgres-${nativeVersion()}-sources.tar.gz`;
+  const prepared = await prepareRelease(assets, release, "vegardit/portable-postgres", {
+    requireAllTargets: false,
+    writeSourceBundle: async file => writeFile(file, "bundle"),
+  });
+  expect(prepared.assets).toContain(bundle);
+  const digest = createHash("sha256").update("bundle").digest("hex");
+  await expect(readFile(join(release, "SHA256SUMS"), "utf8")).resolves.toContain(
+    `${digest}  ${bundle}\n`,
+  );
+  await expect(readFile(join(release, "release-notes.md"), "utf8")).resolves.toContain(
+    `\`${bundle}\` contains what these archives were built from: this repository at the release commit, `
+      + "with the pinned PostgreSQL and extension source archives in the download cache that the build reads. "
+      // The archives also carry code that the linker adds, such as Microsoft's startup code, without its source.
+      + "It contains no build tools and none of the toolchain code that linking adds.",
+  );
+});
+
 it("the release notes point to the conditions for the Microsoft code in a Windows archive", async () => {
   const assets = await directory();
   await archive(assets, "windows-x64");
