@@ -6,27 +6,12 @@
  */
 
 /** Guards that a timed-out build step cannot leave the tools it started running, and how tool queries fail. */
-import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { once } from "node:events";
+import { type AddressInfo, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { capture, run } from "../binaries/process.ts";
-
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-  } catch {
-    return false;
-  }
-  // A killed orphan stays a zombie until init reaps it, which a container's init may never do.
-  if (process.platform !== "linux") return true;
-  try {
-    return !/^\d+ \(.*\) Z /s.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
-  } catch {
-    return false;
-  }
-}
 
 it("a tool query returns what the tool printed", () => {
   expect(capture(process.execPath, ["-e", "console.log('18.1.8')"]).trim()).toBe("18.1.8");
@@ -41,34 +26,35 @@ it("a failed tool query reports the exit status and what the tool wrote", () => 
 });
 
 it("a timeout stops the programs that the build step started", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "portable-postgres-process-"));
-  const pidFile = join(directory, "descendant.pid");
-  // On Windows a Node child would die with its Node parent through libuv's job object;
-  // a detached child behaves like a compiler started by cmd.exe and survives on its own.
-  const parent = `
-    const { spawn } = require("node:child_process");
-    const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-      detached: process.platform === "win32",
-      stdio: "ignore",
+  // Only the descendant holds the remote end. Its exit closes the connection even if it is still a zombie.
+  let peer: Socket | undefined;
+  let socketError: NodeJS.ErrnoException | undefined;
+  const server = createServer(socket => {
+    peer = socket;
+    socket.on("error", error => {
+      socketError = error;
     });
-    require("node:fs").writeFileSync(process.env.DESCENDANT_PID_FILE, String(descendant.pid));
-    setInterval(() => {}, 1000);`;
-  let descendant: number | undefined;
+    socket.resume();
+  });
   try {
-    await expect(
-      run(process.execPath, ["-e", parent], {
-        env: { ...process.env, DESCENDANT_PID_FILE: pidFile },
-        timeout: 5000,
-      }),
-    ).rejects.toThrow("timed out");
-    expect(existsSync(pidFile), "the descendant must start before the timeout").toBe(true);
-    descendant = Number(readFileSync(pidFile, "utf8"));
-    for (let wait = 0; wait < 50 && isRunning(descendant); wait++) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    expect(isRunning(descendant)).toBe(false);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+    // A detached Windows child survives a parent-only kill, like a compiler started by cmd.exe.
+    const parent = `
+      require("node:child_process").spawn(process.execPath, [
+        "-e", "require('node:net').connect(${port}, '127.0.0.1')"
+      ], { detached: process.platform === "win32", stdio: "ignore" });
+      setInterval(() => {}, 1000);`;
+    await expect(run(process.execPath, ["-e", parent], { timeout: 5000 })).rejects.toThrow(
+      "timed out",
+    );
+    expect(peer, "the descendant must connect before the timeout").toBeDefined();
+    await expect.poll(() => peer?.closed, { timeout: 5000 }).toBe(true);
+    if (socketError && socketError.code !== "ECONNRESET") throw socketError;
   } finally {
-    if (descendant !== undefined && isRunning(descendant)) process.kill(descendant, "SIGKILL");
-    await rm(directory, { recursive: true, force: true });
+    // A surviving fixture exits when its only connection closes.
+    peer?.destroy();
+    server.close();
   }
 }, 30_000);
