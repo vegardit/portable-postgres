@@ -297,7 +297,14 @@ it("a reassembly of an older build leaves a newer build's record in place", asyn
   const older = await directory();
   const developmentInstallation = await directory();
   await createCandidate(developmentInstallation, target);
-  await recordBuild(output, { developmentInstallation, buildWork: older, recipe: "recipe" });
+  const previous = {
+    developmentInstallation,
+    buildWork: older,
+    recipe: "recipe",
+    installation: join(output, "previous candidate"),
+  };
+  await recordBuild(output, previous);
+  await expect(lastCandidate(output)).resolves.toBe(previous.installation);
   const build = await readBuild(output, "recipe");
   // A fresh build finishes compiling and records itself while the reassembly of the older one runs.
   const newer = {
@@ -306,6 +313,7 @@ it("a reassembly of an older build leaves a newer build's record in place", asyn
     recipe: "recipe",
   };
   await recordBuild(output, newer);
+  await expect(lastCandidate(output)).rejects.toThrow("No packaged candidate is recorded");
 
   const warnings: unknown[] = [];
   const warn = vi.spyOn(console, "warn").mockImplementation(message => {

@@ -16,6 +16,7 @@ import windowsTools from "./tools.json" with { type: "json" };
 import { hostMeasurementEvidence, visualStudioReleaseGap } from "../artifact/artifact.ts";
 import { reviewFiles } from "../artifact/review.ts";
 import { inspectWindowsRuntime } from "./imports.ts";
+import { auditWindowsLinks, linkEnvironmentFile, parseLinkEnvironment } from "./links.ts";
 import { installWindowsSql } from "./sql.ts";
 import { msvcRuntimeNotice, selectVisualStudio, visualStudioEvidence } from "./visual-studio.ts";
 import {
@@ -50,6 +51,8 @@ export const windowsRecipe: readonly string[] = [
   ...[
     "build.cmd",
     "build-extensions.cmd",
+    "link-recipe.ts",
+    "links.ts",
     "extensions/CMakeLists.txt",
     "sql.ts",
     "requirements.txt",
@@ -148,7 +151,10 @@ export async function build(command: string = "build"): Promise<void> {
       },
     });
     const toolset = (await readFile(join(buildWork, "windows-msvc-toolset.txt"), "utf8")).trim();
-    current.toolchainEvidence = visualStudioEvidence(visualStudio, toolset);
+    const { sdkVersion } = parseLinkEnvironment(
+      await readFile(join(buildWork, linkEnvironmentFile), "utf8"),
+    );
+    current.toolchainEvidence = visualStudioEvidence(visualStudio, toolset, sdkVersion);
     await installWindowsSql(join(buildWork, "windows-sources"), current.developmentInstallation);
     await recordBuild(output, current);
   } else {
@@ -169,21 +175,33 @@ export async function build(command: string = "build"): Promise<void> {
       sourceRoot: join(current.buildWork, "windows-sources"),
       build: current,
       toolchainNotices: [await msvcRuntimeNotice(toolchain, notices)],
-      hostEvidence: async installation => [
-        ...toolchain,
-        {
-          component: "Windows kernel",
-          version: release(),
-          evidence:
-            "os.release on the build host; supported minima require clean-consumer evidence",
-        },
-        {
-          component: hostMeasurementEvidence["windows-x64"],
-          version: (await inspectWindowsRuntime(installation)).join(", "),
-          evidence:
-            "DLL names in the import and delay-import tables of every packaged PE file that the bundle does not supply",
-        },
-      ],
+      hostEvidence: async installation => {
+        // The candidate's images, on every assembly: a reassembly reuses a development installation
+        // that may have changed since its build.
+        const links = await auditWindowsLinks(installation, current.buildWork, command);
+        const linked = [...links.staticMicrosoftCode]
+          .map(([library, { size }]) =>
+            `${basename(library)} (${size} ${size === 1 ? "member" : "members"})`
+          );
+        console.log(
+          `Static Microsoft code linked into ${links.images} PE images: ${linked.join(", ")}`,
+        );
+        return [
+          ...toolchain,
+          {
+            component: "Windows kernel",
+            version: release(),
+            evidence:
+              "os.release on the build host; supported minima require clean-consumer evidence",
+          },
+          {
+            component: hostMeasurementEvidence["windows-x64"],
+            version: (await inspectWindowsRuntime(installation)).join(", "),
+            evidence:
+              "DLL names in the import and delay-import tables of every packaged PE file that the bundle does not supply",
+          },
+        ];
+      },
     });
     console.log("Assembled Windows runtime candidate: " + candidate);
   } finally {

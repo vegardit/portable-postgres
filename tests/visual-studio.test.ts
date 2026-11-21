@@ -133,9 +133,10 @@ it.skipIf(
 )(
   "Windows toolchain evidence describes the selected installation and the toolset it compiled with",
   () => {
-    const [line, edition, channel, toolset] = visualStudioEvidence(
+    const [line, edition, channel, toolset, sdk] = visualStudioEvidence(
       selectVisualStudio(),
       "14.0.0",
+      "10.0.1.0",
     );
     expect(line).toMatchObject({ component: "Visual Studio product line" });
     // Visual Studio 2022 reports "2022", but Visual Studio 2026 reports "18". The review binds the raw value.
@@ -144,5 +145,6 @@ it.skipIf(
     expect(edition!.version).toMatch(/^Microsoft\.VisualStudio\.Product\.\w+$/);
     expect(channel!.version).toMatch(/^VisualStudio\.\d+\.\w+$/);
     expect(toolset).toMatchObject({ component: "MSVC toolset", version: "14.0.0" });
+    expect(sdk).toMatchObject({ component: "Windows SDK", version: "10.0.1.0" });
   },
 );

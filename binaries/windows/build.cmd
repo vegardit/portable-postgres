@@ -39,8 +39,11 @@ if not defined VCToolsVersion exit /b 1
 REM The driver records the toolset that vcvars64.bat selected as evidence of the compiler that built the images.
 > "%WORK_ROOT%\windows-msvc-toolset.txt" echo %VCToolsVersion%
 REM link.exe reads _LINK_ on every link, so Meson, CMake and nmake builds all record the Microsoft code they link:
-REM the map beside each image names every library member it copied, the build logs name each library's full path.
+REM the map supplies member names, and each image link also records its resolved library paths.
 set "_LINK_=/MAP /VERBOSE:LIB"
+REM The Windows link check resolves the libraries that the maps name against this environment.
+node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" environment
+if errorlevel 1 exit /b 1
 set "PATH=%WORK_ROOT%\windows-tools\winflexbison;%VS_ROOT%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
 REM NOTE: Git's MSYS Perl rewrites MSVC switches as paths; reconsider when using native Windows Perl.
 set "MSYS2_ARG_CONV_EXCL=*"
@@ -49,6 +52,8 @@ if errorlevel 1 (
   type "%WORK_ROOT%\windows-postgresql-configure.log"
   exit /b 1
 )
+node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-postgresql\build.ninja"
+if errorlevel 1 exit /b 1
 ninja -C "%WORK_ROOT%\windows-postgresql" -j%BUILD_JOBS% > "%WORK_ROOT%\windows-postgresql-build.log" 2>&1
 if errorlevel 1 exit /b 1
 "%PYTHON_BUILD%" -m mesonbuild.mesonmain install -C "%WORK_ROOT%\windows-postgresql" --no-rebuild > "%WORK_ROOT%\windows-postgresql-install.log" 2>&1

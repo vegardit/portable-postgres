@@ -130,6 +130,11 @@ The Windows build selects Visual Studio Community, Professional or Enterprise wi
 and any other installation with them, such as Build Tools alone, only when none of these is installed.
 It never selects a preview or Insiders installation.
 The scripts use that installation's x64 toolchain and bundled Ninja.
+The linker must support recording its input paths with `/LINKREPROFULLPATHRSP`
+(Visual Studio 2022 17.11 or later).
+Packaging checks the link map of every image and fails when one links static code from a Microsoft library
+other than `msvcrt.lib` and `vcruntime.lib`, for example from the Windows SDK;
+[native artifact format 1](docs/native-artifact.md) describes the check.
 They keep parser generators and other build-only tools outside the runtime archive.
 Native proofs retain private diagnostic directories and shut down their owned instance.
 

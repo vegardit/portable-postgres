@@ -95,10 +95,14 @@ export async function msvcRuntimeNotice(
 }
 
 /**
- * Describes the installation that build.cmd compiled with, and the MSVC toolset that its environment
- * selected. Querying by path keeps the evidence on that installation even when several are installed.
+ * Describes the installation that build.cmd compiled with, and the MSVC toolset and Windows SDK that its
+ * environment selected. Querying by path keeps the evidence on that installation even when several are installed.
  */
-export function visualStudioEvidence(installation: string, toolset: string): HostEvidence[] {
+export function visualStudioEvidence(
+  installation: string,
+  toolset: string,
+  sdk: string,
+): HostEvidence[] {
   const property = (name: string): string => {
     const value = vswhere(["-path", installation, "-property", name]);
     if (value === "" || /\s/.test(value)) {
@@ -129,6 +133,12 @@ export function visualStudioEvidence(installation: string, toolset: string): Hos
       component: "MSVC toolset",
       version: toolset,
       evidence: "VCToolsVersion after vcvars64.bat in build.cmd",
+    },
+    // Evidence only, like the toolset: the link check keeps static Windows SDK code out of every image.
+    {
+      component: "Windows SDK",
+      version: sdk,
+      evidence: "WindowsSDKVersion after vcvars64.bat in build.cmd",
     },
   ];
 }

@@ -193,8 +193,8 @@ PostgreSQL 19 has no RADIUS support (upstream commit `a1643d40b3`), so the patch
 The patch keeps Windows SDK code out of `postgres.exe`:
 its reference to `in6addr_any` made the linker copy `ws2_32.lib(indef.obj)`, a member of a Windows SDK static library.
 In the inventoried builds, that was the only static Windows SDK code in the archive.
-A patch that applies does not prove its absence, because another reference to the same symbol would link it again,
-and the Windows build does not yet check its link maps for such members.
+A patch that applies does not prove its absence, because another reference to the same symbol would link it again;
+the Windows link check under "Notices and license gate" fails the packaging then.
 Import stubs from the Windows SDK import libraries are not static library code,
 and code that the compiler inlines from Windows SDK headers is a documented residual risk.
 
@@ -241,7 +241,8 @@ because the linker adds that code to every image:
 | Linux   | `glibc-startup` | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                          |
 | Windows | `msvc-runtime`  | MSVC code from `msvcrt.lib` and `vcruntime.lib`                      | `Visual Studio product line`     |
 
-The Windows build also records the `Visual Studio edition`, its `Visual Studio channel`, and the `MSVC toolset`.
+The Windows build also records the `Visual Studio edition`, its `Visual Studio channel`, the `MSVC toolset`,
+and the `Windows SDK` version.
 It records them for the installation it compiles with, and reassembly reuses them.
 The Linux build records its toolchain lines in the build container when it compiles, and reassembly reuses them as well,
 so a reassembly on another host cannot describe another compiler or glibc.
@@ -251,6 +252,24 @@ which records the link's input files and archive members under the output's buil
 Packaging, including a reassembly, fails when an image in the candidate has no such record, wherever the image lies,
 and when a record shows GCC's runtime or any other glibc code,
 so the `glibc-startup` review keeps matching what is linked into each image.
+Each Windows image link writes a `/MAP` file and records its resolved library inputs beside its output.
+The build collects explicit inputs from `/LINKREPROFULLPATHRSP` and library search paths from
+`/VERBOSE:LIB`, including libraries requested by directives inside object files.
+The build matches each library in the map to its recorded path and checks that path against the build tree
+and the `LIB` directories from `vcvars64.bat`.
+An unknown or ambiguous origin stops packaging.
+It reads each Microsoft library to tell its import records apart from code or data that the linker copies,
+so a member's `.dll` name does not count.
+Static members may come only from `msvcrt.lib` and `vcruntime.lib` in the Visual Studio toolset folder,
+which the `msvc-runtime` notice names; any other static Microsoft member fails, naming the image, library and member.
+This refuses the static and the debug CRT (`libcmt.lib`, `msvcrtd.lib`) and any static Windows SDK code.
+Each successful link records the hashes of its image and map.
+The build verifies both hashes and checks the map's module name, timestamp and symbol table
+before saving the classified members in its private work directory.
+Every assembly checks every candidate PE image against one link output with matching bytes.
+Reassembly checks the map hash and reuses the saved classifications, even after the original SDK is removed.
+If reassembly reports missing evidence while the fresh build is running, retry after it finishes.
+If the build finished without saving the evidence, run a fresh build.
 A toolchain component lists only native images and its own notice.
 Windows archives ship the project's notice for the linked Microsoft code at `notices/msvc-runtime.txt`.
 A candidate built with a Visual Studio line or product that release validation refuses, such as Visual Studio 2022

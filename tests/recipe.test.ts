@@ -6,11 +6,14 @@
  */
 
 /** Guards values that shell, batch, CMake, Docker, and SQL files restate because they cannot import TypeScript. */
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { extensionNames, sqlOnlyExtensions } from "../binaries/artifact/runtime-layout.ts";
 import { linkRecordsDirectory } from "../binaries/linux/links.ts";
+import { linkEnvironmentFile, parseLinkEnvironment } from "../binaries/windows/links.ts";
 import { root } from "../binaries/paths.ts";
 
 const read = (path: string) => readFile(join(root, path), "utf8");
@@ -50,6 +53,42 @@ it("the toolchain evidence names the Visual Studio installation that the Windows
   expect(script).toContain('set "VS_ROOT=%PORTABLE_PG_VISUAL_STUDIO%"');
   expect(script).toContain('call "%VS_ROOT%\\VC\\Auxiliary\\Build\\vcvars64.bat"');
   expect(script).toContain('> "%WORK_ROOT%\\windows-msvc-toolset.txt" echo %VCToolsVersion%');
+});
+
+it("every Windows link writes the map and environment that the Windows link check reads", async () => {
+  const script = await read("binaries/windows/build.cmd");
+  const vcvars = script.indexOf("vcvars64.bat");
+  // After vcvars64.bat, which sets these variables, and before the first link.
+  const lines = [
+    'set "_LINK_=/MAP /VERBOSE:LIB"',
+    'node "%PROJECT_ROOT%\\binaries\\windows\\link-recipe.ts" environment',
+  ];
+  for (const line of lines) {
+    expect(script).toContain(line);
+    expect(script.indexOf(line)).toBeGreaterThan(vcvars);
+    expect(script.indexOf(line)).toBeLessThan(script.indexOf("mesonbuild.mesonmain setup"));
+  }
+});
+
+it("captures the inherited library paths as data", async () => {
+  const work = await mkdtemp(join(tmpdir(), "postgres link & environment-"));
+  try {
+    execFileSync(process.execPath, [join(root, "binaries/windows/link-recipe.ts"), "environment"], {
+      env: {
+        ...process.env,
+        PORTABLE_PG_WORK: work,
+        LIB: work,
+        VCToolsInstallDir: work,
+        WindowsSDKVersion: "10",
+      },
+    });
+    expect(
+      parseLinkEnvironment(await readFile(join(work, linkEnvironmentFile), "utf8")).libraryPath,
+    )
+      .toEqual([work]);
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
 });
 
 it("the Linux image links through the tracing linker whose records Linux packaging checks", async () => {
