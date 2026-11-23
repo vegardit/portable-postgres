@@ -8,7 +8,7 @@
 /** Checks that review drafts cover every shipped file and that tracked reviews reach the release gate. */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   type ArtifactTarget,
   type HostEvidence,
@@ -37,6 +37,7 @@ import {
   fixtureEvidence,
   fixtureNoticeScan,
   noticeHashes,
+  parserGenerators,
   remeasured,
   toolchainParts,
 } from "./candidate.ts";
@@ -52,6 +53,7 @@ const hostEvidence: Record<ArtifactTarget, HostEvidence[]> = {
     "kernel32.dll, vcruntime140.dll",
   ),
   "linux-x64-glibc": fixtureEvidence("linux-x64-glibc"),
+  "macos-arm64": fixtureEvidence("macos-arm64"),
 };
 
 /** Builds and validates two complete candidates, which takes longer than the default limit on a busy host. */
@@ -147,6 +149,49 @@ it.skipIf(process.platform === "win32")(
         measured: true,
       },
     ]);
+  },
+  twoCandidates,
+);
+
+it.skipIf(process.platform === "win32")(
+  "macOS reopens only PostgreSQL when a parser generator changes on the same Xcode",
+  async ({ onTestFinished }) => {
+    const target = "macos-arm64";
+    const first = await directory();
+    await createCandidate(first, target);
+    // Count the drafter's probes separately from the validator's required machine checks.
+    const imageProbe = vi.spyOn(await import("../binaries/artifact/artifact.ts"), "isNativeImage");
+    onTestFinished(() => imageProbe.mockRestore());
+    const initial = await draftReview(first, target);
+    expect(imageProbe).not.toHaveBeenCalled();
+    const tracked = complete(initial.review);
+    expect(mergeReview(initial, tracked).changes).toEqual([]);
+    const changed = await directory();
+    const newer = parserGenerators.version.replace("2.3,", "3.8,");
+    await createCandidate(changed, target, {
+      hostEvidence: hostEvidence[target].map(entry =>
+        entry.component === parserGenerators.component
+          ? { ...entry, version: newer }
+          : entry
+      ),
+    });
+    const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
+    expect(changes).toEqual([
+      `postgresql: toolchain changed from ${parserGenerators.version} to ${newer}`,
+    ]);
+    expect(
+      review.licenseInventory.components.filter(part => part.status === "pending").map(part =>
+        part.id
+      ),
+    )
+      .toEqual(["postgresql"]);
+    await expect(releaseReviewGap(changed, target, tracked)).resolves.toContain(
+      "toolchain changed since review: postgresql",
+    );
+    await expect(releaseReviewGap(first, target, tracked)).resolves.toBeUndefined();
+    // An older approved review with no generator identity also needs this one component reviewed.
+    delete tracked.licenseInventory.components.find(part => part.id === "postgresql")!.toolchain;
+    expect(mergeReview(initial, tracked).review.licenseInventory.status).toBe("pending");
   },
   twoCandidates,
 );

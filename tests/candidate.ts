@@ -26,7 +26,12 @@ import {
 } from "../binaries/artifact/notice-scan.ts";
 import { additionalNoticeName, projectNoticeRoot } from "../binaries/artifact/notices.ts";
 import { type Review, writeReviewedManifest } from "../binaries/artifact/review.ts";
-import { corePrograms, requiredModules } from "../binaries/artifact/runtime-layout.ts";
+import {
+  clientLibraryPath,
+  corePrograms,
+  moduleSuffix,
+  requiredModules,
+} from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 
 /** The notice scan of the fixture sources: one signature each, in its licence file. */
@@ -71,6 +76,64 @@ export function elfFixture(): Buffer {
   return bytes;
 }
 
+/** An LC_CODE_SIGNATURE command pointing to the fixture's opaque signature data. */
+export function machOSignatureCommand(dataOffset: number, dataSize: number): Buffer {
+  const command = Buffer.alloc(16);
+  command.writeUInt32LE(0x1D, 0);
+  command.writeUInt32LE(command.length, 4);
+  command.writeUInt32LE(dataOffset, 8);
+  command.writeUInt32LE(dataSize, 12);
+  return command;
+}
+
+/** A 64-bit Mach-O header with the platform, deployment version, and signature that validation reads. */
+export function machOFixture(
+  options: {
+    cpuType?: number;
+    cpuSubtype?: number;
+    fileType?: number;
+    platform?: number;
+    signed?: boolean;
+    minimumOS?: number;
+    signatureOffset?: number;
+    signatureSize?: number;
+  } = {},
+): Buffer {
+  const signed = options.signed ?? true;
+  const bytes = Buffer.alloc(128);
+  bytes.writeUInt32LE(0xFE_ED_FA_CF, 0);
+  bytes.writeUInt32LE(options.cpuType ?? 0x01_00_00_0C, 4);
+  bytes.writeUInt32LE(options.cpuSubtype ?? 0, 8);
+  bytes.writeUInt32LE(options.fileType ?? 2, 12); // MH_EXECUTE by default.
+  bytes.writeUInt32LE(signed ? 2 : 1, 16);
+  bytes.writeUInt32LE(signed ? 40 : 24, 20);
+  // LC_BUILD_VERSION: platform, minimum OS 15.0 (xxxx.yy.zz), SDK 15.5, no tool entries.
+  bytes.writeUInt32LE(0x32, 32);
+  bytes.writeUInt32LE(24, 36);
+  bytes.writeUInt32LE(options.platform ?? 1, 40);
+  bytes.writeUInt32LE(options.minimumOS ?? 0x00_0F_00_00, 44);
+  bytes.writeUInt32LE(0x00_0F_05_00, 48);
+  if (signed) {
+    machOSignatureCommand(options.signatureOffset ?? 72, options.signatureSize ?? 16)
+      .copy(bytes, 56);
+  }
+  return bytes;
+}
+
+function fixtureImages(
+  target: ArtifactTarget,
+): { executable: Buffer; client: Buffer; module: Buffer } {
+  if (target === "macos-arm64") {
+    return {
+      executable: machOFixture(),
+      client: machOFixture({ fileType: 6 }), // MH_DYLIB
+      module: machOFixture({ fileType: 8 }), // MH_BUNDLE
+    };
+  }
+  const image = target === "windows-x64" ? peFixture() : elfFixture();
+  return { executable: image, client: image, module: image };
+}
+
 /**
  * The toolchain components every native image needs, the host evidence each review is bound to, and the
  * project's notice that a component ships. Stated literally so that a renamed entry in the build fails
@@ -89,6 +152,7 @@ export const toolchainParts: Record<
     { id: "compiler-rt", evidence: "Clang major version" },
     { id: "glibc-startup", evidence: "glibc" },
   ],
+  "macos-arm64": [],
 };
 
 /** The licences that the fixture reviews give each toolchain component; two are admitted only there. */
@@ -120,6 +184,24 @@ export const hostMeasurements: Record<ArtifactTarget, HostEvidence> = {
     version: "GLIBC_2.35",
     evidence: "Contract test",
   },
+  "macos-arm64": {
+    component: "Mach-O host library imports",
+    version: "/usr/lib/libSystem.B.dylib",
+    evidence: "Contract test",
+  },
+};
+
+/** The minimum macOS that a macOS build measures besides its imports. */
+export const macOSMinimum: HostEvidence = {
+  component: "Mach-O minimum macOS version",
+  version: "15.0",
+  evidence: "Contract test",
+};
+
+export const parserGenerators: HostEvidence = {
+  component: "PostgreSQL parser generators",
+  version: "Xcode 16.4 (16F6), bison (GNU Bison) 2.3, flex 2.6.4",
+  evidence: "Contract test",
 };
 
 export function fixtureEvidence(target: ArtifactTarget): HostEvidence[] {
@@ -138,6 +220,7 @@ export function fixtureEvidence(target: ArtifactTarget): HostEvidence[] {
       }]
       : [],
     hostMeasurements[target],
+    ...target === "macos-arm64" ? [macOSMinimum, parserGenerators] : [],
   ];
 }
 
@@ -167,8 +250,8 @@ export async function createCandidate(
       >
     >
     & {
-      /** Replaces or adds payload files, such as a changed licence notice, before the manifest is written. */
-      files?: Record<string, string>;
+      /** Replaces or adds text or binary payload files before the manifest is written. */
+      files?: Record<string, string | Buffer>;
       /** Adds symbolic links, path to link text, before the manifest is written. */
       links?: Record<string, string>;
       /** Deletes payload files, such as a source notice, before the manifest is written. */
@@ -181,20 +264,17 @@ export async function createCandidate(
   for (const directory of ["bin", "lib", "share/extension", "notices"]) {
     await mkdir(join(root, directory), { recursive: true });
   }
-  const binary = target === "windows-x64" ? peFixture() : elfFixture();
+  const images = fixtureImages(target);
   const executableSuffix = target === "windows-x64" ? ".exe" : "";
-  const librarySuffix = target === "windows-x64" ? ".dll" : ".so";
+  const librarySuffix = moduleSuffix(target);
   for (const name of corePrograms) {
     const executable = join(root, "bin", name + executableSuffix);
-    await writeFile(executable, binary);
-    if (target === "linux-x64-glibc") await chmod(executable, 0o755);
+    await writeFile(executable, images.executable);
+    if (target !== "windows-x64") await chmod(executable, 0o755);
   }
-  await writeFile(
-    join(root, target === "windows-x64" ? "bin/libpq.dll" : "lib/libpq.so.5"),
-    binary,
-  );
+  await writeFile(join(root, clientLibraryPath(target)), images.client);
   for (const module of requiredModules) {
-    await writeFile(join(root, "lib", module + librarySuffix), binary);
+    await writeFile(join(root, "lib", module + librarySuffix), images.module);
   }
   await writeFile(join(root, "share/extension/plpgsql.control"), "default_version = '1.0'\n");
   await writeFile(join(root, "share/extension/plpgsql--1.0.sql"), "fixture");
@@ -234,10 +314,11 @@ export async function createCandidate(
       await writeFile(join(root, "share/extension", name + "--" + version + ".sql"), "fixture");
     }
     if (source.id !== "pg_partman" && source.id !== "pgtap") {
-      await writeFile(join(root, "lib", name + librarySuffix), binary);
+      await writeFile(join(root, "lib", name + librarySuffix), images.module);
     }
     if (source.id === "timescaledb") {
-      await writeFile(join(root, "lib/timescaledb-" + source.version + librarySuffix), binary);
+      await writeFile(join(root, "lib/timescaledb-" + source.version + librarySuffix),
+        images.module);
     }
   }
   for (const part of toolchainParts[target]) {
@@ -254,7 +335,7 @@ export async function createCandidate(
   for (const path of remove ?? []) {
     await rm(join(root, path));
   }
-  if (target === "linux-x64-glibc") {
+  if (target !== "windows-x64") {
     // The positive fixture must be valid even when the container uses a permissive builder umask.
     for (const directory of ["bin", "lib", "share", "share/extension", "notices"]) {
       await chmod(join(root, directory), 0o755);
@@ -303,6 +384,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
   ]);
   const postgres = components.find(component => component.id === "postgresql")!;
   postgres.files.push(...manifest.files.map(file => file.path).filter(path => !assigned.has(path)));
+  if (manifest.target === "macos-arm64") postgres.toolchain = parserGenerators.version;
   for (const part of toolchainParts[manifest.target]) {
     const notices = part.notice === undefined ? [] : [part.notice];
     components.push({
@@ -342,7 +424,11 @@ export function complete(draft: Review): Review {
       libraries: draft.hostRequirements.libraries.map(library => ({
         ...library,
         requirement: library.requirement || "fixture",
-        license: library.name === "glibc" ? "LGPL-2.1-or-later" : "LicenseRef-Microsoft-Windows",
+        license: library.name === "glibc"
+          ? "LGPL-2.1-or-later"
+          : library.name.startsWith("/usr/lib/")
+            ? "LicenseRef-Apple-macOS"
+            : "LicenseRef-Microsoft-Windows",
         evidence: "fixture",
       })),
     },
@@ -360,12 +446,14 @@ export function noticeHashes(
   }));
 }
 
-/** Every fixture binary has the same bytes, so the native images are exactly the files with that hash. */
+/** Recognizes native fixture files by the hashes of their placeholder images. */
 export function nativeImages(manifest: ArtifactManifest): string[] {
-  const binary = manifest.target === "windows-x64" ? peFixture() : elfFixture();
-  const sha256 = createHash("sha256").update(binary).digest("hex");
+  const images = new Set(Object.values(fixtureImages(manifest.target)));
+  const hashes = new Set(
+    [...images].map(image => createHash("sha256").update(image).digest("hex")),
+  );
   return manifest.files.flatMap(file =>
-    file.kind === "file" && file.sha256 === sha256 ? [file.path] : []
+    file.kind === "file" && hashes.has(file.sha256) ? [file.path] : []
   );
 }
 
@@ -382,6 +470,19 @@ export function hostRequirementsFixture(
         name: "glibc",
         requirement: "GLIBC_2.35 or newer",
         license: "LGPL-2.1-or-later",
+        evidence: "fixture",
+      }],
+    };
+  }
+  if (target === "macos-arm64") {
+    return {
+      status: "verified",
+      os: "Contract-test fixture",
+      cpu: "arm64 fixture",
+      libraries: [{
+        name: "/usr/lib/libSystem.B.dylib",
+        requirement: "macOS 15.0 or newer",
+        license: "LicenseRef-Apple-macOS",
         evidence: "fixture",
       }],
     };

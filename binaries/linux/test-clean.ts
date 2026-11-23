@@ -6,10 +6,10 @@
  */
 
 /** Tests a trusted native archive in a pinned consumer image without Node.js, compilers, or network access. */
-import { cp, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setReadablePermissions } from "../artifact/assemble.ts";
-import { assertNativeTap } from "../native-proof.ts";
+import { assertNativeTapFiles } from "../native-proof.ts";
 import baseline from "./base.json" with { type: "json" };
 import { fileSha256 } from "../hash.ts";
 import { outputRoot, root } from "../paths.ts";
@@ -81,10 +81,7 @@ try {
   }
   // Only the final marker proves that the standalone pg_textsearch run and shutdown finished.
   retainLogs(outputLog, "NATIVE_PROOF_DIRECTORY=");
-  await assertNativeTap(
-    await readFile(join(evidence, "results.tap"), "utf8"),
-    await readFile(join(evidence, "failure.tap"), "utf8"),
-  );
+  await assertNativeTapFiles(evidence);
 } catch (error) {
   failed = true;
   // Capture diagnostics from Docker before removing this proof's container.

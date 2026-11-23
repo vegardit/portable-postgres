@@ -188,20 +188,25 @@ it("a real release needs every target", async () => {
   ).rejects.toThrow("Missing release archives for linux-x64-glibc, macos-arm64");
 }, reviewedArchives);
 
-// Linux candidates need executable permissions, which only a POSIX host can validate.
+// Linux and macOS candidates need executable permissions, which only a POSIX host can validate.
 it.skipIf(process.platform === "win32")(
-  "a real release needs a macOS archive even when every buildable target is reviewed",
+  "a real release needs the macOS archive and succeeds once all three are reviewed",
   async () => {
     const assets = await directory();
     await archive(assets, "windows-x64", { reviewed: true });
     await archive(assets, "linux-x64-glibc", { reviewed: true });
-    await expect(
+    const prepare = () =>
       prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
         requireAllTargets: true,
-      }),
-    ).rejects.toThrow("Missing release archives for macos-arm64");
+      });
+    await expect(prepare()).rejects.toThrow("Missing release archives for macos-arm64");
+    await archive(assets, "macos-arm64", { reviewed: true });
+    const { assets: prepared } = await prepare();
+    for (const target of ["linux-x64-glibc", "windows-x64", "macos-arm64"] as const) {
+      expect(prepared).toContain(nativeArchiveName(target));
+    }
   },
-  reviewedArchives,
+  reviewedArchives * 1.5,
 );
 
 // The permission checks apply to Linux archives, which only a POSIX host can validate.

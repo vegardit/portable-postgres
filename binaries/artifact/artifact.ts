@@ -27,14 +27,25 @@ import {
   nonblankText as text,
   type NoticeSignatureExample,
 } from "./notice-scan.ts";
+import {
+  cpuTypeArm64,
+  fileTypes,
+  hasMachOMagic,
+  plainArm64Subtypes,
+  platformMacOS,
+  readMachO,
+} from "./macho.ts";
 import { additionalNoticeName } from "./notices.ts";
 import * as z from "zod";
 import {
   type ArtifactTarget,
   artifactTargets,
+  clientLibraryPath,
   corePrograms,
   extensionNames,
   includesRuntimePath,
+  isMacOSClientLibrary,
+  moduleSuffix,
   requiredModules,
   sqlOnlyExtensions,
 } from "./runtime-layout.ts";
@@ -69,6 +80,10 @@ export const toolchainComponents: Record<
       notice: msvcRuntimeNoticePath,
     },
   ],
+  // Apple's linker copies no toolchain code: the images link compiler-rt and the C runtime dynamically
+  // through libSystem, which is a host library. The link audit (binaries/macos/links.ts) refuses any static
+  // input from the SDK or toolchain, so a build that starts copying one fails until it is reviewed here.
+  "macos-arm64": [],
 };
 
 /** Returns the archive paths of the project's notices that the target's toolchain components ship. */
@@ -169,16 +184,28 @@ function toolchainLicenses(manifest: ArtifactManifest): Map<string, string> {
 export const requiredHostLibraries: Record<ArtifactTarget, readonly string[]> = {
   "linux-x64-glibc": ["glibc"],
   "windows-x64": ["vcruntime140.dll", "ucrtbase.dll"],
+  "macos-arm64": ["/usr/lib/libSystem.B.dylib"],
 };
 
 /**
  * The host evidence in which a build records what its packaged images need from the host: the imported
- * system DLLs on Windows, and the highest glibc symbol version on Linux.
+ * system DLLs on Windows, the highest glibc symbol version on Linux, and the imported system libraries on
+ * macOS, whose minimum OS is measured separately (`macOSMinimumEvidence`).
  */
 export const hostMeasurementEvidence: Record<ArtifactTarget, string> = {
   "linux-x64-glibc": "ELF glibc symbol requirements",
   "windows-x64": "PE host library imports",
+  "macos-arm64": "Mach-O host library imports",
 };
+
+/**
+ * The highest `LC_BUILD_VERSION` minimum macOS of any packaged image. The review states it as the
+ * requirement of libSystem, which every image loads, so a raised minimum reopens the host review.
+ */
+export const macOSMinimumEvidence = "Mach-O minimum macOS version";
+
+/** PostgreSQL's macOS review covers code emitted by Apple's parser generators. */
+export const macOSParserEvidence = "PostgreSQL parser generators";
 
 export type ArtifactOptions = {
   target: ArtifactTarget;
@@ -214,6 +241,7 @@ const permittedHostLicenses = new Set([
   "LGPL-2.1-or-later",
   "LicenseRef-Microsoft-Windows",
   "LicenseRef-Microsoft-Visual-Cpp-Runtime",
+  "LicenseRef-Apple-macOS",
 ]);
 
 /**
@@ -281,14 +309,18 @@ function validatePayloadPath(path: string): void {
   );
 }
 
-/** Reports whether a file starts like a PE or ELF image; the bytes decide, not the file name. */
+/**
+ * Reports whether a file starts like a PE, ELF or Mach-O image; the bytes decide, not the file name. Every
+ * Mach-O form counts, so that a 32-bit or universal image is found and then refused as the wrong machine.
+ */
 export async function isNativeImage(path: string): Promise<boolean> {
   const file = await open(path, "r");
   try {
     const header = Buffer.alloc(4);
     const { bytesRead } = await file.read(header);
     return bytesRead >= 2 && header.toString("latin1", 0, 2) === "MZ"
-      || bytesRead === 4 && header.equals(Buffer.from([0x7F, 0x45, 0x4C, 0x46]));
+      || bytesRead === 4 && header.equals(Buffer.from([0x7F, 0x45, 0x4C, 0x46]))
+      || bytesRead === 4 && hasMachOMagic(header);
   } finally {
     await file.close();
   }
@@ -303,6 +335,35 @@ function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): 
         && binary.readUInt16LE(pe + 4) === 0x86_64,
       "expected a Windows x64 PE image: " + path,
     );
+  } else if (target === "macos-arm64") {
+    let image;
+    try {
+      image = readMachO(binary);
+    } catch {
+      requireCondition(false, "expected a macOS arm64 Mach-O image: " + path);
+    }
+    requireCondition(
+      image.cpuType === cpuTypeArm64
+        && plainArm64Subtypes.has(image.cpuSubtype)
+        && (Object.values(fileTypes) as number[]).includes(image.fileType),
+      "expected a macOS arm64 Mach-O image: " + path,
+    );
+    // An iOS or simulator image has the same CPU type; only the build platform tells them apart.
+    requireCondition(image.platform === platformMacOS, "expected a macOS build platform: " + path);
+    requireCondition(image.signed, "unsigned Mach-O image: " + path);
+    if (path.startsWith("bin/")) {
+      requireCondition(image.fileType === fileTypes.execute,
+        "expected a Mach-O executable: " + path);
+    } else if (isMacOSClientLibrary(path)) {
+      requireCondition(image.fileType === fileTypes.dylib,
+        "expected a Mach-O client dylib: " + path);
+    } else if (path.startsWith("lib/")) {
+      // PostgreSQL loads server and extension modules with dlopen, which accepts dylibs and bundles.
+      requireCondition(
+        image.fileType === fileTypes.dylib || image.fileType === fileTypes.bundle,
+        "expected a Mach-O loadable module: " + path,
+      );
+    }
   } else {
     requireCondition(
       binary.length >= 20 && binary.subarray(0, 4).equals(Buffer.from([127, 69, 76, 70]))
@@ -312,7 +373,8 @@ function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): 
   }
 }
 
-function inside(root: string, path: string): boolean {
+/** Checks path containment on the validation host. Pass resolved paths when following links. */
+export function insideInstallation(root: string, path: string): boolean {
   const child = relative(root, path);
   return child === "" || (!isAbsolute(child) && !child.startsWith(".." + sep) && child !== "..");
 }
@@ -338,7 +400,10 @@ function sourceNotices(source: SourcePin, requiredFiles: readonly string[] = [])
   return notices;
 }
 
-/** Refuses group- or world-writable and set-ID modes, which content hashes and the executable flag miss. */
+/**
+ * Refuses group- or world-writable and set-ID modes, which content hashes and the executable flag miss.
+ * Linux and macOS archives carry POSIX modes alike.
+ */
 export function validateLinuxPermissions(mode: number, entry: string): void {
   requireCondition((mode & 0o022) === 0, "writable " + entry);
   // Content hashes and the executable flag do not capture setuid or setgid bits.
@@ -347,8 +412,8 @@ export function validateLinuxPermissions(mode: number, entry: string): void {
 
 export function requireValidationHost(target: ArtifactTarget): void {
   requireCondition(
-    target !== "linux-x64-glibc" || process.platform !== "win32",
-    "validating a Linux installation requires a POSIX host to read executable permissions",
+    target === "windows-x64" || process.platform !== "win32",
+    "validating a Linux or macOS installation requires a POSIX host to read executable permissions",
   );
 }
 
@@ -356,7 +421,7 @@ async function scan(installation: string, target: ArtifactTarget): Promise<Conte
   const root = await realpath(installation);
   const entries: ContentEntry[] = [];
   const names = new Set<string>();
-  const checkLinuxPermissions = target === "linux-x64-glibc";
+  const checkLinuxPermissions = target !== "windows-x64";
   async function visit(directory: string, prefix: string): Promise<void> {
     const directoryInfo = await lstat(directory);
     if (checkLinuxPermissions) {
@@ -400,7 +465,7 @@ async function scan(installation: string, target: ArtifactTarget): Promise<Conte
         const normalized = posix.normalize(posix.join(posix.dirname(path), link));
         safePath(normalized);
         requireCondition(
-          inside(root, await realpath(fullPath)),
+          insideInstallation(root, await realpath(fullPath)),
           "link escapes installation: " + path,
         );
         requireCondition(
@@ -412,7 +477,7 @@ async function scan(installation: string, target: ArtifactTarget): Promise<Conte
         requireCondition(info.isFile() && info.nlink === 1, "special or hard-linked file: " + path);
         if (checkLinuxPermissions) {
           validateLinuxPermissions(info.mode, "file: " + path);
-          // Linux bin/ contains only core programs. Their owner needs execute access to run them.
+          // POSIX bin/ contains only core programs. Their owner needs execute access to run them.
           if (path.startsWith("bin/")) {
             requireCondition((info.mode & 0o100) !== 0, "nonexecutable program: " + path);
           }
@@ -421,7 +486,7 @@ async function scan(installation: string, target: ArtifactTarget): Promise<Conte
           path,
           kind: "file",
           sha256: await fileSha256(fullPath),
-          executable: target === "linux-x64-glibc" && (info.mode & 0o111) !== 0,
+          executable: target !== "windows-x64" && (info.mode & 0o111) !== 0,
         });
       }
     }
@@ -461,7 +526,7 @@ async function extensionLayout(
   target: ArtifactTarget,
   inputs: SourcePin[],
 ): Promise<Extension[]> {
-  const suffix = target === "windows-x64" ? ".dll" : ".so";
+  const suffix = moduleSuffix(target);
   const paths = await readdir(join(installation, "share/extension"));
   const extensions: Extension[] = [];
   const installedExtensions = [
@@ -803,16 +868,22 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   // A source component covering an image says nothing about the runtime code linked into it. Checked before
   // global coverage, so that a missing toolchain review is reported rather than its uncovered notice.
   const nativeImages = new Set(images);
+  function requireReviewedToolchain(id: string, evidence: string): void {
+    const line = manifest.hostEvidence.find(entry => entry.component === evidence);
+    requireCondition(line, "missing toolchain evidence: " + evidence);
+    const reviewed = components.get(id)?.toolchain;
+    requireCondition(reviewed === line.version,
+      `toolchain changed since review: ${id} was reviewed for ${
+        reviewed ?? "no toolchain"
+      }, built with ${line.version}`);
+  }
+  if (manifest.target === "macos-arm64") {
+    requireReviewedToolchain("postgresql", macOSParserEvidence);
+  }
   for (const part of toolchainComponents[manifest.target]) {
     const toolchain = components.get(part.id);
     requireCondition(toolchain, "unreviewed toolchain component: " + part.id);
-    const line = manifest.hostEvidence.find(entry => entry.component === part.evidence);
-    requireCondition(line, "missing toolchain evidence: " + part.evidence);
-    requireCondition(
-      toolchain.toolchain === line.version,
-      "toolchain changed since review: " + part.id + " was reviewed for "
-        + (toolchain.toolchain ?? "no toolchain") + ", built with " + line.version,
-    );
+    requireReviewedToolchain(part.id, part.evidence);
     const license = requiredToolchainLicenses.get(part.id);
     requireCondition(
       license === undefined || toolchain.licenses.includes(license),
@@ -905,15 +976,21 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   }
   // The published requirements must still describe this build, not the one the review was written for.
   // Drafts fall back to the required libraries alone, but a release must compare against a measurement.
-  const measurement = hostMeasurementEvidence[manifest.target];
-  requireCondition(
-    manifest.hostEvidence.some(entry => entry.component === measurement),
-    "missing host measurement: " + measurement,
-  );
+  const required = [
+    hostMeasurementEvidence[manifest.target],
+    ...manifest.target === "macos-arm64" ? [macOSMinimumEvidence] : [],
+  ];
+  for (const measurement of required) {
+    requireCondition(
+      manifest.hostEvidence.some(entry => entry.component === measurement),
+      "missing host measurement: " + measurement,
+    );
+  }
   const measurements = measuredHostRequirements(manifest);
   for (const measured of measurements) {
+    // macOS install names are mixed case, such as /usr/lib/libSystem.B.dylib.
     const library = manifest.hostRequirements.libraries.find(candidate =>
-      candidate.name.toLowerCase() === measured.name
+      candidate.name.toLowerCase() === measured.name.toLowerCase()
     );
     requireCondition(library, "unresolved host library prerequisite: " + measured.name);
     requireCondition(
@@ -926,7 +1003,7 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   for (const library of manifest.hostRequirements.libraries) {
     if (library.measured === true) {
       requireCondition(
-        measurements.some(entry => entry.name === library.name.toLowerCase()),
+        measurements.some(entry => entry.name.toLowerCase() === library.name.toLowerCase()),
         "obsolete measured host library: " + library.name,
       );
     }
@@ -943,13 +1020,22 @@ export function measuredHostRequirements(
   const measurement = manifest.hostEvidence.find(entry =>
     entry.component === hostMeasurementEvidence[manifest.target]
   );
-  const observed = manifest.target === "windows-x64"
-    ? measurement?.version.split(", ") ?? []
-    : [];
+  const observed = manifest.target === "linux-x64-glibc"
+    ? []
+    : measurement?.version.split(", ") ?? [];
   const glibc = manifest.target === "linux-x64-glibc" ? measurement : undefined;
+  const macOS = manifest.target === "macos-arm64"
+    ? manifest.hostEvidence.find(entry => entry.component === macOSMinimumEvidence)
+    : undefined;
+  const requirement = (name: string): string =>
+    name === "glibc" && glibc
+      ? glibc.version + " or newer"
+      : name === "/usr/lib/libSystem.B.dylib" && macOS
+        ? "macOS " + macOS.version + " or newer"
+        : "";
   return [...new Set([...requiredHostLibraries[manifest.target], ...observed])].map(name => ({
     name,
-    requirement: name === "glibc" && glibc ? glibc.version + " or newer" : "",
+    requirement: requirement(name),
   }));
 }
 
@@ -1086,7 +1172,7 @@ async function inspectArtifact(
   );
   requireCondition(manifest.target === expectedTarget, "wrong target: expected " + expectedTarget);
   requireValidationHost(expectedTarget);
-  if (expectedTarget === "linux-x64-glibc") {
+  if (expectedTarget !== "windows-x64") {
     validateLinuxPermissions(metadata.mode, "metadata");
     // Consumers other than the extracting account must be able to discover the programs.
     requireCondition((metadata.mode & 0o444) === 0o444, "unreadable metadata");
@@ -1172,10 +1258,10 @@ async function inspectArtifact(
   }
   // These checks cover the layout, not whether the runtime starts. A missing bootstrap file such as
   // share/postgres.bki surfaces when CI runs initdb on every archive, which it does before uploading it.
-  const libpq = expectedTarget === "windows-x64" ? "bin/libpq.dll" : "lib/libpq.so.5";
+  const libpq = clientLibraryPath(expectedTarget);
   requireCondition(entries.has(libpq), "missing PostgreSQL client library: " + libpq);
   for (const module of requiredModules) {
-    const path = "lib/" + module + (expectedTarget === "windows-x64" ? ".dll" : ".so");
+    const path = "lib/" + module + moduleSuffix(expectedTarget);
     requireCondition(entries.get(path)?.kind === "file", "missing library: " + path);
   }
   const layout = await extensionLayout(installation, expectedTarget, manifest.sources);

@@ -29,11 +29,14 @@ import {
   verifyArtifactArchive,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
+import { moduleSuffix } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import {
   createCandidate,
   hostMeasurements,
   hostRequirementsFixture,
+  machOFixture,
+  macOSMinimum,
   peFixture,
   remeasured,
   reviewedFixture,
@@ -43,10 +46,10 @@ import {
 import { temporaryDirectories } from "./temporary-directories.ts";
 
 const timescaleVersion = sources.find(source => source.id === "timescaledb")!.version;
-/** Linux fixtures need executable permissions, which only a POSIX host can validate. */
+/** Linux and macOS fixtures need executable permissions, which only a POSIX host can validate. */
 const releaseTargets: ArtifactTarget[] = process.platform === "win32"
   ? ["windows-x64"]
-  : ["windows-x64", "linux-x64-glibc"];
+  : ["windows-x64", "linux-x64-glibc", "macos-arm64"];
 /** Every toolchain component of every target that this host can validate. */
 const toolchainCases = releaseTargets.flatMap(target =>
   toolchainParts[target].map(part => ({ target, ...part }))
@@ -808,7 +811,7 @@ it.each(releaseTargets)(
     const { root } = await fixture(target);
     await rm(join(root, artifactManifestName));
     // Without it, a UTF-8 server cannot convert for a client that uses a Windows code page.
-    const module = "lib/utf8_and_win" + (target === "windows-x64" ? ".dll" : ".so");
+    const module = "lib/utf8_and_win" + moduleSuffix(target);
     await rm(join(root, module));
     await expect(writeArtifactManifest(root, {
       target,
@@ -1072,3 +1075,93 @@ it("a candidate ships every project notice with the bytes that its pin names", a
     "missing project notice pin: " + path,
   );
 });
+
+// macOS candidates carry POSIX permissions, which only a POSIX host can validate.
+it.skipIf(process.platform === "win32").each([
+  [
+    "an x86-64 image",
+    machOFixture({ cpuType: 0x01_00_00_07 }),
+    "expected a macOS arm64 Mach-O image",
+  ],
+  ["an arm64e image", machOFixture({ cpuSubtype: 2 }), "expected a macOS arm64 Mach-O image"],
+  [
+    "an ABI-versioned arm64e image",
+    machOFixture({ cpuSubtype: 0x81_00_00_02 }),
+    "expected a macOS arm64 Mach-O image",
+  ],
+  [
+    "an arm64 iOS Simulator image",
+    machOFixture({ platform: 7 }),
+    "expected a macOS build platform",
+  ],
+  ["an unsigned image", machOFixture({ signed: false }), "unsigned Mach-O image"],
+  [
+    "a universal image",
+    Buffer.from([0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 2]),
+    "expected a macOS arm64 Mach-O image",
+  ],
+])("a macOS candidate refuses %s, even hidden under a name that does not look native", async (
+  _name,
+  image,
+  message,
+) => {
+  for (const path of ["bin/postgres", "share/timezone/Helper"]) {
+    const { root } = await fixture("macos-arm64");
+    await rm(join(root, artifactManifestName));
+    // Even a permissive builder umask must let this case reach the machine check.
+    await mkdir(join(root, "share/timezone"), { recursive: true, mode: 0o755 });
+    await writeFile(join(root, path), image);
+    await chmod(join(root, path), 0o755);
+    await expect(
+      writeArtifactManifest(root, {
+        target: "macos-arm64",
+        packagingRevision: 1,
+        hostEvidence: [],
+      }),
+    ).rejects.toThrow(message + ": " + path);
+  }
+});
+
+it.skipIf(process.platform === "win32").each([
+  ["bin/pg_test_fsync", 8, "expected a Mach-O executable"],
+  ["lib/vector.dylib", 2, "expected a Mach-O loadable module"],
+  ["lib/libpq.5.dylib", 8, "expected a Mach-O client dylib"],
+  ["lib/libecpg.6.18.dylib", 8, "expected a Mach-O client dylib"],
+])("a macOS candidate checks the Mach-O file type at %s", async (path, fileType, message) => {
+  const root = await directory();
+  await expect(createCandidate(root, "macos-arm64", {
+    files: { [path]: machOFixture({ fileType }) },
+  })).rejects.toThrow(message + ": " + path);
+});
+
+it.skipIf(process.platform === "win32")(
+  "a macOS release states the measured minimum macOS as libSystem's requirement",
+  async () => {
+    const root = await directory();
+    // A single installation may contain either plain arm64 subtype (ALL or V8).
+    const manifest = await createCandidate(root, "macos-arm64", {
+      files: { "bin/pg_test_fsync": machOFixture({ cpuSubtype: 1 }) },
+    });
+    manifest.hostRequirements = hostRequirementsFixture("macos-arm64");
+    manifest.licenseInventory = reviewedFixture(manifest);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, "macos-arm64")).resolves.toMatchObject({
+      formatVersion: 1,
+    });
+    // A build for a newer macOS reopens the host review.
+    const measured = manifest.hostEvidence;
+    manifest.hostEvidence = measured.map(entry =>
+      entry.component === macOSMinimum.component ? { ...entry, version: "26.0" } : entry
+    );
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, "macos-arm64")).rejects.toThrow(
+      "host requirement changed since review: /usr/lib/libSystem.B.dylib requires macOS 26.0 or newer",
+    );
+    // Without the measurement, the stated requirement would describe nothing.
+    manifest.hostEvidence = measured.filter(entry => entry.component !== macOSMinimum.component);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, "macos-arm64")).rejects.toThrow(
+      "missing host measurement: " + macOSMinimum.component,
+    );
+  },
+);

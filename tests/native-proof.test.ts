@@ -5,10 +5,12 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Guards that the Linux and Windows native proofs keep sharing one server setup and TAP plan. */
-import { readFile } from "node:fs/promises";
+/** Guards the shared server settings and the TAP results of native and clean-consumer proofs. */
+import { spawnSync } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
+import { temporaryDirectories } from "./temporary-directories.ts";
 import {
   isPortFailure,
   plannedAssertions,
@@ -19,6 +21,30 @@ import {
 import { root } from "../binaries/paths.ts";
 
 const proofScripts = ["binaries/linux/smoke.sh", "binaries/windows/test.ts"];
+const { directory, cleanup } = temporaryDirectories("consumer-tap");
+afterEach(cleanup);
+
+it("checks the TAP files from the clean consumer after its tools are restored", async () => {
+  const proof = await directory();
+  const log = join(proof, "consumer.log");
+  await writeFile(log, `NATIVE_PROOF_DIRECTORY=${proof}\n`);
+  const check = () => spawnSync(process.execPath, [join(root, "binaries/native-proof.ts"), log], {
+    encoding: "utf8",
+  });
+  const count = plannedAssertions(await readFile(join(root, "tests/native/tap.sql"), "utf8"));
+  const passed = [`1..${count}`, ...Array.from({ length: count }, (_, i) => `ok ${i + 1}`)].join(
+    "\n",
+  );
+  const failed = "1..1\nnot ok 1 - deliberate\n";
+  await writeFile(join(proof, "results.tap"), passed + " # SKIP\n");
+  await writeFile(join(proof, "failure.tap"), failed);
+  expect(check().stderr).toContain("TAP proof failed");
+  await writeFile(join(proof, "results.tap"), passed + "\n");
+  await writeFile(join(proof, "failure.tap"), failed + "Bail out!\n");
+  expect(check().stderr).toContain("TAP proof failed");
+  await writeFile(join(proof, "failure.tap"), failed);
+  expect(check().status).toBe(0);
+});
 
 it("retries startup for any port the server could not use", () => {
   const inUse = [

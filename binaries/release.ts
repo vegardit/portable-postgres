@@ -63,12 +63,6 @@ async function archivedManifest(archive: string): Promise<ArtifactManifest> {
 export type PreparedRelease = { tag: string; assets: string[] };
 
 /**
- * The targets that a real release must contain. macOS arm64 has no recipe yet, so no release can be
- * published without it; dry runs check the targets that can be built today.
- */
-const releaseTargets: readonly string[] = [...artifactTargets, "macos-arm64"];
-
-/**
  * Prepares the release assets in `output`, a new directory, from the archives that the build jobs uploaded
  * to `downloads`. The downloads stay as they are, and publication reads only the output, so a download that
  * changes later cannot change what was checked.
@@ -170,18 +164,16 @@ export async function prepareRelease(
       assets.push(name, manifestAsset);
     }
     // Checked after the archives themselves, so that an unreviewed archive is reported even while a target
-    // is still missing, which it is for every release until the macOS target exists.
+    // is still missing.
     const prepared: ReadonlySet<string> = new Set(manifests.keys());
-    const missing = releaseTargets.filter(target => !prepared.has(target));
+    const missing = artifactTargets.filter(target => !prepared.has(target));
     if (options.requireAllTargets && missing.length > 0) {
       throw new Error(`Missing release archives for ${missing.join(", ")} in ${downloads}`);
     }
     const [first, ...others] = [...manifests.values()];
-    for (const other of others) {
-      const differences = compareTargets(first!, other);
-      if (differences.length > 0) {
-        throw new Error("Targets ship different contents:\n" + differences.join("\n"));
-      }
+    const differences = compareTargets(first!, ...others);
+    if (differences.length > 0) {
+      throw new Error("Targets ship different contents:\n" + differences.join("\n"));
     }
     // After the archive checks, so that a bundle is only packed for archives that may be published.
     const bundle = sourceBundleName(version);

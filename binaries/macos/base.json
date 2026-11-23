@@ -1,0 +1,7 @@
+{
+  "xcode": "/Applications/Xcode_16.4.app",
+  "xcodeVersion": "16.4",
+  "deploymentTarget": "15.0",
+  "bison": "/usr/bin/bison",
+  "flex": "/usr/bin/flex"
+}

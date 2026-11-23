@@ -200,7 +200,7 @@ export async function packageCandidate(options: {
   // The notices go straight into the candidate, before assembly sets the runtime permissions. Reassembly
   // only reads the development installation, which another assembly of the same build may be reading too.
   await copySourceNotices(options.sourceRoot, candidate, options.toolchainNotices);
-  await assembleRuntime(build.developmentInstallation, candidate);
+  await assembleRuntime(build.developmentInstallation, candidate, options.target);
   await writeReviewedManifest(candidate, {
     target: options.target,
     packagingRevision,

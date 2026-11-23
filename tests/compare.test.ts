@@ -6,10 +6,46 @@
  */
 
 /** Guards against targets that silently ship different extension versions or SQL scripts. */
-import { expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, expect, it } from "vitest";
+import { artifactManifestName } from "../binaries/artifact/artifact.ts";
+import { root } from "../binaries/paths.ts";
+import { createCandidate } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 import { compareTargets } from "../binaries/artifact/compare.ts";
 
 type Payload = Parameters<typeof compareTargets>[0];
+const { directory, cleanup } = temporaryDirectories("manifest-comparison");
+afterEach(cleanup);
+
+it("requires a matching downloaded manifest for every hosted target", async () => {
+  const downloads = await directory();
+  const manifest = await createCandidate(await directory(), "windows-x64");
+  const compare = () =>
+    spawnSync(process.execPath, [
+      join(root, "binaries/validate.ts"),
+      "compare",
+      "--require-all-targets",
+      downloads,
+    ], { encoding: "utf8" });
+  for (const target of ["linux-x64-glibc", "windows-x64"]) {
+    const location = join(downloads, "manifest-" + target);
+    await mkdir(location);
+    await writeFile(join(location, artifactManifestName), JSON.stringify({ ...manifest, target }));
+  }
+  const missing = compare();
+  expect(missing.status).not.toBe(0);
+  expect(missing.stderr).toContain("manifest-macos-arm64");
+  const location = join(downloads, "manifest-macos-arm64");
+  await mkdir(location);
+  await writeFile(join(location, artifactManifestName), JSON.stringify(manifest));
+  expect(compare().stderr).toContain("expected macos-arm64");
+  await writeFile(join(location, artifactManifestName),
+    JSON.stringify({ ...manifest, target: "macos-arm64" }));
+  expect(compare().status).toBe(0);
+});
 
 function payload(
   target: Payload["target"],
@@ -46,6 +82,11 @@ it("treats platform library suffixes as equal and reports extra SQL scripts by t
   expect(
     compareTargets(linux, payload("windows-x64", ".dll", [...scripts, "pg_textsearch--0.5.0.sql"])),
   ).toEqual(["pg_textsearch: sql only in windows-x64: pg_textsearch--0.5.0.sql"]);
+  const windows = payload("windows-x64", ".dll", scripts.slice(0, 1));
+  const macos = payload("macos-arm64", ".dylib", scripts);
+  expect(compareTargets(linux, windows, macos)).toEqual([
+    "linux-x64-glibc vs windows-x64: pg_textsearch: sql only in linux-x64-glibc: pg_textsearch--1.5.0--1.5.1.sql",
+  ]);
 });
 
 it("reports version and PostgreSQL differences", () => {

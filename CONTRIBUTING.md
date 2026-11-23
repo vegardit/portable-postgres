@@ -48,28 +48,35 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 - `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
 - `pnpm binaries:test:linux:clean <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
 - `pnpm binaries:build:windows`: build and package the Windows candidate with MSVC.
-  Both builds run `BUILD_JOBS` parallel compile jobs, 4 unless the variable is set.
+  Every build runs `BUILD_JOBS` parallel compile jobs, 4 unless the variable is set.
 - `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
 - `pnpm binaries:test:windows`: test the relocated Windows candidate with native SQL and TAP.
+- `pnpm binaries:build:macos`: build and package the macOS arm64 candidate with the pinned Xcode.
+- `pnpm binaries:assemble:macos`: reassemble the last matching macOS SDK with current notices and metadata.
+- `pnpm binaries:test:macos`: test the relocated macOS candidate with the same native SQL and TAP proof as Linux.
 - `pnpm binaries:validate:candidate <target> <installation>`: check candidate layout, hashes, architecture, and permissions.
 - `pnpm binaries:validate <target> <installation>`: additionally require reviewed licenses and host prerequisites.
 - `pnpm binaries:verify:archive <archive> <trusted-sha256>`: verify archive bytes before trusting their metadata.
 - `pnpm binaries:compare <installation> <installation>`: report extension versions and files that differ between two targets.
+- `pnpm binaries:compare --require-all-targets <downloads>`: compare the `manifest-<target>` directories from a hosted Build.
+  Each directory must contain the manifest for its named target.
 - `pnpm binaries:review <target> [installation] [--output file] [--summary file]`: write a licence review draft for the last or given candidate, starting from the tracked review, and list what still blocks a release.
 - `pnpm binaries:release <downloads> <output> <owner/repository> [--require-all-targets]`: prepare release assets, including the source bundle, from downloaded archives in a new output directory; with `--require-all-targets`, every archive must also carry a verified review, and every target must be present.
 - `pnpm binaries:update-pins [--summary <file>]`: pin the newest upstream release of every source and set the packaging revision.
 
 ## Building native archives
 
-The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64 and Windows x64 archives on GitHub Actions.
+The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64, Windows x64 and macOS arm64 archives on GitHub Actions.
 It skips changes to Markdown files alone; the [Documentation workflow](.github/workflows/docs.yml) runs `pnpm check` for them.
 Each job records the archive's SHA-256 in its summary.
+A final job requires a payload manifest for every target and fails when their PostgreSQL version, source pins,
+or extension versions and files differ.
 Private CI runs also retain the archive and checksum as workflow artifacts.
 Build runs, manual ones included, check candidates without release validation.
 A dry run of the [Release workflow](#releasing) runs release validation on each archive without publishing.
 In a public repository only a Release run that publishes uploads archives, after release validation.
 
-Run `pnpm install --frozen-lockfile` from the repository root before building for either target.
+Run `pnpm install --frozen-lockfile` from the repository root before building for any target.
 Every native build uses fresh source, object, and SDK directories.
 Reassembly checks that the saved source identities and build recipe still match the current ones.
 It also verifies the current project-notice anchors against the saved sources.
@@ -140,6 +147,49 @@ other than `msvcrt.lib` and `vcruntime.lib`, for example from the Windows SDK;
 They keep parser generators and other build-only tools outside the runtime archive.
 Native proofs retain private diagnostic directories and shut down their owned instance.
 
+### macOS arm64
+
+Build on an Apple silicon Mac with CMake and the Xcode version listed in `binaries/macos/base.json`.
+Install Xcode at the specified path.
+The build uses Apple's Bison, Flex and Perl.
+Use a checkout path without spaces because PGXS makefiles split paths at spaces.
+
+```sh
+pnpm binaries:build:macos
+pnpm binaries:test:macos
+```
+
+#### Toolchain and licence review
+
+Both the TypeScript and compiled drivers read the checkout's `binaries/macos/base.json`.
+It sets the Xcode version and path, the minimum macOS version, and the paths to Bison and Flex.
+Changing these pins requires a fresh build.
+
+The build records the host macOS version and the versions of Xcode, Bison and Flex used to build PostgreSQL.
+Review the PostgreSQL component again if Xcode, Bison or Flex changes, or if the previous review lacks those versions.
+
+#### Archive checks
+
+- **Minimum macOS version.** Packaging rejects any binary that requires a newer macOS than the configured minimum.
+- **Linked code.** The compiler wrapper saves each binary's linker map under its `LC_UUID`.
+  Packaging checks these maps on every assembly and rejects static code copied from outside the build.
+  The binaries use compiler-rt and the C runtime through macOS's `libSystem`.
+- **Relocation.** The build gives bundled libraries `@rpath` names and sets search paths relative to each binary.
+  It then signs the binaries again with ad-hoc signatures.
+  Packaging rejects library paths outside the installation and macOS's system libraries.
+
+#### CI consumer test
+
+On the `macos-15` runner, the workflow hides Xcode and the Command Line Tools before running
+`binaries/macos/test-consumer.sh` without Node.js.
+The script stops if it can still find a compiler.
+
+1. The script marks the archive as a browser download and extracts it with the system `tar`.
+   It records whether `initdb` and `postgres` retain the quarantine flag and whether `initdb --version` runs.
+2. It moves the installation, runs the native SQL tests, and checks the loader trace for libraries outside the
+   archive and the macOS system directories.
+3. The workflow restores the build tools and validates both TAP transcripts.
+
 ## Updating pinned sources
 
 `binaries/sources/sources.json` pins PostgreSQL and every extension by version, archive URL, and SHA-256.
@@ -171,7 +221,7 @@ The Windows build tools in `binaries/windows/tools.json` are not covered and are
 
 ## Reviewing licences and host requirements
 
-Each target has a tracked review file: `binaries/linux/review.json` and `binaries/windows/review.json`.
+Each target has a tracked review file: `binaries/linux/review.json`, `binaries/windows/review.json` and `binaries/macos/review.json`.
 It holds the licence inventory and the host requirements that the build writes into the archive manifest.
 The build writes only what still matches the candidate: a part that `pnpm binaries:review` would reopen is pending,
 and host requirements that it would reopen are `null`.
@@ -180,7 +230,7 @@ Without the file, the build produces a candidate whose review is pending.
 1. Build a candidate for the target.
 2. Run `pnpm binaries:review <target>` to write `review-draft.json` next to the build output.
    The draft assigns every shipped file to a component, including one component per toolchain part
-   linked into native binaries (`compiler-rt` and `glibc-startup` on Linux, `msvc-runtime` on Windows),
+   linked into native binaries (`compiler-rt` and `glibc-startup` on Linux, `msvc-runtime` on Windows, none on macOS),
    and records the hash of every licence notice and the toolchain line.
    It starts from the tracked review and lists the parts it reopens.
    When it reopens nothing, it also lists anything the release gate would still reject.
@@ -288,8 +338,7 @@ with the pinned source archives in `binaries/work/downloads/`, where a build fro
 so that whoever passes an archive on can also pass on the source it was built from.
 The bundle leaves out build tools. For prerequisites and setup, see [Building native archives](#building-native-archives).
 Creating the bundle requires a clean tracked working tree.
-A release also needs a macOS arm64 archive, which has no recipe yet.
-Until the macOS target exists, the release job therefore fails after the build jobs, and only dry runs succeed.
+A release needs the archives of all three targets, each with a verified review.
 Only a run from `main` creates a release.
 
 The `dry-run` input, enabled by default, builds every target that has a recipe and runs release validation on it,

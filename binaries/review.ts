@@ -13,18 +13,23 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { readTrackedReview, reviewCandidate, reviewFiles } from "./artifact/review.ts";
+import { artifactTargets, isArtifactTarget } from "./artifact/runtime-layout.ts";
 import { lastCandidate } from "./package.ts";
 import { outputRoot } from "./paths.ts";
 
-const outputs = { "linux-x64-glibc": "linux-x64", "windows-x64": "windows-x64" } as const;
+const outputs = {
+  "linux-x64-glibc": "linux-x64",
+  "windows-x64": "windows-x64",
+  "macos-arm64": "macos-arm64",
+} as const;
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: { output: { type: "string" }, summary: { type: "string" } },
 });
 const [target, installation] = positionals;
-if (target !== "linux-x64-glibc" && target !== "windows-x64") {
+if (!isArtifactTarget(target)) {
   throw new Error(
-    "Usage: pnpm binaries:review linux-x64-glibc|windows-x64 [installation]"
+    `Usage: pnpm binaries:review ${artifactTargets.join("|")} [installation]`
       + " [--output draft.json] [--summary summary.md]",
   );
 }

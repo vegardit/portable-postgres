@@ -6,9 +6,10 @@
  */
 
 /**
- * Inputs shared by the Linux and Windows native proofs. smoke.sh runs without Node in the clean
- * consumer, so the shared parts are plain files under tests/native that both proofs read.
+ * Inputs shared by the native proofs: smoke.sh on Linux and macOS, and the Windows proof. smoke.sh runs
+ * without Node in the clean consumer, so the shared parts are plain files under tests/native that both read.
  */
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { root } from "./paths.ts";
@@ -49,4 +50,46 @@ export async function assertNativeTap(results: string, failures: string): Promis
   assertTap(results, await plan("tap.sql"));
   const deliberate = await plan("tap-failure.sql");
   assertTap(failures, deliberate, deliberate);
+}
+
+/**
+ * Runs smoke.sh on a POSIX installation and interprets its passing and intentionally failing pgTAP
+ * assertions. The script is plain Bash 3.2, which is what macOS ships.
+ */
+export async function runShellProof(installation: string): Promise<void> {
+  const result = spawnSync("bash", [join(root, "binaries/linux/smoke.sh"), installation], {
+    cwd: root,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 180_000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error) throw result.error;
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  if (result.status !== 0) throw new Error(`Native SQL proof failed (${result.status})`);
+  await checkShellProof(result.stdout);
+}
+
+/** Reads the two transcripts produced by smoke.sh, including in a consumer without Node.js. */
+export async function assertNativeTapFiles(directory: string): Promise<void> {
+  await assertNativeTap(
+    await readFile(join(directory, "results.tap"), "utf8"),
+    await readFile(join(directory, "failure.tap"), "utf8"),
+  );
+}
+
+async function checkShellProof(output: string): Promise<void> {
+  const proof = (/^NATIVE_PROOF_DIRECTORY=(.+)$/m.exec(output))?.[1];
+  if (!proof) throw new Error("Native proof did not report its evidence directory");
+  await assertNativeTapFiles(proof);
+  console.log(
+    "Native proof passed, including detection of the deliberately failing pgTAP assertion.",
+  );
+}
+
+if (import.meta.main) {
+  const log = process.argv[2];
+  if (!log) throw new Error("Expected the consumer proof log");
+  await checkShellProof(await readFile(log, "utf8"));
 }

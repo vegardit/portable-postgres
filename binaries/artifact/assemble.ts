@@ -7,7 +7,7 @@
 
 import { chmod, cp, lstat, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import { includesRuntimePath } from "./runtime-layout.ts";
+import { type ArtifactTarget, includesRuntimePath } from "./runtime-layout.ts";
 
 /**
  * Assembles the selected runtime payload from a platform's development installation into `destination`,
@@ -15,8 +15,15 @@ import { includesRuntimePath } from "./runtime-layout.ts";
  * packaging writes the current pins' notices into the destination first, so the reused installation stays
  * unchanged and an earlier pin's notice never ships.
  */
-export async function assembleRuntime(prefix: string, destination: string): Promise<void> {
-  const target = process.platform === "win32" ? "windows-x64" : "linux-x64-glibc";
+export async function assembleRuntime(
+  prefix: string,
+  destination: string,
+  target: ArtifactTarget = process.platform === "win32"
+    ? "windows-x64"
+    : process.platform === "darwin"
+      ? "macos-arm64"
+      : "linux-x64-glibc",
+): Promise<void> {
   for (const directory of ["bin", "lib", "share"]) {
     await cp(join(prefix, directory), join(destination, directory), {
       recursive: true,

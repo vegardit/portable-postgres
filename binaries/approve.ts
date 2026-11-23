@@ -22,19 +22,21 @@ import {
   type Review,
   reviewFiles,
 } from "./artifact/review.ts";
+import { artifactTargets, isArtifactTarget } from "./artifact/runtime-layout.ts";
 import { readOptionalText, writeJson } from "./files.ts";
 import { root } from "./paths.ts";
 import { capture } from "./process.ts";
 
-const usage =
-  "Usage: pnpm binaries:approve linux-x64-glibc|windows-x64 [build-run-id] [--note text] [--yes]";
+const usage = `Usage: pnpm binaries:approve ${
+  artifactTargets.join("|")
+} [build-run-id] [--note text] [--yes]`;
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: { note: { type: "string" }, yes: { type: "boolean" } },
 });
 const [target, runId] = positionals;
 if (
-  (target !== "linux-x64-glibc" && target !== "windows-x64") || positionals.length > 2
+  !isArtifactTarget(target) || positionals.length > 2
   || (runId !== undefined && !/^\d+$/.test(runId))
 ) {
   throw new Error(usage);

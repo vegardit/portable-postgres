@@ -1,8 +1,7 @@
 # Native artifact format 1
 
 This contract describes the native installation independently of Node.js, npm, and wrapper versions.
-The current implementations cover the measured Linux x64 glibc and Windows x64 layouts.
-macOS arm64 remains a required target; its layout and baseline are not established by this contract yet.
+It covers Linux x64 with glibc, Windows x64 and macOS arm64.
 
 A candidate can pass layout and integrity checks while its release license review or host prerequisites remain unresolved.
 Candidate validation is preparation evidence.
@@ -41,7 +40,7 @@ notices/
 
 Consumers do not need Node.js or npm to extract or run the installation.
 Build environments may use Node.js and native build tools.
-Linux and Windows contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
+All three targets contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
 The extension payload contains PL/pgSQL and the eight extensions listed below.
 The packager excludes optional PostgreSQL contrib modules and their SQL and data files, upstream test helpers,
 development headers, PGXS, static libraries, and optional SDK documentation.
@@ -75,7 +74,7 @@ and extraction outside its owned staging directory before writing those entries.
 | `format`            | Exact string `portable-postgres-native`.                                                             |
 | `formatVersion`     | Integer `1`; independent of wrapper semantic versioning.                                             |
 | `packagingRevision` | Positive integer selected for a native packaging revision.                                           |
-| `target`            | Exact `linux-x64-glibc` or `windows-x64`.                                                            |
+| `target`            | Exact `linux-x64-glibc`, `windows-x64` or `macos-arm64`.                                             |
 | `postgresqlVersion` | Exact PostgreSQL 18 minor release from the recorded source pin.                                      |
 | `executables`       | Relative paths for `postgres`, `initdb`, `pg_ctl`, and `psql`.                                       |
 | `extensions`        | All eight extension installation versions, controls, SQL files, and native libraries.                |
@@ -86,8 +85,15 @@ and extraction outside its owned staging directory before writing those entries.
 | `licenseInventory`  | Explicit pending/verified review and component-to-file coverage.                                     |
 | `files`             | Complete sorted payload inventory, file hashes, executable flags, and symlink targets.               |
 
-The exact executable paths are `bin/<name>` for Linux and `bin/<name>.exe` for Windows.
-All shipped PE/ELF programs and shared libraries must match the target's x64 machine architecture.
+The executable paths are `bin/<name>` on Linux and macOS and `bin/<name>.exe` on Windows.
+Windows requires x64 PE images and Linux requires x64 ELF images.
+macOS requires thin, signed 64-bit arm64 Mach-O images with the macOS build platform.
+For the macOS 15 baseline, the validator accepts `CPU_SUBTYPE_ARM64_ALL` and `CPU_SUBTYPE_ARM64_V8`.
+The validator requires executable images in `bin/`, linked client dylibs in `lib/`, and dylibs or bundles for
+server and extension modules.
+It checks that each Mach-O signature command points to a nonempty region inside the file and beyond the load commands.
+Library names and search paths must have a terminating NUL within their own Mach-O load command.
+The macOS build checks signature integrity with `codesign --verify --strict`.
 Header inspection identifies file format and architecture.
 It does not prove the compiled PostgreSQL version, ABI compatibility, extension behavior, or host compatibility.
 Those require builder provenance and native execution against the exact artifact.
@@ -119,6 +125,15 @@ On Linux the glibc entry's `requirement` must be the measured one, for example `
 so a published minimum always describes the archive's own binaries.
 A supported CPU baseline must also come from evidence, rather than just the compiler host's capabilities.
 
+The macOS target requires macOS 15 or newer on Apple silicon.
+The build reads the deployment version and imported libraries from every image's load commands.
+It rejects an image with a minimum above the deployment target.
+The host review lists the imported system libraries and records the highest image minimum
+as the requirement for `/usr/lib/libSystem.B.dylib`.
+Absolute system imports must start with `/usr/lib/` or `/System/Library/` and contain no `..` path component.
+Bundled imports use `@rpath/<name>` and a search path relative to the image that reaches `lib/`.
+The build verifies each image's ad-hoc signature after relocation.
+
 ## Extension installation versions
 
 All eight selected extensions are mandatory:
@@ -144,12 +159,12 @@ A direct `<name>--<default_version>.sql` file is not always present.
 pg_cron supplies a base 1.0 script followed by upgrade scripts.
 Deleting a required script or native library invalidates the installation.
 
-Libraries use `.so` on the current Linux target and `.dll` on Windows.
+Libraries use `.so` on Linux, `.dll` on Windows and `.dylib` on macOS.
 TimescaleDB includes both its loader and the library named for its exact source release.
 Each fresh build checks the source files in CMake's compilation database.
 It rejects a file under `tsl/` or one whose leading C comment contains upstream's Timescale License declaration.
 After changing this check, rebuild each target before reassembling it.
-The PostgreSQL client library is also required: `lib/libpq.so.5` on Linux and `bin/libpq.dll` on Windows.
+The client library is `lib/libpq.so.5` on Linux, `bin/libpq.dll` on Windows and `lib/libpq.5.dylib` on macOS.
 
 Bundling makes extensions available.
 It does not create them in databases or imply preload settings.
@@ -168,16 +183,16 @@ JSON object key order is not significant.
 A file entry contains `path`, `kind: "file"`, lowercase hexadecimal `sha256`, and `executable`.
 A link entry contains `path`, `kind: "symlink"`, and its relative `target`.
 
-Linux links must resolve directly to ordinary files inside the installation.
+Linux and macOS links must resolve directly to ordinary files inside the installation.
 Escaping, absolute, dangling, chained, and directory links are rejected.
 Hard-linked files and special filesystem objects are rejected.
 Windows links remain unsupported until their creation and extraction semantics have native evidence.
 
-Validating an extracted Linux artifact requires a POSIX host to read its executable permissions.
-Linux validation rejects group/world-writable files or directories and setuid or setgid bits.
+Validating an extracted Linux or macOS artifact requires a POSIX host to read its executable permissions.
+Both targets reject group/world-writable files or directories and setuid or setgid bits.
 The owner must be able to execute every core PostgreSQL program.
 Windows validation checks executable file headers, and the installer verifies ACLs.
-The archive SHA-256 check works on either host.
+The archive SHA-256 check works on every host.
 
 ## Source patches
 
@@ -309,7 +324,7 @@ Each component contains:
 - `notices`: retained notice paths.
 - `noticeSha256`: the SHA-256 of each notice as the review read it.
 - `noticeSignatures`: for a source component, the notice signatures of the source tree that the review covered.
-- `toolchain`: for the toolchain component only, the toolchain line that the review covers.
+- `toolchain`: the reviewed line for linked toolchain components, or the parser generator identity for PostgreSQL on macOS.
 - `evidence`: references explaining the exact review and contribution.
   When approval carries forward earlier evidence for a reopened component, it adds a dated line naming the changes.
   A changed licence set needs new evidence from the reviewer.
@@ -325,6 +340,14 @@ because the linker adds that code to every image:
 | Linux   | `compiler-rt`   | Clang's runtime builtins and startup objects                         | `Clang major version`            |
 | Linux   | `glibc-startup` | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                          |
 | Windows | `msvc-runtime`  | MSVC code from `msvcrt.lib` and `vcruntime.lib`                      | `Visual Studio product line`     |
+
+The macOS linker maps must cover every image and have a complete list of object files.
+The audit resolves each input against the original link directory and build root, including after a checkout move.
+It admits build inputs, linker-synthesized entries and dynamic library stubs.
+The PostgreSQL source review also covers the generated parser and scanner code.
+Its `toolchain` matches the `PostgreSQL parser generators` host evidence,
+which identifies Xcode and the Bison and Flex used by configure.
+A missing or changed identity requires a new PostgreSQL component review.
 
 The Windows build also records the `Visual Studio edition`, its `Visual Studio channel`, the `MSVC toolset`,
 and the `Windows SDK` version.
@@ -370,7 +393,8 @@ Release validation is the default.
 It requires a verified inventory, all selected source components, complete reviewed file coverage,
 source and toolchain coverage of every native image, retained notices, and verified host prerequisites.
 It compares the host prerequisites with the build's measurement, so it also requires that measurement:
-`PE host library imports` on Windows and `ELF glibc symbol requirements` on Linux.
+`PE host library imports` on Windows, `ELF glibc symbol requirements` on Linux,
+and `Mach-O host library imports` and `Mach-O minimum macOS version` on macOS.
 Each cited notice must be a regular file whose SHA-256 matches the reviewed digest.
 Each toolchain component must match its reviewed toolchain line.
 Release validation rejects GPL/AGPL contributions, including GCC's own runtime under
@@ -387,7 +411,7 @@ Two licences are permitted only on one toolchain component of one target, and th
 glibc's startup sources add that exception to the LGPL, which permits linking them into any program and
 distributing the result; SPDX lists glibc's wording as a reference text for the exception.
 
-The Visual Studio identifier is the only proprietary licence that release validation admits.
+The Visual Studio identifier is the only proprietary licence admitted for bundled code.
 It covers the static code from Visual Studio toolset libraries that the linker copies into every Windows image;
 today these are startup objects of `msvcrt.lib` and members of `vcruntime.lib`.
 Microsoft's Distributable List names runtime files, not this linked code.
@@ -421,7 +445,7 @@ These licences are not host licences either.
 Other additions require a deliberate repository policy change and review.
 
 Host-library licensing is separate from bundled-file coverage.
-The host allowlist additionally recognizes reviewed LGPL glibc and the Windows/Visual C++ host-runtime terms.
+The host allowlist includes the reviewed LGPL glibc, Windows/Visual C++ runtime and Apple macOS terms.
 This does not permit bundling LGPL libraries or infer redistribution rights from their presence on a host.
 
 Filename exclusions reject obvious TimescaleDB Community libraries and forbidden helper profiles.
@@ -447,4 +471,4 @@ The validator checks its consistency and completeness; it cannot replace the und
 
 The API does not download, extract, start PostgreSQL, delete an installation, or approve publication.
 Another language can implement the same checks against the JSON and archive without importing TypeScript.
-MacOS layout, safe extraction, full dependency/license closure, and final release acceptance remain separate work.
+Safe extraction, full dependency/license closure, and final release acceptance remain separate work.

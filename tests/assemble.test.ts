@@ -62,7 +62,8 @@ it("assembles the same programs and extension payload from either platform's SDK
       await mkdir(join(candidate, "lib"));
       await chmod(join(candidate, "lib"), 0o777);
     }
-    await assembleRuntime(prefix, candidate);
+    // The Linux layout on every POSIX host, macOS included; the macOS names are checked below.
+    await assembleRuntime(prefix, candidate, windows ? "windows-x64" : "linux-x64-glibc");
     // Packaging writes the current notices into the candidate; an installation's copy is never shipped.
     expect((await readdir(candidate)).sort()).toEqual(["bin", "lib", "share"]);
     expect((await readdir(join(candidate, "bin"))).sort()).toEqual(
@@ -88,7 +89,7 @@ it("assembles the same programs and extension payload from either platform's SDK
   }
 });
 
-it.each(["linux-x64-glibc", "windows-x64"] as const)(
+it.each(["linux-x64-glibc", "windows-x64", "macos-arm64"] as const)(
   "%s keeps versioned extension scripts and controls but not an unversioned install script",
   target => {
     // pgTAP's make install also copies pgtap.sql, which CREATE EXTENSION never reads; the Windows
@@ -112,5 +113,34 @@ it("keeps every module that validation requires, and a conversion module that a 
   for (const module of [...requiredModules, "utf8_and_future"]) {
     expect(includesRuntimePath("lib/" + module + ".so", "linux-x64-glibc"), module).toBe(true);
     expect(includesRuntimePath("lib/" + module + ".dll", "windows-x64"), module).toBe(true);
+    expect(includesRuntimePath("lib/" + module + ".dylib", "macos-arm64"), module).toBe(true);
+  }
+});
+
+it("selects macOS libraries by their Darwin names, where only client libraries carry versions", () => {
+  for (
+    const path of [
+      "lib/libpq.5.dylib",
+      "lib/libpq.dylib",
+      "lib/libecpg_compat.3.dylib",
+      "lib/libpqwalreceiver.dylib",
+      "lib/vector.dylib",
+      "lib/timescaledb-2.32.0.dylib",
+      "bin/postgres",
+    ]
+  ) {
+    expect(includesRuntimePath(path, "macos-arm64"), path).toBe(true);
+  }
+  for (
+    const path of [
+      "lib/libpq.a",
+      "lib/libpq.so.5",
+      "lib/pg_trgm.dylib",
+      "lib/vector.1.dylib",
+      "lib/libfoo.1.dylib",
+      "bin/postgres.exe",
+    ]
+  ) {
+    expect(includesRuntimePath(path, "macos-arm64"), path).toBe(false);
   }
 });

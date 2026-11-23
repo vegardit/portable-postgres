@@ -24,6 +24,7 @@ import {
   isNativeImage,
   type LicenseInventory,
   licenseInventorySchema,
+  macOSParserEvidence,
   measuredHostRequirements,
   msvcRuntimeNoticePath,
   payloadHashes,
@@ -70,6 +71,7 @@ export type Draft = {
 export const reviewFiles: Record<ArtifactTarget, string> = {
   "linux-x64-glibc": join(root, "binaries/linux/review.json"),
   "windows-x64": join(root, "binaries/windows/review.json"),
+  "macos-arm64": join(root, "binaries/macos/review.json"),
 };
 
 /** Returns the tracked review as written, or `undefined` while a target has none. */
@@ -184,16 +186,24 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
     ...toolchainNotices(target),
   ]);
   // PostgreSQL's own build installs everything that no extension or notice accounts for.
-  components.find(component => component.id === "postgresql")!.files.push(
+  const postgresql = components.find(component => component.id === "postgresql")!;
+  if (target === "macos-arm64") {
+    const generators = manifest.hostEvidence.find(entry => entry.component === macOSParserEvidence);
+    if (generators) postgresql.toolchain = generators.version;
+  }
+  postgresql.files.push(
     ...manifest.files.map(file => file.path).filter(path => !assigned.has(path)),
   );
   const images: string[] = [];
-  for (const file of manifest.files) {
-    if (file.kind === "file" && await isNativeImage(join(installation, file.path))) {
-      images.push(file.path);
+  const toolchainParts = toolchainComponents[target];
+  if (toolchainParts.length > 0) {
+    for (const file of manifest.files) {
+      if (file.kind === "file" && await isNativeImage(join(installation, file.path))) {
+        images.push(file.path);
+      }
     }
   }
-  for (const part of toolchainComponents[target]) {
+  for (const part of toolchainParts) {
     const toolchain = manifest.hostEvidence.find(entry => entry.component === part.evidence)
       ?.version;
     const notices = part.notice === undefined ? [] : [part.notice];

@@ -8,9 +8,28 @@
 /** Defines the PostgreSQL runtime payload shared by assembly and artifact validation. */
 import { posix } from "node:path";
 
-/** Every target that the project builds and validates; a release also needs targets without a recipe yet. */
-export const artifactTargets = ["linux-x64-glibc", "windows-x64"] as const;
+/** Every target that the project builds and validates; a release needs an archive for each. */
+export const artifactTargets = ["linux-x64-glibc", "windows-x64", "macos-arm64"] as const;
 export type ArtifactTarget = (typeof artifactTargets)[number];
+
+/** Narrows a command-line argument to a target. */
+export function isArtifactTarget(value: string | undefined): value is ArtifactTarget {
+  return (artifactTargets as ReadonlyArray<string | undefined>).includes(value);
+}
+
+/** The suffix of server modules and extension libraries, which PostgreSQL's DLSUFFIX sets per platform. */
+export function moduleSuffix(target: ArtifactTarget): string {
+  return target === "windows-x64" ? ".dll" : target === "macos-arm64" ? ".dylib" : ".so";
+}
+
+/** The client library that every runtime ships, by the name that programs load it under. */
+export function clientLibraryPath(target: ArtifactTarget): string {
+  return target === "windows-x64"
+    ? "bin/libpq.dll"
+    : target === "macos-arm64"
+      ? "lib/libpq.5.dylib"
+      : "lib/libpq.so.5";
+}
 
 export const extensionNames = {
   pgvector: "vector",
@@ -62,6 +81,13 @@ export const corePrograms = [
 ] as const;
 
 const clientLibrary = /^lib(?:ecpg(?:_compat)?|pgtypes|pq)$/;
+
+/** Recognizes linked macOS client libraries by their versioned names or unversioned aliases. */
+export function isMacOSClientLibrary(path: string): boolean {
+  const stem = /^(.+?)(?:\.\d+)*\.dylib$/.exec(posix.basename(path))?.[1];
+  return posix.dirname(path) === "lib" && stem !== undefined && clientLibrary.test(stem);
+}
+
 /** The server modules outside conversion_procs that PostgreSQL always builds. */
 const coreModules = ["dict_snowball", "libpqwalreceiver", "pgoutput", "plpgsql"] as const;
 const coreModule = new RegExp("^(?:" + coreModules.join("|") + ")$");
@@ -93,7 +119,7 @@ const encodingModules = [
   "utf8_and_win",
 ] as const;
 /**
- * The server modules that every runtime must ship, without their `.so` or `.dll` suffix. The build installs
+ * The server modules that every runtime must ship, without their `moduleSuffix`. The build installs
  * whatever it produced, so a module that is missing from it, such as one deleted from a reused SDK, would
  * otherwise pass unnoticed until a client asks for that conversion.
  */
@@ -120,10 +146,16 @@ export function includesRuntimePath(path: string, target: ArtifactTarget): boole
   }
   if (path.startsWith("lib/")) {
     if (directory !== "lib") return false;
-    const library = windows ? (/^(.+)\.dll$/.exec(name)) : (/^(.+)\.so((?:\.\d+)*)$/.exec(name));
+    if (target === "macos-arm64" && isMacOSClientLibrary(path)) return true;
+    // Only Linux client libraries have a version after the file suffix, such as libpq.so.5.
+    const library = windows
+      ? (/^(.+)\.dll$/.exec(name))
+      : target === "macos-arm64"
+        ? (/^(.+)\.dylib$/.exec(name))
+        : (/^(.+)\.so((?:\.\d+)*)$/.exec(name));
     const stem = library?.[1];
     if (!stem) return false;
-    if (!windows && clientLibrary.test(stem)) return true;
+    if (target === "linux-x64-glibc" && clientLibrary.test(stem)) return true;
     if (library[2]) return false;
     return coreModule.test(stem) || encodingModule.test(stem)
       || nativeExtensions.some(extension => stem === extension)

@@ -23,11 +23,11 @@ Extract the archive and run PostgreSQL directly on your machine.
 
 ## <a name="platforms"></a>Platforms
 
-| Platform          | Status  | Host requirement                                                         |
-| ----------------- | ------- | ------------------------------------------------------------------------ |
-| Linux x64 (glibc) | Built   | glibc 2.35 or newer; tested on Ubuntu 22.04.                             |
-| Windows x64       | Built   | Microsoft Visual C++ runtime (`vcruntime140.dll`) and the Universal CRT. |
-| macOS arm64       | Planned | Not built yet.                                                           |
+| Platform          | Status | Host requirement                                                         |
+| ----------------- | ------ | ------------------------------------------------------------------------ |
+| Linux x64 (glibc) | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                             |
+| Windows x64       | Built  | Microsoft Visual C++ runtime (`vcruntime140.dll`) and the Universal CRT. |
+| macOS arm64       | Built  | macOS 15 or newer on Apple silicon.                                      |
 
 Linux distributions based on musl, such as Alpine, are not supported.
 
@@ -74,9 +74,13 @@ Do not use them for production databases.
 Choose an archive for your platform and verify its SHA-256 against a trusted digest before extracting it.
 The commands below run from the extracted directory.
 Keep the database and its log outside that directory, so that it holds only the archive's files and can be replaced.
-On Linux, `initdb` creates the data directory, and any missing parent, readable only by you.
+On Linux and macOS, `initdb` creates the data directory, and any missing parent, readable only by you.
 On Windows, the directory below lies in your own profile.
 `--pwprompt` asks for the password of the `postgres` user, so the password is never written to a file or the shell history.
+
+On macOS the programs are ad-hoc signed.
+In the macOS 15.8.2 runner test, the stock `tar` preserved the download quarantine on the executables
+and `bin/initdb --version` ran with Gatekeeper enabled.
 
 Create a data directory:
 
@@ -163,7 +167,7 @@ The table compares it with other ways to run PostgreSQL locally, as of November 
 | Linux x64 (glibc)                                       | ✅                    | ✅                                                | ✅                                  | ✅                                                                                        | ❌                                                                                     |
 | Linux x64 (musl)                                        | ❌                    | ✅                                                | ✅                                  | ✅                                                                                        | ❌                                                                                     |
 | Windows x64                                             | ✅                    | In a Linux VM                                     | ✅                                  | ✅                                                                                        | ✅                                                                                     |
-| macOS arm64                                             | Planned               | In a Linux VM                                     | ✅                                  | ✅                                                                                        | ✅                                                                                     |
+| macOS arm64                                             | ✅                    | In a Linux VM                                     | ✅                                  | ✅                                                                                        | ✅                                                                                     |
 | Intended for                                            | Development and tests | Any use, including production                     | Embedding in applications, tests    | Tests                                                                                     | Any use, including production                                                          |
 
 The Docker image and the EDB installers also support compression, which portable-postgres lacks; see [Limitations](#limitations).

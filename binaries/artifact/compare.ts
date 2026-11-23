@@ -26,8 +26,18 @@ function otherExtensionFiles(payload: Payload): Set<string> {
   );
 }
 
-/** Returns one line per difference in PostgreSQL version, source pins, or extension versions and files. */
-export function compareTargets(left: Payload, right: Payload): string[] {
+/** Compares each target with the first. A release rehearsal may have only one archive. */
+export function compareTargets(first: Payload, ...others: Payload[]): string[] {
+  return others.flatMap(other => {
+    const differences = comparePair(first, other);
+    // "Only in" describes one pair, even when a third target also ships the file.
+    return others.length > 1
+      ? differences.map(difference => `${first.target} vs ${other.target}: ${difference}`)
+      : differences;
+  });
+}
+
+function comparePair(left: Payload, right: Payload): string[] {
   const differences: string[] = [];
   function reportFileDifferences(
     label: string,
@@ -65,7 +75,7 @@ export function compareTargets(left: Payload, right: Payload): string[] {
       sql: new Set(extension.sql.map(path => posix.basename(path))),
       // Library names differ only in the platform suffix.
       libraries: new Set(
-        extension.libraries.map(path => posix.basename(path).replace(/\.(dll|so)$/, "")),
+        extension.libraries.map(path => posix.basename(path).replace(/\.(dll|so|dylib)$/, "")),
       ),
     }]));
   const leftExtensions = describe(left);
