@@ -29,6 +29,20 @@ function otherExtensionFiles(payload: Payload): Set<string> {
 /** Returns one line per difference in PostgreSQL version, source pins, or extension versions and files. */
 export function compareTargets(left: Payload, right: Payload): string[] {
   const differences: string[] = [];
+  function reportFileDifferences(
+    label: string,
+    leftFiles: ReadonlySet<string>,
+    rightFiles: ReadonlySet<string>,
+  ): void {
+    for (const [target, here, there] of [
+      [left.target, leftFiles, rightFiles],
+      [right.target, rightFiles, leftFiles],
+    ] as const) {
+      const extra = [...here].filter(file => !there.has(file)).sort();
+      if (extra.length > 0) differences.push(`${label} only in ${target}: ${extra.join(", ")}`);
+    }
+  }
+
   if (left.postgresqlVersion !== right.postgresqlVersion) {
     differences.push(
       `PostgreSQL version: ${left.postgresqlVersion} (${left.target}) vs ${right.postgresqlVersion} (${right.target})`,
@@ -69,32 +83,11 @@ export function compareTargets(left: Payload, right: Payload): string[] {
       );
     }
     for (const kind of ["sql", "libraries"] as const) {
-      for (
-        const [target, here, there] of [
-          [left.target, one[kind], other[kind]],
-          [right.target, other[kind], one[kind]],
-        ] as const
-      ) {
-        const extra = [...here].filter(file => !there.has(file)).sort();
-        if (extra.length > 0) {
-          differences.push(`${name}: ${kind} only in ${target}: ${extra.join(", ")}`);
-        }
-      }
+      reportFileDifferences(`${name}: ${kind}`, one[kind], other[kind]);
     }
   }
   // Extension entries list only version scripts, so compare every other shipped extension file directly.
-  const leftOther = otherExtensionFiles(left);
-  const rightOther = otherExtensionFiles(right);
-  for (
-    const [target, here, there] of [
-      [left.target, leftOther, rightOther],
-      [right.target, rightOther, leftOther],
-    ] as const
-  ) {
-    const extra = [...here].filter(file => !there.has(file)).sort();
-    if (extra.length > 0) {
-      differences.push(`share/extension files only in ${target}: ${extra.join(", ")}`);
-    }
-  }
+  reportFileDifferences("share/extension files", otherExtensionFiles(left),
+    otherExtensionFiles(right));
   return differences;
 }

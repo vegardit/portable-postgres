@@ -27,6 +27,11 @@ jobs:
     ###########################################################
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # The GitHub CLI reads GH_REPO for the `gh api` calls in update-branch.ts and the PR update below.
+      # It uses it to expand {owner}/{repo} to the repository running the workflow.
+      # It also selects this repository for `gh pr list` and `gh pr create`, including on forks.
+      GH_REPO: ${{ github.repository }}
     concurrency:
       group: update-sources
       cancel-in-progress: false
@@ -37,8 +42,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The packaging revision depends on whether the current version already has a release tag.
-          fetch-tags: true
+          # The revision uses release tags, and the updater compares the PR's history with its base.
+          fetch-depth: 0
 
       - name: "Install: Node.js"
         # https://github.com/actions/setup-node
@@ -64,19 +69,13 @@ jobs:
           pnpm binaries:update-pins --summary "$summary"
           # The updater writes a summary only when a pin changed.
           if [[ -f "$summary" ]]; then
-            # https://github.com/orgs/community/discussions/26288#discussioncomment-3876281
-            delimiter="$(openssl rand -hex 8)"
-            {
-              echo "body<<$delimiter"
-              cat "$summary"
-              echo "$delimiter"
-            } >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       # Pull requests created with GITHUB_TOKEN need a manual approval before their workflows run.
       - name: "Create: pull request updater token"
         id: app-token
-        if: steps.update.outputs.body
+        if: steps.update.outputs.changed
         # https://github.com/actions/create-github-app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -85,19 +84,29 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: "Create: pull request"
-        if: steps.update.outputs.body
-        # https://github.com/peter-evans/create-pull-request
-        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
-        with:
-          title: "chore: Update pinned sources"
-          commit-message: "chore: Update pinned sources"
-          body: ${{ steps.update.outputs.body }}
-          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
-          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
-          add-paths: |
-            binaries/sources/sources.json
-            binaries/sources/revision.json
-          branch: dependencies/sources
-          delete-branch: true
-          token: ${{ steps.app-token.outputs.token }}
+      - name: "Publish: inspected source-update branch"
+        id: branch
+        if: steps.update.outputs.changed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh auth setup-git
+          node binaries/sources/update-branch.ts
+
+      - name: "Create or update: pull request"
+        if: steps.branch.outputs.name
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SOURCE_BRANCH: ${{ steps.branch.outputs.name }}
+        run: |
+          pr=$(gh pr list --state open --base "$GITHUB_REF_NAME" --head "$SOURCE_BRANCH" \
+            --json number,isCrossRepository --jq 'map(select(.isCrossRepository == false))[0].number // empty')
+          title="chore: Update pinned sources"
+          summary="$RUNNER_TEMP/source-updates.md"
+          if [[ -n "$pr" ]]; then
+            # Updating the PR directly needs no access to the teams listed as reviewers.
+            gh api --method PATCH "repos/{owner}/{repo}/pulls/$pr" \
+              --raw-field "title=$title" --field "body=@$summary" --silent
+          else
+            gh pr create --base "$GITHUB_REF_NAME" --head "$SOURCE_BRANCH" --title "$title" --body-file "$summary"
+          fi

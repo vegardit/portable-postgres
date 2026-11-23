@@ -15,6 +15,7 @@ import {
   type ArtifactTarget,
   type HostEvidence,
   type LicenseInventory,
+  reviewedMsvcNoticeFile,
   sourceComponentLicenses,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
@@ -240,7 +241,9 @@ export async function createCandidate(
     }
   }
   for (const part of toolchainParts[target]) {
-    if (part.notice !== undefined) await writeFile(join(root, part.notice), "test-only notice");
+    if (part.notice !== undefined) {
+      await writeFile(join(root, part.notice), await readFile(reviewedMsvcNoticeFile));
+    }
   }
   for (const [path, content] of Object.entries(files ?? {})) {
     await writeFile(join(root, path), content);

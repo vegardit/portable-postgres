@@ -6,25 +6,15 @@
  */
 
 /** Checks that Linux packaging requires a full, reviewed link trace for every image a candidate ships. */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { auditLinks } from "../binaries/linux/links.ts";
 import { elfFixture } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
-
-async function directory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "portable-postgres-links-"));
-  temporary.push(path);
-  return path;
-}
+const { directory, cleanup } = temporaryDirectories("links");
+afterEach(cleanup);
 
 const id = "0123456789abcdef0123456789abcdef01234567";
 

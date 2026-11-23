@@ -59,11 +59,13 @@ it("reports version and PostgreSQL differences", () => {
   ]);
 });
 
-it("reports a shipped extension file that no extension entry lists", () => {
+it("reports unlisted extension files sorted within each target, left target first", () => {
   const scripts = ["pg_textsearch--1.5.1.sql"];
   // A plain install script, such as pgTAP's pgtap.sql, is not an extension version script.
-  const linux = payload("linux-x64-glibc", ".so", scripts, ["pgtap.sql"]);
-  expect(compareTargets(linux, payload("windows-x64", ".dll", scripts))).toEqual([
-    "share/extension files only in linux-x64-glibc: pgtap.sql",
+  const linux = payload("linux-x64-glibc", ".so", scripts, ["z.sql", "common.sql", "pgtap.sql"]);
+  const windows = payload("windows-x64", ".dll", scripts, ["y.sql", "common.sql", "a.sql"]);
+  expect(compareTargets(linux, windows)).toEqual([
+    "share/extension files only in linux-x64-glibc: pgtap.sql, z.sql",
+    "share/extension files only in windows-x64: a.sql, y.sql",
   ]);
 });

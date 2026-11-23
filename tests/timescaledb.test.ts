@@ -6,22 +6,17 @@
  */
 
 /** Checks that an Apache-only TimescaleDB build is refused once it compiles code under the Timescale License. */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { requireApacheOnlyTimescaleDB } from "../binaries/timescaledb.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
+const { directory, cleanup } = temporaryDirectories("timescaledb");
+afterEach(cleanup);
 
 it("a TimescaleDB build that compiles a file under tsl/ is refused, however the database names it", async () => {
-  const work = await mkdtemp(join(tmpdir(), "portable-postgres-timescaledb-"));
-  temporary.push(work);
+  const work = await directory();
   const source = join(work, "sources", "timescaledb");
   const build = join(work, "timescaledb-build");
   await mkdir(build, { recursive: true });

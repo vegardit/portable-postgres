@@ -6,8 +6,7 @@
  */
 
 /** Checks how source files are reduced to notice signatures. */
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import {
@@ -21,13 +20,10 @@ import {
   scanNoticeSignatures,
   writeSourceNoticeScan,
 } from "../binaries/artifact/notice-scan.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
+const { directory, cleanup } = temporaryDirectories("scan");
+afterEach(cleanup);
 
 it("a UTF-8 accent is no copyright sign, while a latin1 one is", () => {
   // "Quiédeville" in UTF-8: read as latin1, its C3 A9 would become "Ã©".
@@ -194,8 +190,7 @@ it.each([
   ["Copyright and License\n---------------------", "Contributing\n------------"],
   ["## Copyright and License", "## Contributing"],
 ])("keeps the whole labelled grant in a README starting at %s", async (heading, nextHeading) => {
-  const tree = await mkdtemp(join(tmpdir(), "portable-postgres-scan-"));
-  temporary.push(tree);
+  const tree = await directory();
   const file = join(tree, "README.md");
   const readme = [
     heading,
@@ -384,8 +379,7 @@ it("keeps SGML legal terms and holders while ignoring document dates and copyrig
 });
 
 it("a scan groups files by signature in ordinal order and skips binaries and links", async () => {
-  const tree = await mkdtemp(join(tmpdir(), "portable-postgres-scan-"));
-  temporary.push(tree);
+  const tree = await directory();
   await mkdir(join(tree, "src", "port"), { recursive: true });
   await writeFile(join(tree, "src", "b.c"), "/* Copyright (c) 2020 Acme */\n");
   await writeFile(join(tree, "src", "port", "a.c"), "/* Copyright (c) 1999 Acme */\n");
@@ -450,8 +444,7 @@ it("UTF-16 with a byte order mark is text, and years stay in lines that are not 
 });
 
 it("a build stores its scan per source, and a manifest keeps three files of each signature", async () => {
-  const tree = await mkdtemp(join(tmpdir(), "portable-postgres-scan-"));
-  temporary.push(tree);
+  const tree = await directory();
   for (const name of ["a.c", "b.c", "c.c", "d.c"]) {
     await mkdir(join(tree, "sources", "one"), { recursive: true });
     await writeFile(join(tree, "sources", "one", name), "/* Copyright (c) 2020 Acme */\n");

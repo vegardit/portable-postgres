@@ -13,15 +13,12 @@
 import {
   chmod,
   mkdir,
-  mkdtemp,
   readdir,
   readFile,
   rename,
-  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { gunzipSync } from "node:zlib";
@@ -54,6 +51,7 @@ import {
   sourceTree,
   writeFixtureNoticeScan,
 } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
 // A test can hold back a replacement of the build record to let another writer run in between, or make
 // reading the record fail.
@@ -67,18 +65,8 @@ vi.mock(import("node:fs/promises"), async importOriginal => {
   };
 });
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
-
-async function directory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "portable-postgres-package-"));
-  temporary.push(path);
-  return path;
-}
+const { directory, cleanup } = temporaryDirectories("package");
+afterEach(cleanup);
 
 it("reassembly refuses a development installation from a different build recipe", async () => {
   const recipes = await directory();
@@ -333,37 +321,27 @@ it(
   60_000,
 );
 
-it("a reassembly of an older build leaves a newer build's record in place", async () => {
+/** The tests choose when the newer build is recorded relative to packaging the older one. */
+async function reassemblyFixture(output: string, installation?: string) {
   const target: ArtifactTarget = process.platform === "win32" ? "windows-x64" : "linux-x64-glibc";
-  const output = await directory();
   const older = await directory();
   const developmentInstallation = await directory();
   await createCandidate(developmentInstallation, target);
-  const previous = {
+  await recordBuild(output, {
     developmentInstallation,
     buildWork: older,
     recipe: "recipe",
-    installation: join(output, "previous candidate"),
-  };
-  await recordBuild(output, previous);
-  await expect(lastCandidate(output)).resolves.toBe(previous.installation);
+    ...installation === undefined ? {} : { installation },
+  });
   const build = await readBuild(output, "recipe");
-  // A fresh build finishes compiling and records itself while the reassembly of the older one runs.
   const newer = {
     developmentInstallation: join(output, "newer/postgresql-sdk"),
     buildWork: join(output, "newer"),
     recipe: "recipe",
   };
-  await recordBuild(output, newer);
-  await expect(lastCandidate(output)).rejects.toThrow("No packaged candidate is recorded");
-
-  const warnings: unknown[] = [];
-  const warn = vi.spyOn(console, "warn").mockImplementation(message => {
-    warnings.push(message);
-  });
-  try {
+  async function reassemble() {
     await writeFixtureNoticeScan(build.buildWork);
-    await packageCandidate({
+    return packageCandidate({
       target,
       output,
       sourceRoot: await sourceTree(await directory()),
@@ -374,6 +352,25 @@ it("a reassembly of an older build leaves a newer build's record in place", asyn
       ),
       hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
     });
+  }
+  return { newer, reassemble };
+}
+
+it("a reassembly of an older build leaves a newer build's record in place", async () => {
+  const output = await directory();
+  const previous = join(output, "previous candidate");
+  const { newer, reassemble } = await reassemblyFixture(output, previous);
+  await expect(lastCandidate(output)).resolves.toBe(previous);
+  // A fresh build finishes compiling and records itself while the reassembly of the older one runs.
+  await recordBuild(output, newer);
+  await expect(lastCandidate(output)).rejects.toThrow("No packaged candidate is recorded");
+
+  const warnings: unknown[] = [];
+  const warn = vi.spyOn(console, "warn").mockImplementation(message => {
+    warnings.push(message);
+  });
+  try {
+    await reassemble();
   } finally {
     warn.mockRestore();
   }
@@ -384,18 +381,8 @@ it("a reassembly of an older build leaves a newer build's record in place", asyn
 });
 
 it("a fresh build that records itself while a reassembly replaces the record stays recorded", async () => {
-  const target: ArtifactTarget = process.platform === "win32" ? "windows-x64" : "linux-x64-glibc";
   const output = await directory();
-  const older = await directory();
-  const developmentInstallation = await directory();
-  await createCandidate(developmentInstallation, target);
-  await recordBuild(output, { developmentInstallation, buildWork: older, recipe: "recipe" });
-  const build = await readBuild(output, "recipe");
-  const newer = {
-    developmentInstallation: join(output, "newer/postgresql-sdk"),
-    buildWork: join(output, "newer"),
-    recipe: "recipe",
-  };
+  const { newer, reassemble } = await reassemblyFixture(output);
 
   // The fresh build writes its record after the reassembly found its own build in the record, and
   // before the reassembly replaces it.
@@ -410,18 +397,7 @@ it("a fresh build that records itself while a reassembly replaces the record sta
     return replace(from, to);
   });
   try {
-    await writeFixtureNoticeScan(build.buildWork);
-    await packageCandidate({
-      target,
-      output,
-      sourceRoot: await sourceTree(await directory()),
-      reviewFile: join(older, "missing-review.json"),
-      build,
-      toolchainNotices: toolchainNotices(target).map(notice =>
-        join(root, "binaries/windows", notice)
-      ),
-      hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
-    });
+    await reassemble();
     await competing;
   } finally {
     vi.mocked(rename).mockImplementation(replace);
@@ -430,47 +406,25 @@ it("a fresh build that records itself while a reassembly replaces the record sta
 });
 
 it("packaging stops instead of replacing a build record that it cannot read", async () => {
-  const target: ArtifactTarget = process.platform === "win32" ? "windows-x64" : "linux-x64-glibc";
   const output = await directory();
-  const older = await directory();
-  const developmentInstallation = await directory();
-  await createCandidate(developmentInstallation, target);
-  await recordBuild(output, { developmentInstallation, buildWork: older, recipe: "recipe" });
-  const build = await readBuild(output, "recipe");
-  const newer = {
-    developmentInstallation: join(output, "newer/postgresql-sdk"),
-    buildWork: join(output, "newer"),
-    recipe: "recipe",
-  };
+  const { newer, reassemble } = await reassemblyFixture(output);
   await recordBuild(output, newer);
 
   // Only a missing record means that there is no build to keep; an unreadable one may name a newer build.
   const record = join(output, "last-build.json");
   const read = vi.mocked(readFile).getMockImplementation()!;
+  const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
   vi.mocked(readFile).mockImplementation((path, options) =>
-    path === record
-      ? Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }))
-      : read(path, options)
+    path === record ? Promise.reject(denied) : read(path, options)
   );
   let outcome: unknown;
   try {
-    await writeFixtureNoticeScan(build.buildWork);
-    outcome = await packageCandidate({
-      target,
-      output,
-      sourceRoot: await sourceTree(await directory()),
-      reviewFile: join(older, "missing-review.json"),
-      build,
-      toolchainNotices: toolchainNotices(target).map(notice =>
-        join(root, "binaries/windows", notice)
-      ),
-      hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
-    }).catch((error: unknown) => error);
+    outcome = await reassemble().catch((error: unknown) => error);
   } finally {
     vi.mocked(readFile).mockImplementation(read);
   }
   await expect(readBuild(output, "recipe")).resolves.toMatchObject(newer);
-  expect(outcome).toMatchObject({ code: "EACCES" });
+  expect(outcome).toBe(denied);
 });
 
 it("the build record is replaced without leaving temporary files", async () => {

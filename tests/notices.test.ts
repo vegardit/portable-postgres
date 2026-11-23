@@ -7,8 +7,7 @@
 
 /** Checks that each build ships exactly the notices of the current source pins. */
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { toolchainNotices } from "../binaries/artifact/artifact.ts";
@@ -22,19 +21,10 @@ import {
 import { root } from "../binaries/paths.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import { sourceTree } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
-
-async function directory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "portable-postgres-notices-"));
-  temporary.push(path);
-  return path;
-}
+const { directory, cleanup } = temporaryDirectories("notices");
+afterEach(cleanup);
 
 it("ships both Regents notices from PostgreSQL under runtime-safe names", async () => {
   const tree = await sourceTree(await directory());

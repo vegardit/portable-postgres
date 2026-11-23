@@ -7,13 +7,15 @@
 #
 # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 name: Release
+# Shows in the run history whether a run only checked or published.
+run-name: Release from ${{ github.ref_name }}${{ inputs.dry-run && ' (dry run)' || '' }}
 
 on: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
   workflow_dispatch:
     # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
     inputs:
       dry-run:
-        description: Build and prepare the release assets without creating a tag or release
+        description: Build and run release validation on every target with a recipe, without creating a tag or release
         type: boolean
         default: true
 
@@ -30,20 +32,19 @@ jobs:
     ###########################################################
     uses: ./.github/workflows/build.yml
     with:
-      # A real release runs the licence and host review in every build job, and each job uploads its own archive
-      # once its review passes; the release job publishes only when every target arrived and the release is approved.
-      validation: ${{ inputs.dry-run && 'candidate' || 'release' }}
-      upload: ${{ !inputs.dry-run }}
+      # Every build job runs release validation. In a run that publishes, it also uploads its archive for the release job.
+      validation: release
+      upload: ${{ !inputs.dry-run && github.ref == 'refs/heads/main' }}
 
   ###########################################################
   release:
     ###########################################################
+    name: Publish release
     needs: build
-    if: ${{ !inputs.dry-run }}
+    # Only main creates releases.
+    if: ${{ !inputs.dry-run && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Configure required reviewers on the "release" environment so publication needs a manual approval.
-    environment: release
     concurrency:
       group: native-release
       cancel-in-progress: false
@@ -53,7 +54,7 @@ jobs:
       id-token: write # to sign the build provenance
       attestations: write # to store the build provenance
 
-    steps: &release-steps
+    steps:
       - name: Git Checkout
         # https://github.com/actions/checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,12 +84,8 @@ jobs:
 
       - name: "Prepare: release assets"
         id: prepare
-        env:
-          REQUIRE_ALL: ${{ !inputs.dry-run && '--require-all-targets' || '' }}
-        run: |
-          # shellcheck disable=SC2086  # REQUIRE_ALL is either empty or a single flag.
-          # The assets go to their own directory, from which the next steps attest and publish them.
-          pnpm binaries:release release-downloads release-assets "$GITHUB_REPOSITORY" $REQUIRE_ALL
+        # The assets go to their own directory, from which the next steps attest and publish them.
+        run: pnpm binaries:release release-downloads release-assets "$GITHUB_REPOSITORY" --require-all-targets
 
       - name: "Check: release tag is unused"
         env:
@@ -106,14 +103,12 @@ jobs:
           fi
 
       - name: "Attest: build provenance"
-        if: ${{ !inputs.dry-run }}
         # https://github.com/actions/attest-build-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/*.tar.gz
 
       - name: "Publish: GitHub release"
-        if: ${{ !inputs.dry-run }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.prepare.outputs.tag }}
@@ -126,15 +121,3 @@ jobs:
           gh release create "$TAG" --draft --title "$TAG" --notes-file release-notes.md \
             --target "$GITHUB_SHA" "${assets[@]}"
           gh release edit "$TAG" --draft=false
-
-  ###########################################################
-  dry-run:
-    ###########################################################
-    needs: build
-    # Public candidate builds have no archive artifacts to prepare.
-    if: ${{ inputs.dry-run && github.event.repository.private }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: release-dry-run
-    # Only publication needs a write token. This job inherits the workflow's read-only permissions.
-    steps: *release-steps

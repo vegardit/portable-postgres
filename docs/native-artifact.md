@@ -311,6 +311,8 @@ Each component contains:
 - `noticeSignatures`: for a source component, the notice signatures of the source tree that the review covered.
 - `toolchain`: for the toolchain component only, the toolchain line that the review covers.
 - `evidence`: references explaining the exact review and contribution.
+  When approval carries forward earlier evidence for a reopened component, it adds a dated line naming the changes.
+  A changed licence set needs new evidence from the reviewer.
 
 Multiple reviewed components may contribute to the same binary, such as source code and a compiler runtime.
 Every payload file must have reviewed component coverage.
@@ -424,7 +426,7 @@ This does not permit bundling LGPL libraries or infer redistribution rights from
 
 Filename exclusions reject obvious TimescaleDB Community libraries and forbidden helper profiles.
 They do not replace build-option evidence, compiled-source review, or an inventory covering generated SQL and binaries.
-A verified status is a review attestation.
+A verified status is a review attestation, which `pnpm binaries:approve` records after listing what it approves.
 The validator checks its consistency and completeness; it cannot replace the underlying license investigation.
 
 ## Build-tool API

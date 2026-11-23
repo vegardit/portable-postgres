@@ -8,8 +8,7 @@
 /**
  * Checks the tools of a fresh build and the source facts a saved build must still satisfy on reassembly.
  */
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -27,13 +26,10 @@ import {
 } from "../binaries/windows/build.ts";
 import baseline from "../binaries/linux/base.json" with { type: "json" };
 import { fixtureEvidence } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
+const { directory: createDirectory, cleanup } = temporaryDirectories("reassemble");
+afterEach(cleanup);
 
 const requirements = "meson==1.12.1 --hash=sha256:" + "0".repeat(64) + "\n";
 
@@ -47,8 +43,7 @@ it.each([["Linux", linuxRecipe], ["Windows", windowsRecipe]] as const)(
 it.skipIf(process.arch !== "x64" || !["linux", "win32"].includes(process.platform))(
   "reassembly checks the notice anchors of a matching saved build before packaging",
   async () => {
-    const output = await mkdtemp(join(tmpdir(), "portable-postgres-reassemble-"));
-    temporary.push(output);
+    const output = await createDirectory();
     const windows = process.platform === "win32";
     const targetOutput = join(output, windows ? "windows-x64" : "linux-x64");
     const pg = join(output, windows ? "windows-sources" : "sources", "postgresql");
@@ -100,8 +95,7 @@ it("the Meson install command in the message is the one that CONTRIBUTING.md doc
 
 /** An image recipe directory as the Dockerfile writes it, from this checkout's recipe. */
 async function imageRecipe(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "portable-postgres-image-"));
-  temporary.push(directory);
+  const directory = await createDirectory("image");
   for (const file of ["Dockerfile", "traced-ld.sh"]) {
     await copyFile(join(root, "binaries/linux/image", file), join(directory, file));
   }

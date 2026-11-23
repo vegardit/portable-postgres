@@ -10,9 +10,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
   type HostEvidence,
+  msvcRuntimeNoticePath,
   releaseVisualStudioEditions,
+  reviewedMsvcNoticeFile,
   toolchainEvidence,
-  toolchainNotices,
   visualStudioEditionEvidence,
   visualStudioReleaseGap,
 } from "../artifact/artifact.ts";
@@ -78,13 +79,12 @@ export async function msvcRuntimeNotice(
 ): Promise<string> {
   // From the repository, because tsc does not copy the notices next to the compiled module.
   const recipeRoot = join(root, "binaries/windows");
-  const [notice] = toolchainNotices("windows-x64");
-  if (visualStudioReleaseGap(toolchain) === undefined) return join(recipeRoot, notice!);
+  if (visualStudioReleaseGap(toolchain) === undefined) return reviewedMsvcNoticeFile;
   // A build recorded before its edition was part of the evidence lacks that value.
   const recorded = (component: string): string =>
     toolchain.find(entry => entry.component === component)?.version ?? "not recorded";
   const template = await readFile(join(recipeRoot, "notices/msvc-runtime-candidate.txt"), "utf8");
-  const candidate = join(directory, basename(notice!));
+  const candidate = join(directory, basename(msvcRuntimeNoticePath));
   await writeFile(
     candidate,
     template

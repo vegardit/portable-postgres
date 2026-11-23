@@ -65,8 +65,9 @@ The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64 and
 It skips changes to Markdown files alone; the [Documentation workflow](.github/workflows/docs.yml) runs `pnpm check` for them.
 Each job records the archive's SHA-256 in its summary.
 Private CI runs also retain the archive and checksum as workflow artifacts.
-A manual run with `validation: release` also runs release validation on each archive.
-In a public repository it uploads no archive; only the Release workflow does, after release validation.
+Build runs, manual ones included, check candidates without release validation.
+A dry run of the [Release workflow](#releasing) runs release validation on each archive without publishing.
+In a public repository only a Release run that publishes uploads archives, after release validation.
 
 Run `pnpm install --frozen-lockfile` from the repository root before building for either target.
 Every native build uses fresh source, object, and SDK directories.
@@ -152,6 +153,11 @@ and other changes open the next revision once the current one has been released.
 
 The [Update Sources workflow](.github/workflows/update-sources.yml) runs the command every Monday
 and opens or refreshes a pull request on the `dependencies/sources` branch.
+It skips the refresh once the branch contains a reviewer's changes.
+For a manual run, select the intended base branch.
+The updater refuses a tag, its own branch, or a base that conflicts with an open pull request from the same update branch.
+If someone pushes while the updater is preparing a refresh, their commit stays on the branch.
+After a squash merge, deleting the merged pull request branch lets the next update create a fresh one.
 The Build workflow then checks that every target still compiles and passes the native tests with the new releases.
 The build also fails when a notice file that `noticeFiles` pins no longer exists in the updated source:
 find where its text moved, or whether the code it covers went, and update the pin.
@@ -190,19 +196,52 @@ Without the file, the build produces a candidate whose review is pending.
    A host library that you add, such as one that another library loads, is kept as well;
    it reopens nothing by itself. A new import, a changed measured requirement,
    and a measured library that the build no longer imports reopen the host requirements.
-3. Review each pending part: complete the licences, evidence, and host requirements,
-   set the statuses to `verified`, and save the result as the target's review file.
+3. For a review that needs edits, start with the new draft and save it as the target's review file.
+   Keep the draft's current file lists, notice hashes and signatures.
+   Fill in the licences and evidence of a new component and the requirement, licence and evidence of a new host library.
+   When you change a component's licences, add evidence explaining the new licences.
+   A dated entry from a previous approval records what you accepted under the earlier licences.
    Keep each drafted library and its drafted `requirement`: release validation requires an entry for every
    imported host library and the measured glibc requirement, such as `GLIBC_2.34 or newer`.
    A component that you add can describe part of an image, but every image must stay in the files
    of the source component that built it.
-4. Rebuild and run `pnpm binaries:validate <target> <installation>`.
+4. Approve the review with `pnpm binaries:approve <target>`.
+   It lists the parts it approves, asks you to confirm, and sets them to `verified` in the review file.
+   The preview includes edits to previously verified coverage, licences and host requirements.
+   A removed component's entry shows up to ten paths that other components still list and counts any others.
+   It refuses and names any part that still lacks licences, evidence, or host library details.
+   For `msvc-runtime`, it requires a reviewed Visual Studio product line and the digest of the release notice.
+   A Build Tools candidate carries a different notice even on a reviewed line.
+   It compares the edited draft with the review committed at `HEAD` to recover evidence for reopened components
+   whose licences you kept.
+   Until you commit the approved review, another approval can list the same changes.
+   Approving is your statement that you checked these parts, so nobody edits the statuses by hand.
+5. Rebuild and run `pnpm binaries:validate <target> <installation>`.
 
 A review stays valid while the shipped files, the licence texts it read, the notice signatures of each source tree,
-and the toolchain line are unchanged.
-Most source updates therefore keep their review.
+and the toolchain line are unchanged, so a rebuild of the same pins keeps it.
+A source update usually reopens its own component: an extension release adds an upgrade script,
+and a PostgreSQL release changes a few notice lines or the year in a licence file.
 The Build workflow lists the reopened parts in its job summary and uploads the draft as `review-draft-<target>`,
 so a pull request shows what needs a review without a local build.
+When the changes leave the licences as they are, check out the pull request's commit and run
+`pnpm binaries:approve <target> <run-id>` with the ID of its Build run.
+The command uses the checkout's default GitHub repository and verifies that Build produced the draft,
+either directly or as the workflow called by Release.
+For a pull request, it checks the merge commit recorded in the Build job against GitHub's commit data
+and the draft's Git checkout record.
+You can check out the PR head or the built merge commit.
+Its tree must match the tree that CI built before the command lists changes and asks you to confirm.
+If the base branch introduced differences, update the pull request branch and use the new Build run.
+Use a fresh Build run if the checkout record or the PR job's commit is missing.
+Each reopened component keeps its licences and the evidence of its earlier review,
+and gains a dated line that names the accepted changes, such as
+`2026-11-22, Build run 123 at abc1234: accepted 2 notice signatures added; files added: vector--0.8.7--0.8.8.sql.`
+Add `--note "<reason>"` to record why you accepted those changes in the dated evidence entry.
+Approval refuses `--note` if no component would receive a dated entry.
+Then commit the review files to the pull request.
+If an update brings another licence or code that needs its own component,
+edit the current draft as in step 3 and approve it without a run ID.
 To review a reopened source, compare its licence, copyright, and notice files between the two releases,
 look for newly bundled third-party code with its own licence, and skim the release notes.
 The job summary shows up to 20 notice signature changes per component.
@@ -213,7 +252,6 @@ To see every change, compare each component's `noticeSignatures` in the uploaded
 with the same component in the target's tracked review.
 Read the added text in the upstream source, decide whether it ships and under which licence,
 and add a component or a retained notice where needed.
-Keep the reviewed signature list in the target's review.
 Newly bundled code can reuse an existing notice or carry no detected notice,
 so check every updated source's release notes for it.
 A year-only change on a copyright line leaves its signature unchanged.
@@ -252,18 +290,21 @@ The bundle leaves out build tools. For prerequisites and setup, see [Building na
 Creating the bundle requires a clean tracked working tree.
 A release also needs a macOS arm64 archive, which has no recipe yet.
 Until the macOS target exists, the release job therefore fails after the build jobs, and only dry runs succeed.
-Protect the `release` environment with required reviewers so publication needs a manual approval.
+Only a run from `main` creates a release.
 
-The `dry-run` input, enabled by default, builds and checks the candidates without creating a tag or release.
-In a public repository a dry run stops after the build jobs.
-In a private repository it prepares the assets with read-only permissions.
+The `dry-run` input, enabled by default, builds every target that has a recipe and runs release validation on it,
+without creating a tag or release, so a pending review fails it as it would fail a release.
+A dry run stops after the build jobs.
+To rehearse asset preparation from candidate archives, run `pnpm binaries:release` without `--require-all-targets`.
 Each supplied `portable-postgres-*.tar.gz` must belong to the current revision and a supported target,
-even when the dry run contains only one target.
-A local [act](https://github.com/nektos/act) run covers the same build jobs:
+even when only one target is supplied.
+A local [act](https://github.com/nektos/act) run covers the same build jobs, release validation included:
 
 ```sh
 act workflow_dispatch -W .github/workflows/release.yml --input dry-run=true --matrix output:linux-x64
 ```
+
+For a candidate check without release validation, run the Build workflow instead (`-W .github/workflows/build.yml`).
 
 act's artifact server does not accept the artifact upload action this workflow uses, so act cannot hand archives to the release job.
 The release job's checks, checksums, descriptor, and notes are covered by `tests/release.test.ts` instead.

@@ -23,23 +23,15 @@ on: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-
     paths-ignore:
       - "**/*.md"
       - ".github/workflows/stale.yml"
-  workflow_dispatch:
-    # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
-    inputs:
-      validation:
-        description: "candidate checks the archive layout; release also requires the reviewed licences and host requirements"
-        type: choice
-        options:
-          - candidate
-          - release
-        default: candidate
+  # A manual run checks candidates like a push. Release validation without publishing is the Release dry run.
+  workflow_dispatch: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
   workflow_call:
     # https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations
     inputs:
       validation:
         description: "candidate checks the archive layout; release also requires the reviewed licences and host requirements"
         type: string
-        default: candidate
+        required: true
       upload:
         description: "uploads the archives for the release job, which publishes them only after it checks them all"
         type: boolean
@@ -188,15 +180,16 @@ jobs:
           CHECKSUM: ${{ steps.archive.outputs.checksum }}
         run: tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}" < "$CHECKSUM"
 
-      - name: "Report: licence review changes"
+      # Approval reads the checkout SHA from GitHub's job metadata independently of the uploaded draft.
+      - name: "Report: licence review changes at ${{ github.sha }}"
         # Lists what this build reopens in the tracked review, so a pull request shows what needs a review.
         env:
           TARGET: ${{ matrix.target }}
           INSTALLATION: ${{ steps.archive.outputs.installation }}
-        run: >-
-          pnpm binaries:review "$TARGET" "$INSTALLATION"
-          --output "$RUNNER_TEMP/review-draft-$TARGET.json"
-          --summary "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        run: |
+          draft="$RUNNER_TEMP/review-draft-$TARGET"
+          pnpm binaries:review "$TARGET" "$INSTALLATION" --output "$draft.json" --summary "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          git rev-parse HEAD 'HEAD^{tree}' > "$draft.git"
 
       - name: "Share: licence review draft"
         # The draft holds file names, hashes and licences but no binaries, so public CI shares it as well.
@@ -206,7 +199,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: review-draft-${{ matrix.target }}
-          path: ${{ runner.temp }}/review-draft-${{ matrix.target }}.json
+          path: |
+            ${{ runner.temp }}/review-draft-${{ matrix.target }}.json
+            ${{ runner.temp }}/review-draft-${{ matrix.target }}.git
           if-no-files-found: error
 
       - name: "Check: release review"
@@ -218,7 +213,7 @@ jobs:
 
       - name: "Share: native archive"
         # Public distribution requires the license and host compatibility checks in docs/native-artifact.md,
-        # so only the release job asks for archives in a public repository; a manual release-mode run checks them
+        # so only a Release run that publishes asks for archives in a public repository; its dry run checks them
         # without making them downloadable. act's artifact server rejects this upload action.
         # A public upload also needs release validation, which the step above runs only in release mode.
         # Such an upload is a workflow artifact that signed-in users can download as soon as this job ends, before

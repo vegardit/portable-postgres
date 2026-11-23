@@ -6,10 +6,11 @@
  */
 
 /** Finds newer upstream releases for the pinned sources and records their URLs, digests, and packaging revision. */
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import * as z from "zod";
+import { writeJson } from "../files.ts";
 import { root, workRoot } from "../paths.ts";
 import { capture } from "../process.ts";
 import { downloadArchive } from "./sources.ts";
@@ -151,14 +152,6 @@ function released(tag: string): boolean {
   return capture("git", ["tag", "--list", tag]).trim() === tag;
 }
 
-/** Replaces a JSON file atomically and keeps its line endings, so a checkout shows only the changed values. */
-async function writeJson(path: string, value: unknown): Promise<void> {
-  const eol = (await readFile(path, "utf8")).includes("\r\n") ? "\r\n" : "\n";
-  const staging = path + ".partial";
-  await writeFile(staging, JSON.stringify(value, null, 2).replaceAll("\n", eol) + eol);
-  await rename(staging, path);
-}
-
 /**
  * The tracked files that an update rewrites. tsc copies sources.json next to the compiled modules, so a
  * path next to this module would let a compiled updater rewrite that copy instead of the repository's.
@@ -219,7 +212,8 @@ if (import.meta.main) {
       "Its job summary lists reopened licence reviews and up to 20 notice signature changes per component.",
       "Compare each uploaded review draft with the target's tracked review to see every change.",
       "Check each updated source's release notes for bundled code that brings no new detected notice.",
-      "Review reopened parts before the next release, as described in CONTRIBUTING.md.",
+      "Check the reopened parts before the next release, then approve them with",
+      "`pnpm binaries:approve <target> <run-id>` on this branch, as described in CONTRIBUTING.md.",
     ].join("\n") + "\n";
     console.log(summary);
     if (summaryPath) await writeFile(summaryPath, summary);

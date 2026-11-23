@@ -19,6 +19,7 @@ import {
 import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileSha256 } from "../hash.ts";
+import { root as projectRoot } from "../paths.ts";
 import { sources } from "../sources/sources.ts";
 import {
   compareOrdinal,
@@ -41,6 +42,10 @@ import {
 export const artifactManifestName = "native-artifact.json";
 export type { ArtifactTarget } from "./runtime-layout.ts";
 
+export const msvcRuntimeNoticePath = "notices/msvc-runtime.txt";
+/** The reviewed text lives in the build recipe even when the tools run from dist/. */
+export const reviewedMsvcNoticeFile = join(projectRoot, "binaries/windows", msvcRuntimeNoticePath);
+
 /**
  * Toolchain code that the linker puts into every native image, besides the code of the source it was
  * built from. Each part's licence review is a component of its own, which must cover every image.
@@ -61,7 +66,7 @@ export const toolchainComponents: Record<
     {
       id: "msvc-runtime",
       evidence: "Visual Studio product line",
-      notice: "notices/msvc-runtime.txt",
+      notice: msvcRuntimeNoticePath,
     },
   ],
 };

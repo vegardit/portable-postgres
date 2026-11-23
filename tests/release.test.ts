@@ -10,8 +10,7 @@
  * The build jobs validate each archive's contents, so these tests cover what only the release job checks.
  */
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, expect, it } from "vitest";
@@ -30,20 +29,11 @@ import {
   packagingRevision,
 } from "../binaries/sources/version.ts";
 import { createCandidate, hostRequirementsFixture, reviewedFixture } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
 const postgresql = sources.find(source => source.id === "postgresql")!.version;
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
-
-async function directory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "portable-postgres-release-"));
-  temporary.push(path);
-  return path;
-}
+const { directory, cleanup } = temporaryDirectories("release");
+afterEach(cleanup);
 
 /**
  * Writes a candidate archive under its release name, the way a build job hands it to the release job.

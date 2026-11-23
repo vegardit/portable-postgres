@@ -6,8 +6,7 @@
  */
 
 /** Guards the Windows link check: every image needs its map, and static Microsoft code only from the dynamic CRT. */
-import { appendFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { appendFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { recordLink } from "../binaries/windows/link-recipe.ts";
@@ -18,6 +17,7 @@ import {
   mapContributions,
   parseLinkEnvironment,
 } from "../binaries/windows/links.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
 /** A COFF archive member header, as lib.exe writes it. */
 function memberHeader(name: string, size: number): Buffer {
@@ -91,10 +91,8 @@ function linkMap(...origins: string[]): string {
   ].join("\r\n");
 }
 
-const roots: string[] = [];
-afterEach(async () => {
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-});
+const { directory, cleanup } = temporaryDirectories("links");
+afterEach(cleanup);
 
 async function put(path: string, data: string | Buffer): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
@@ -106,8 +104,7 @@ async function put(path: string, data: string | Buffer): Promise<void> {
  * `origins`; returns the paths to audit and to change.
  */
 async function build(...origins: string[]) {
-  const root = await mkdtemp(join(tmpdir(), "portable-postgres-links-"));
-  roots.push(root);
+  const root = await directory();
   const vc = join(root, "vc");
   const toolset = join(vc, "lib", "x64");
   const sdk = join(root, "sdk", "um", "x64");

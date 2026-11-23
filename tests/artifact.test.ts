@@ -11,7 +11,6 @@ import {
   chmod,
   link,
   mkdir,
-  mkdtemp,
   readdir,
   readFile,
   rm,
@@ -20,7 +19,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { afterEach, expect, it } from "vitest";
 import {
   type ArtifactManifest,
@@ -42,6 +40,7 @@ import {
   toolchainLicenses,
   toolchainParts,
 } from "./candidate.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
 const timescaleVersion = sources.find(source => source.id === "timescaledb")!.version;
 /** Linux fixtures need executable permissions, which only a POSIX host can validate. */
@@ -54,18 +53,13 @@ const toolchainCases = releaseTargets.flatMap(target =>
 );
 const msvcLicense = toolchainLicenses["msvc-runtime"]!;
 const msvcNotice = "notices/msvc-runtime.txt";
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const directory of temporary.splice(0)) {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+const { directory, cleanup } = temporaryDirectories("artifact");
+afterEach(cleanup);
 
 async function fixture(
   target: ArtifactTarget = "windows-x64",
 ): Promise<{ root: string; manifest: ArtifactManifest }> {
-  const root = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
-  temporary.push(root);
+  const root = await directory();
   return { root, manifest: await createCandidate(root, target) };
 }
 
@@ -645,8 +639,7 @@ it.skipIf(process.platform === "win32")(
 it.skipIf(process.platform === "win32")(
   "a relative link to a payload file is recorded as a link, not as a second image",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
-    temporary.push(root);
+    const root = await directory();
     const manifest = await createCandidate(root, "linux-x64-glibc", {
       links: { "lib/libpq.so": "libpq.so.5" },
     });
@@ -742,8 +735,7 @@ it.each([
   ["a C1 control character", "\u0085"],
 ])("candidate validation refuses a path with %s, as release validation does",
   async (_, character) => {
-    const root = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
-    temporary.push(root);
+    const root = await directory();
     await expect(
       createCandidate(root, "windows-x64", {
         files: { [`share/odd${character}name.txt`]: "fixture" },
@@ -792,8 +784,7 @@ it.each([
 ])("candidate validation rejects a hard link to %s", async (path, message) => {
   const { root } = await fixture();
   // A second name outside the installation could change the file after validation.
-  const outside = await mkdtemp(join(tmpdir(), "portable-postgres-outside-"));
-  temporary.push(outside);
+  const outside = await directory("outside");
   await link(join(root, path), join(outside, "copy"));
   await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow(
     message,
@@ -1054,12 +1045,10 @@ it("a candidate ships every project notice with the bytes that its pin names", a
   const [notice] = "projectNotices" in postgresql ? postgresql.projectNotices : [];
   expect(notice, "PostgreSQL pins project notices").toBeDefined();
   const path = "notices/postgresql-" + notice!.file;
-  const changed = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
-  temporary.push(changed);
+  const changed = await directory();
   await expect(createCandidate(changed, "windows-x64", { files: { [path]: "edited text" } }))
     .rejects.toThrow("project notice differs from its pin: " + path);
-  const missing = await mkdtemp(join(tmpdir(), "portable-postgres-artifact-"));
-  temporary.push(missing);
+  const missing = await directory();
   await expect(createCandidate(missing, "windows-x64", { remove: [path] }))
     .rejects.toThrow("missing source notice: " + path);
 

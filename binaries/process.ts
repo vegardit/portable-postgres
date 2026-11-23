@@ -53,12 +53,13 @@ function stopTree(child: ChildProcess, signal: NodeJS.Signals): void {
 export function capture(
   command: string,
   args: readonly string[],
-  options: { timeout?: number } = {},
+  options: { timeout?: number; maxBuffer?: number; env?: NodeJS.ProcessEnv } = {},
 ): string {
   const result = spawnSync(command, args, {
     cwd: root,
     encoding: "utf8",
     windowsHide: true,
+    ...options,
     timeout: options.timeout ?? 60_000,
   });
   // Covers a tool that is not installed and one that ran into the timeout.

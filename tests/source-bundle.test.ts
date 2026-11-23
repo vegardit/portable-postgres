@@ -6,27 +6,17 @@
  */
 
 /** Checks that a release's source bundle holds the committed recipes and the pinned source archives. */
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { list } from "tar";
 import { afterEach, expect, it } from "vitest";
 import { capture } from "../binaries/process.ts";
 import { bundledDownloads, writeSourceBundle } from "../binaries/source-bundle.ts";
 import { cachedArchivePath } from "../binaries/sources/sources.ts";
+import { temporaryDirectories } from "./temporary-directories.ts";
 
-const temporary: string[] = [];
-afterEach(async () => {
-  for (const created of temporary.splice(0)) {
-    await rm(created, { recursive: true, force: true });
-  }
-});
-
-async function directory(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "portable-postgres-bundle-"));
-  temporary.push(path);
-  return path;
-}
+const { directory, cleanup } = temporaryDirectories("bundle");
+afterEach(cleanup);
 
 /** A repository with one commit, and an untracked file that a bundle must leave out. */
 async function repository(): Promise<string> {
