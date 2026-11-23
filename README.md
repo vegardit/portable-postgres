@@ -35,6 +35,7 @@ Linux distributions based on musl, such as Alpine, are not supported.
 
 The archives contain PostgreSQL 18 and the extensions below.
 They bundle ICU and its complete locale data for language-aware sorting on every platform.
+The server and clients include OpenSSL for optional TLS connections.
 The exact source releases and their checksums are listed in [`binaries/sources/sources.json`](binaries/sources/sources.json).
 
 | Extension                                                             | What it does                                                               |
@@ -53,7 +54,6 @@ The exact source releases and their checksums are listed in [`binaries/sources/s
 The archives are built for development and tests, with as few external dependencies as possible.
 Do not use them for production databases.
 
-- No TLS: PostgreSQL is built without OpenSSL, so connections are unencrypted.
 - No zlib, LZ4, or Zstandard compression, including for `pg_dump` and `pg_basebackup`.
 - `psql` has no line editing or command history, because readline is excluded.
 - TimescaleDB is the Apache-only build.
@@ -144,6 +144,19 @@ bin\psql.exe -h 127.0.0.1 -p 5432 -U postgres -d postgres
 bin\pg_ctl.exe -D "%pgwork%\data" -m fast -w stop
 ```
 
+To use TLS, place your server certificate and private key in the data directory as
+`server.crt` and `server.key`, set `ssl = on` in `postgresql.conf`, and restart the server.
+On Unix, restrict the server-owned key to mode `0600`.
+Connect using the hostname in the certificate and your trusted CA file.
+
+```sh
+bin/psql "host=localhost dbname=postgres user=postgres sslmode=verify-full sslrootcert=/path/to/dev-ca.crt"
+```
+
+To require TLS, use `hostssl` for the applicable TCP rules in `pg_hba.conf`
+and remove or restrict any matching `host` rules that allow plaintext.
+See [PostgreSQL server TLS setup](https://www.postgresql.org/docs/18/ssl-tcp.html).
+
 Enable the extensions you need with `CREATE EXTENSION` in each database:
 
 ```sql
@@ -174,7 +187,7 @@ The table compares it with other ways to run PostgreSQL locally, as of November 
 | Multiple connections                                    | ✅                    | ✅                                                | ❌                                  | ✅                                                                                        | ✅                                                                                     |
 | pgvector, pg_textsearch, pgTAP                          | ✅ Included           | ❌ Not included                                   | ✅ Separate npm packages            | ❌ Not included                                                                           | ❌ Not included                                                                        |
 | TimescaleDB, pg_cron, HypoPG, plpgsql_check, pg_partman | ✅ Included           | ❌ Not included                                   | ❌ Not available                    | ❌ Not included                                                                           | ❌ Not included                                                                        |
-| TLS                                                     | ❌                    | ✅                                                | Not applicable                      | ✅                                                                                        | ✅                                                                                     |
+| TLS                                                     | ✅                    | ✅                                                | Not applicable                      | ✅                                                                                        | ✅                                                                                     |
 | ICU collations                                          | ✅                    | ✅                                                | ✅                                  | ✅                                                                                        | ✅                                                                                     |
 | Linux x64 (glibc)                                       | ✅                    | ✅                                                | ✅                                  | ✅                                                                                        | ❌                                                                                     |
 | Linux x64 (musl)                                        | ❌                    | ✅                                                | ✅                                  | ✅                                                                                        | ❌                                                                                     |

@@ -30,6 +30,21 @@ export LC_ALL=C
 unset "${!PG@}"
 # Locale data must come from the archive during the proof.
 unset ICU_DATA
+# A developer SDK on the host must not supply either process's TLS libraries.
+unset LD_LIBRARY_PATH
+if [[ $(uname -s) == Linux ]]; then
+  for program in postgres psql; do
+    loaded=$(LD_TRACE_LOADED_OBJECTS=1 "$installation/bin/$program")
+    for lib in libcrypto.so.3 libssl.so.3; do
+      # Keep spaces in the installation path and resolve loader paths containing ../lib.
+      path=$(awk -v lib="$lib" '$1 == lib && $2 == "=>" { sub(/^.* => /, ""); sub(/ \(0x[0-9a-f]+\)$/, ""); print }' <<< "$loaded")
+      if [[ ! "$path" -ef "$installation/lib/$lib" ]]; then
+        echo "$program did not load the bundled $lib" >&2
+        exit 1
+      fi
+    done
+  done
+fi
 # Preserve diagnostic data on failure; this proof never removes an installation or cluster.
 proof_work=$(mktemp -d /tmp/portable-postgres-proof.XXXXXXXX)
 # The clean consumer copies this directory even on failure. Keep the cluster and credentials outside it.
@@ -109,12 +124,41 @@ fi
 stop_and_confirm
 # Users may preload pg_textsearch alone, so it must not depend on TimescaleDB, which the run above also preloads.
 cat -- "$project_root/tests/native/textsearch.conf" >> "$data/postgresql.conf"
+tls="$project_root/tests/native/tls"
+cp "$tls/server-cn-only+server_ca.crt" "$data/server.crt"
+cp "$tls/server-cn-only.key" "$data/server.key"
+chmod 600 "$data/server.key"
+cp "$tls/pg_hba.conf" "$data/pg_hba.conf"
 start_server server-textsearch.log
-"$installation/bin/psql" -X -w -h 127.0.0.1 -p "$port" -U proof -d postgres \
+# Connect to loopback even for the deliberately wrong hostname. DNS failure cannot satisfy this test.
+export PGHOSTADDR=127.0.0.1 PGHOST=common-name.pg-ssltest.test PGSSLMODE=verify-full
+# Keep libpq from reading the developer's certificates or revocation list. The proof uses no CRL.
+export PGSSLROOTCERT="$tls/root_ca.crt" PGSSLCERTMODE=disable PGSSLCRL="$proof_work/no.crl"
+sed "s/^127\.0\.0\.1:/$PGHOST:/" "$proof_work/pgpass" > "$proof_work/tls-pgpass"
+export PGPASSFILE="$proof_work/tls-pgpass"
+"$installation/bin/psql" -X -w -p "$port" -U proof -d postgres \
   -v ON_ERROR_STOP=1 -q -c 'CREATE DATABASE textsearch_only'
-"$installation/bin/psql" -X -w -h 127.0.0.1 -p "$port" -U proof -d textsearch_only \
+"$installation/bin/psql" -X -w -p "$port" -U proof -d textsearch_only \
   -v ON_ERROR_STOP=1 -f "$project_root/tests/native/textsearch.sql" > "$proof_root/textsearch.log"
 cat "$proof_root/textsearch.log"
+tls_psql=("$installation/bin/psql" -X -w -p "$port" -U proof -d postgres -qAt)
+"${tls_psql[@]}" -c 'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()' > "$proof_root/tls.log"
+if [[ $(< "$proof_root/tls.log") != t ]]; then
+  echo "Expected an encrypted connection; inspect $proof_root/tls.log" >&2
+  exit 1
+fi
+expect_denied() {
+  local label=$1 reason=$2 status=0
+  shift 2
+  env "$@" "${tls_psql[@]}" -c 'SELECT 1' > "$proof_root/$label.log" 2>&1 || status=$?
+  if [[ $status != 2 ]] || ! grep -Fq "$reason" "$proof_root/$label.log"; then
+    echo "Expected $reason; inspect $proof_root/$label.log" >&2
+    return 1
+  fi
+}
+expect_denied tls-hostname 'does not match host name' PGHOST=wrong.test
+expect_denied tls-ca 'certificate verify failed' PGSSLROOTCERT="$tls/client_ca.crt"
+expect_denied tls-plaintext 'no encryption' PGSSLMODE=disable
 stop_and_confirm
 trap - EXIT
 printf 'NATIVE_PROOF_DIRECTORY=%s\n' "$proof_root"

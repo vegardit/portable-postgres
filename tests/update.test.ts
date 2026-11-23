@@ -19,6 +19,7 @@ import {
 } from "../binaries/sources/update-branch.ts";
 import {
   archiveUrl,
+  downloadReleaseDigest,
   newestPostgresqlVersion,
   newestTagVersion,
   nextRevision,
@@ -34,6 +35,42 @@ it("picks the newest stable tag with the expected prefix", () => {
   // TimescaleDB mixes plain release tags with loader tags.
   expect(newestTagVersion(["2.31.2", "loader-2.11.0p1", "2.32.0"], "")).toBe("2.32.0");
   expect(newestTagVersion(["release-1"], "v")).toBeUndefined();
+  const opensslTags = [
+    "openssl-3.5.10",
+    "openssl-3.5.10.1",
+    "openssl-3.5.11-beta1",
+    "openssl-4.1.0",
+  ];
+  expect(newestTagVersion(opensslTags, "openssl-", "3.5")).toBe("3.5.10");
+});
+
+it("rejects an OpenSSL release whose bytes differ from the published SHA-256", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "portable-postgres-openssl-pin-"));
+  const url = "https://example.invalid/openssl.tar.gz";
+  const source: PinnedSource = {
+    id: "openssl",
+    version: "3.5.9",
+    url,
+    sha256: "0".repeat(64),
+    upstream: {
+      type: "github",
+      repository: "openssl/openssl",
+      tagPrefix: "openssl-",
+      series: "3.5",
+    },
+  };
+  const fetch = vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(new Response("0".repeat(64) + " *openssl.tar.gz\n"))
+    .mockResolvedValueOnce(new Response("different bytes"));
+  try {
+    await expect(downloadReleaseDigest(directory, source, url)).rejects.toThrow(
+      "integrity check failed",
+    );
+    expect(fetch.mock.calls.map(([requested]) => requested)).toEqual([url + ".sha256", url]);
+  } finally {
+    fetch.mockRestore();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 it("refreshes only a pin-only branch at the remote tip inspected by the updater", async () => {

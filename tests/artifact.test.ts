@@ -30,7 +30,11 @@ import {
   verifyArtifactArchive,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
-import { moduleSuffix, requiredIcuLibraries } from "../binaries/artifact/runtime-layout.ts";
+import {
+  moduleSuffix,
+  opensslLibraries,
+  requiredIcuLibraries,
+} from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import {
   createCandidate,
@@ -120,6 +124,43 @@ it("candidate metadata records portable executables and real control/SQL version
     "wrong target",
   );
 });
+
+it.each(releaseTargets)("%s checks TLS libraries and their coverage when OpenSSL is pinned",
+  async target => {
+    const { root, manifest } = await fixture(target);
+    const withoutOpenSsl = manifest.sources.filter(source => source.id !== "openssl");
+    await rewrite(root, { ...manifest, sources: withoutOpenSsl });
+    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing OpenSSL source",
+    );
+    manifest.hostRequirements = hostRequirementsFixture(target);
+    manifest.licenseInventory = reviewedFixture(manifest);
+    const component = manifest.licenseInventory.components.find(part => part.id === "openssl")!;
+    const [ssl, crypto] = opensslLibraries(target);
+    component.files = component.files.filter(path => path !== ssl);
+    manifest.licenseInventory.components.find(part => part.id === "postgresql")!.files.push(ssl!);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target)).rejects.toThrow(
+      "missing license coverage for openssl: " + ssl,
+    );
+
+    // Keep the inventory in sync so the layout check sees the missing library.
+    await rm(join(root, crypto!));
+    manifest.files = manifest.files.filter(file => file.path !== crypto);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing OpenSSL runtime library: " + crypto,
+    );
+
+    // Format-1 archives built before TLS have neither the source nor any of its payload.
+    const remaining = new Set([ssl!, ...component.notices]);
+    for (const path of remaining) await rm(join(root, path));
+    manifest.files = manifest.files.filter(file => !remaining.has(file.path));
+    manifest.sources = withoutOpenSsl;
+    manifest.licenseInventory = reviewedFixture(manifest);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target)).resolves.toBeDefined();
+  });
 
 it.each(releaseTargets)("%s requires the complete ICU runtime and its source ownership",
   async target => {

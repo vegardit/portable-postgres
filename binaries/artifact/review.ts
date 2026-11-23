@@ -38,7 +38,7 @@ import {
   visualStudioReleaseGap,
   writeDescribedManifest,
 } from "./artifact.ts";
-import { isIcuLibrary } from "./runtime-layout.ts";
+import { librarySource } from "./runtime-layout.ts";
 
 /**
  * The tracked per-target review: the licence inventory and host requirements for one payload file list.
@@ -175,9 +175,8 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       files: [
         ...source.notices,
         ...extension ? [extension.control, ...extension.sql, ...extension.libraries] : [],
-        ...source.id === "icu"
-          ? manifest.files.filter(file => isIcuLibrary(file.path, target)).map(file => file.path)
-          : [],
+        ...manifest.files.filter(file => librarySource(file.path, target) === source.id)
+          .map(file => file.path),
       ],
       notices: [...source.notices],
       noticeSha256: noticeSha256(source.notices),

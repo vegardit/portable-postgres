@@ -120,6 +120,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          # OpenSSL needs the runner's native Perl. PostgreSQL uses Git's Perl on PATH below.
+          $nativePerl = (Get-Command perl.exe).Source
+          if ((& $nativePerl -V:osname) -notmatch 'MSWin32') { throw "Native Windows Perl is required" }
+          "OPENSSL_BUILD_PERL=$nativePerl" >> $env:GITHUB_ENV
           "$env:ProgramFiles\Git\usr\bin" >> $env:GITHUB_PATH
           "$env:ProgramFiles\7-Zip" >> $env:GITHUB_PATH
           python -m venv binaries/work/windows-toolchain
@@ -179,7 +183,11 @@ jobs:
         env:
           TEST_COMMAND: ${{ matrix.test-command }}
           INSTALLATION: ${{ steps.archive.outputs.installation }}
-        run: pnpm "$TEST_COMMAND" "$INSTALLATION"
+        run: |
+          python=python3
+          if [[ $RUNNER_OS == Windows ]]; then python=python; fi
+          "$python" tests/openssl-provider-directory.py "$INSTALLATION"
+          pnpm "$TEST_COMMAND" "$INSTALLATION"
 
       - name: "Test: archive on Ubuntu 22.04"
         if: runner.os == 'Linux'

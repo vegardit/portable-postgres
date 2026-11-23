@@ -158,8 +158,26 @@ export function requiredIcuLibraries(target: ArtifactTarget, version: string): s
   );
 }
 
+/** The loader names of the two shared libraries for the pinned OpenSSL 3 ABI. */
+export function opensslLibraries(target: ArtifactTarget): string[] {
+  return ["ssl", "crypto"].map(name =>
+    target === "windows-x64"
+      ? `bin/lib${name}-3-x64.dll`
+      : target === "macos-arm64"
+        ? `lib/lib${name}.3.dylib`
+        : `lib/lib${name}.so.3`
+  );
+}
+
+/** Identifies runtime dependencies built separately from PostgreSQL and its extensions. */
+export function librarySource(path: string, target: ArtifactTarget): string | undefined {
+  if (isIcuLibrary(path, target)) return "icu";
+  if (opensslLibraries(target).includes(path)) return "openssl";
+  return undefined;
+}
+
 export function includesRuntimePath(path: string, target: ArtifactTarget): boolean {
-  if (isIcuLibrary(path, target)) return true;
+  if (librarySource(path, target)) return true;
   // ICU installs make fragments and data-building tools here; runtime data is in its shared library.
   if (/^share\/(?:icu|man)(?:\/|$)/.test(path)) return false;
   const windows = target === "windows-x64";

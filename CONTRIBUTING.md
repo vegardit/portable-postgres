@@ -48,7 +48,8 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 - `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
 - `pnpm binaries:test:linux:clean <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
 - `pnpm binaries:build:windows`: build and package the Windows candidate with MSVC.
-  Every build runs `BUILD_JOBS` parallel compile jobs, 4 unless the variable is set.
+  The Ninja and CMake steps use up to `BUILD_JOBS` parallel compile jobs (4 by default).
+  OpenSSL and pgvector compile serially with NMake.
 - `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
 - `pnpm binaries:test:windows`: test the relocated Windows candidate with native SQL and TAP.
 - `pnpm binaries:build:macos`: build and package the macOS arm64 candidate with the pinned Xcode.
@@ -94,7 +95,7 @@ Reset it to 1 when the PostgreSQL pin changes.
 ### Linux x64
 
 The workflow builds on Ubuntu 22.04 with Clang and compiler-rt inside a Docker container.
-ICU is built first, using the release archive's full locale data.
+OpenSSL and ICU are built before PostgreSQL, using ICU's complete release locale data.
 Its C++ compiler wrapper links LLVM's libc++, libc++abi and libunwind statically,
 so consumers need only the recorded glibc libraries.
 `binaries/linux/base.json` pins the Ubuntu image, the glibc baseline, and the LLVM major version.
@@ -127,6 +128,9 @@ The clean Ubuntu 22.04 consumer runs PostgreSQL without build tools or network a
 ### Windows x64
 
 Windows builds need Visual Studio C++ tools, CMake, Python, 7-Zip, and Git's Perl.
+OpenSSL also needs native Strawberry Perl at `C:\Strawberry\perl\bin\perl.exe`,
+or at the executable path set in `OPENSSL_BUILD_PERL`.
+The build fetches the pinned NASM assembler for OpenSSL.
 Create the isolated Meson environment before the first Windows build.
 A fresh build stops when its Meson differs from the pin in `binaries/windows/requirements.txt`;
 the `pip install` line below then installs the pinned version.
@@ -198,11 +202,12 @@ The script stops if it can still find a compiler.
 
 ## Updating pinned sources
 
-`binaries/sources/sources.json` pins PostgreSQL, ICU and every extension by version, archive URL, and SHA-256.
+`binaries/sources/sources.json` pins PostgreSQL, OpenSSL, ICU and every extension by version, archive URL, and SHA-256.
 Its `upstream` entries say where new releases come from, so the pins are not edited by hand.
 `pnpm binaries:update-pins` finds the newest stable release of each source,
 keeping PostgreSQL within its pinned major version, and downloads every changed archive.
-PostgreSQL archives are checked against the checksum PostgreSQL publishes.
+OpenSSL stays on the 3.5 LTS patch series.
+PostgreSQL and OpenSSL release archives are checked against their publishers' SHA-256 checksums.
 GitHub publishes no checksum for tag archives, so the first verified download defines their pin.
 The command also sets the packaging revision: a new PostgreSQL release restarts it at 1,
 and other changes open the next revision once the current one has been released.

@@ -75,10 +75,13 @@ it("both proofs take every server setting from the shared configuration", async 
       .filter(line => line.trim() !== "" && !line.startsWith("#"))
       .map(line => line.split("=")[0]!.trim());
   expect(settings).toContain("shared_preload_libraries");
+  expect(settings).toContain("ssl");
   for (const script of proofScripts) {
-    const text = await readFile(join(root, script), "utf8");
+    // A script can append a setting after a literal \n. SQL and library names can also mention ssl.
+    const text = (await readFile(join(root, script), "utf8")).replaceAll("\\n", "\n");
     for (const setting of settings) {
-      expect(text, `${script} restates ${setting}`).not.toContain(setting);
+      const assignment = new RegExp(`\\b${RegExp.escape(setting)}\\s*=`, "i");
+      expect(text, `${script} restates ${setting}`).not.toMatch(assignment);
     }
   }
 });

@@ -47,6 +47,8 @@ import {
   includesRuntimePath,
   isMacOSClientLibrary,
   isIcuLibrary,
+  librarySource,
+  opensslLibraries,
   isIcuDataLibrary,
   moduleSuffix,
   requiredModules,
@@ -379,7 +381,7 @@ function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): 
     if (path.startsWith("bin/")) {
       requireCondition(image.fileType === fileTypes.execute,
         "expected a Mach-O executable: " + path);
-    } else if (isMacOSClientLibrary(path)) {
+    } else if (isMacOSClientLibrary(path) || librarySource(path, target) === "openssl") {
       requireCondition(image.fileType === fileTypes.dylib,
         "expected a Mach-O client dylib: " + path);
     } else if (path.startsWith("lib/")) {
@@ -941,11 +943,11 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   // Global coverage also counts toolchain components, components added by hand, and other sources, none
   // of which built the image; the source that built it must still be credited with it. Extensions build
   // the libraries in their layout, which are checked with their other files below, and PostgreSQL's own
-  // build makes every other image except the bundled ICU dependency.
+  // build makes every other image except the separately built runtime libraries.
   const extensionLibraries = new Set(manifest.extensions.flatMap(extension => extension.libraries));
   const postgresql = new Set(components.get("postgresql")?.files);
   for (const image of images) {
-    const owner = isIcuLibrary(image, manifest.target) ? "icu" : "postgresql";
+    const owner = librarySource(image, manifest.target) ?? "postgresql";
     requireCondition(
       extensionLibraries.has(image) || (owner === "postgresql"
         ? postgresql.has(image)
@@ -1231,6 +1233,17 @@ async function inspectArtifact(
   );
   const entries = new Map(current.map(file => [file.path, file]));
   const icu = manifest.sources.find(source => source.id === "icu")!;
+  // Earlier format-1 archives predate TLS and have no OpenSSL source pin.
+  const tlsLibraries = opensslLibraries(expectedTarget);
+  if (manifest.sources.some(source => source.id === "openssl")) {
+    for (const path of tlsLibraries) {
+      requireCondition(entries.get(path)?.kind === "file",
+        "missing OpenSSL runtime library: " + path);
+    }
+  } else {
+    requireCondition(!tlsLibraries.some(path => entries.has(path)),
+      "missing OpenSSL source for TLS libraries");
+  }
   for (const path of requiredIcuLibraries(expectedTarget, icu.version)) {
     requireCondition(entries.has(path), "missing ICU runtime library: " + path);
   }

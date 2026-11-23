@@ -33,7 +33,8 @@ import {
   moduleSuffix,
   requiredModules,
   requiredIcuLibraries,
-  isIcuLibrary,
+  librarySource,
+  opensslLibraries,
   isIcuDataLibrary,
 } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
@@ -327,6 +328,10 @@ export async function createCandidate(
       continue;
     }
     if (source.id === "postgresql") continue;
+    if (source.id === "openssl") {
+      for (const path of opensslLibraries(target)) await writeFile(join(root, path), images.client);
+      continue;
+    }
     const name = source.id === "pgvector" ? "vector" : source.id;
     // pg_cron and plpgsql_check expose SQL versions independently from their source release.
     const version = source.id === "pg_cron"
@@ -398,11 +403,8 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
     const extension = manifest.extensions.find(candidate => candidate.sourceId === source.id);
     const files = extension
       ? [extension.control, ...extension.sql, ...extension.libraries]
-      : source.id === "icu"
-        ? manifest.files.filter(file => isIcuLibrary(file.path, manifest.target)).map(file =>
-          file.path
-        )
-        : [];
+      : manifest.files.filter(file => librarySource(file.path, manifest.target) === source.id)
+        .map(file => file.path);
     return {
       id: source.id,
       licenses: ["MIT", ...sourceComponentLicenses.get(source.id) ?? []],

@@ -156,6 +156,18 @@ ICU support does not select a database's default locale.
 Native proofs exercise per-column collations, indexed sort order, nondeterministic equality,
 and a database whose default provider is ICU.
 
+## TLS runtime
+
+Archives built with the OpenSSL 3.5 source pin include both shared libraries under their loader names.
+Windows places `libssl-3-x64.dll` and `libcrypto-3-x64.dll` in `bin/`.
+Linux places `libssl.so.3` and `libcrypto.so.3` in `lib/`, and macOS uses
+`libssl.3.dylib` and `libcrypto.3.dylib` there.
+PostgreSQL uses OpenSSL's built-in provider.
+For external providers, the default search directory is `/etc/ssl/ossl-modules` on Linux and macOS.
+Windows uses OpenSSL's build-time Program Files default, `OpenSSL\lib\ossl-modules` under that directory.
+Set `OPENSSL_MODULES` to use another provider directory.
+The native proof uses a caller-supplied certificate after relocating the archive.
+
 ## Extension installation versions
 
 All eight selected extensions are mandatory:
@@ -413,6 +425,7 @@ The `msvc-runtime` component must list it in `files` and `notices`, so a changed
 Each source's component must list all its retained notices in `notices`.
 Each extension's source component must list its control file, SQL files, and native libraries in `files`.
 The `icu` component must list ICU's native libraries.
+The `openssl` component must list both TLS libraries when the archive includes OpenSSL.
 The `postgresql` component must list every remaining native image, because PostgreSQL's own build makes them.
 A compiler's license metadata alone does not describe its emitted runtime contributions.
 

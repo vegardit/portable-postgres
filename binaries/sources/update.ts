@@ -19,7 +19,13 @@ import { compareVersions } from "./version.ts";
 /** Where a source's releases come from; the archive URL is derived from it and the chosen version. */
 export type Upstream =
   | { type: "postgresql"; major: number }
-  | { type: "github"; repository: string; tagPrefix: string; releaseAsset?: string };
+  | {
+    type: "github";
+    repository: string;
+    tagPrefix: string;
+    releaseAsset?: string;
+    series?: string;
+  };
 
 export type PinnedSource = {
   id: string;
@@ -33,9 +39,16 @@ export type PinnedSource = {
 export type PinChange = { id: string; from: string; to: string };
 
 /** Returns the newest stable release among tag names; pre-releases and differently named tags are ignored. */
-export function newestTagVersion(tags: string[], prefix: string): string | undefined {
+export function newestTagVersion(
+  tags: string[],
+  prefix: string,
+  series?: string,
+): string | undefined {
   const versions = tags.filter(tag => tag.startsWith(prefix)).map(tag => tag.slice(prefix.length))
-    .filter(version => /^\d+(?:\.\d+)+$/.test(version));
+    .filter(version =>
+      /^\d+(?:\.\d+)+$/.test(version)
+      && (series === undefined || version.slice(0, version.lastIndexOf(".")) === series)
+    );
   return versions.sort(compareVersions).at(-1);
 }
 
@@ -134,15 +147,20 @@ async function newestVersion(upstream: Upstream): Promise<string> {
         ),
       )),
       upstream.tagPrefix,
+      upstream.series,
     );
   if (!version) throw new Error("No release found for " + JSON.stringify(upstream));
   return version;
 }
 
-async function digest(source: PinnedSource, url: string): Promise<string> {
-  const downloads = join(workRoot, "downloads");
-  if (source.upstream.type === "postgresql") {
-    // PostgreSQL publishes a checksum next to each tarball, an independent check of the downloaded bytes.
+/** Downloads the release into the source cache and verifies the publisher's digest when available. */
+export async function downloadReleaseDigest(
+  downloads: string,
+  source: PinnedSource,
+  url: string,
+): Promise<string> {
+  if (source.upstream.type === "postgresql" || source.id === "openssl") {
+    // Both publishers provide the checksum alongside the release tarball.
     const published = (await fetchText(url + ".sha256")).trim().split(/\s+/)[0];
     if (!published || !/^[a-f0-9]{64}$/.test(published)) {
       throw new Error("Unreadable published checksum for " + url);
@@ -189,7 +207,10 @@ if (import.meta.main) {
   const revision = JSON.parse(await readFile(revisionPath, "utf8")) as {
     packagingRevision: number;
   };
-  const { sources, changes } = await updatePins(inputs, { newestVersion, digest });
+  const { sources, changes } = await updatePins(inputs, {
+    newestVersion,
+    digest: (source, url) => downloadReleaseDigest(join(workRoot, "downloads"), source, url),
+  });
   if (changes.length === 0) {
     console.log("All pinned sources are current.");
   } else {

@@ -9,7 +9,15 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes, randomInt } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
-import { appendFile, mkdir, mkdtemp, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { validateArtifact } from "../artifact/artifact.ts";
 import {
@@ -148,11 +156,11 @@ try {
       await rename(join(proof, "start.log"), join(proof, `start-${attempt}.log`));
     }
   };
-  const connect = (port: number, database: string): string[] => [
+  const connect = (port: number, database: string, host = "127.0.0.1"): string[] => [
     "-X",
     "-w",
     "-h",
-    "127.0.0.1",
+    host,
     "-p",
     String(port),
     "-U",
@@ -206,17 +214,56 @@ try {
   // also preloads.
   env["PGPASSFILE"] = pgpass;
   await appendFile(join(data, "postgresql.conf"), await readFile(textsearchSettings, "utf8"));
+  const tls = join(nativeTests, "tls");
+  await copyFile(join(tls, "server-cn-only+server_ca.crt"), join(data, "server.crt"));
+  await copyFile(join(tls, "server-cn-only.key"), join(data, "server.key"));
+  await copyFile(join(tls, "pg_hba.conf"), join(data, "pg_hba.conf"));
   const textsearchPort = await startServer("server-textsearch.log");
+  const hostname = "common-name.pg-ssltest.test";
+  await appendFile(pgpass, hostname + ":*:*:proof:" + password + "\n");
+  // Keep every case on the owned server, including the deliberately wrong hostname.
+  env["PGHOSTADDR"] = "127.0.0.1";
+  env["PGSSLMODE"] = "verify-full";
+  // Keep libpq from reading the developer's certificates or revocation list. The proof uses no CRL.
+  env["PGSSLROOTCERT"] = join(tls, "root_ca.crt");
+  env["PGSSLCERTMODE"] = "disable";
+  env["PGSSLCRL"] = join(proof, "no.crl");
   run(
     executable("psql"),
-    [...connect(textsearchPort, "postgres"), "-q", "-c", "CREATE DATABASE textsearch_only"],
+    [
+      ...connect(textsearchPort, "postgres", hostname),
+      "-q",
+      "-c",
+      "CREATE DATABASE textsearch_only",
+    ],
     "textsearch-database.log",
   );
   run(
     executable("psql"),
-    [...connect(textsearchPort, "textsearch_only"), "-f", join(nativeTests, "textsearch.sql")],
+    [
+      ...connect(textsearchPort, "textsearch_only", hostname),
+      "-f",
+      join(nativeTests, "textsearch.sql"),
+    ],
     "textsearch.log",
   );
+  const tlsArgs = (host: string): string[] => [
+    ...connect(textsearchPort, "postgres", host),
+    "-qAt",
+    "-c",
+  ];
+  const query = "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()";
+  const connected = run(executable("psql"), [...tlsArgs(hostname), query], "tls.log");
+  if (connected.stdout.trim() !== "t") throw new Error("Expected an encrypted connection");
+  const expectDenied = (host: string, log: string, reason: string): void => {
+    const result = run(executable("psql"), [...tlsArgs(host), "SELECT 1"], log, 2);
+    if (!result.stdout.includes(reason)) throw new Error("Expected " + reason + " in " + log);
+  };
+  expectDenied("wrong.test", "tls-hostname.log", "does not match host name");
+  env["PGSSLROOTCERT"] = join(tls, "client_ca.crt");
+  expectDenied(hostname, "tls-ca.log", "certificate verify failed");
+  env["PGSSLMODE"] = "disable";
+  expectDenied(hostname, "tls-plaintext.log", "no encryption");
   run(pgCtl, stopArgs, "textsearch-stop.log");
   run(pgCtl, ["-D", data, "status"], "textsearch-status.log", 3);
   server.starting = false;

@@ -56,7 +56,41 @@ if errorlevel 1 exit /b 1
 cmake --install "%WORK_ROOT%\windows-icu" > "%WORK_ROOT%\icu-install.log" 2>&1
 if errorlevel 1 exit /b 1
 set "ICU_ROOT=%PG_PREFIX%"
-"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --native-file "%PG_PREFIX%\icu-dependencies.ini" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=disabled -Dicu=enabled -Dssl=none -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
+REM OpenSSL's Windows build needs a Perl that uses native Windows paths.
+set "PATH=%WORK_ROOT%\windows-tools\nasm;%PATH%"
+if not defined OPENSSL_BUILD_PERL set "OPENSSL_BUILD_PERL=C:\Strawberry\perl\bin\perl.exe"
+pushd "%WORK_ROOT%\windows-sources\openssl" || exit /b 1
+REM Keep OpenSSL's Program Files provider path. The copies below install the DLLs into our SDK.
+"%OPENSSL_BUILD_PERL%" Configure VC-WIN64A shared no-makedepend no-module no-engine no-tests no-apps --libdir=lib > "%WORK_ROOT%\openssl-configure.log" 2>&1
+if errorlevel 1 exit /b 1
+nmake /nologo build_generated > "%WORK_ROOT%\openssl-generated-build.log" 2>&1
+if errorlevel 1 exit /b 1
+REM Build each DLL separately so the link audit can bind the map and inputs to its finished bytes.
+for %%L in (crypto ssl) do (
+  node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" trace lib%%L-3-x64.dll nmake /nologo lib%%L-3-x64.dll > "%WORK_ROOT%\openssl-%%L-build.log" 2>&1
+  if errorlevel 1 exit /b 1
+)
+REM install_dev starts another nmake that can relink libssl after its evidence was recorded.
+REM Install the traced DLLs and just the headers and import libraries the SDK needs.
+mkdir "%PG_PREFIX%\include\openssl"
+if errorlevel 1 exit /b 1
+copy /y "include\openssl\*.h" "%PG_PREFIX%\include\openssl\" > nul
+if errorlevel 1 exit /b 1
+copy /y "ms\applink.c" "%PG_PREFIX%\include\openssl\" > nul
+if errorlevel 1 exit /b 1
+for %%L in (crypto ssl) do (
+  copy /y lib%%L-3-x64.dll "%PG_PREFIX%\bin\" > nul
+  if errorlevel 1 exit /b 1
+  copy /y lib%%L.lib "%PG_PREFIX%\lib\" > nul
+  if errorlevel 1 exit /b 1
+)
+popd
+set "OPENSSL_ROOT_DIR=%PG_PREFIX%"
+set "PKG_CONFIG_PATH=%PG_PREFIX%\lib\pkgconfig"
+set "PKG_CONFIG_LIBDIR=%PKG_CONFIG_PATH%"
+set "INCLUDE=%PG_PREFIX%\include;%INCLUDE%"
+set "LIB=%PG_PREFIX%\lib;%LIB%"
+"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --native-file "%PG_PREFIX%\icu-dependencies.ini" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=disabled -Dicu=enabled -Dssl=openssl -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
 if errorlevel 1 (
   type "%WORK_ROOT%\windows-postgresql-configure.log"
   exit /b 1

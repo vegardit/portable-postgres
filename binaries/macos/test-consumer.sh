@@ -73,7 +73,7 @@ printf "CREATE EXTENSION vector;\nSELECT '[1,2]'::vector;\n" \
     -c shared_preload_libraries=timescaledb,pg_textsearch -c timescaledb.telemetry_level=off postgres \
     > "$work/loader-postgres.log" 2>> "$loaded"
 paths=$(sed -n 's/^dyld\[[0-9]*\]: <[^>]*> //p' "$loaded")
-for expected in lib/libpq.5.dylib lib/vector.dylib lib/pg_textsearch.dylib lib/timescaledb.dylib; do
+for expected in lib/libpq.5.dylib lib/libssl.3.dylib lib/libcrypto.3.dylib lib/vector.dylib lib/pg_textsearch.dylib lib/timescaledb.dylib; do
   if ! grep -F "$installation/" <<< "$paths" | grep -q -F "/$(basename "$expected")"; then
     echo "The loader trace lacks the bundled $expected" >&2
     exit 1

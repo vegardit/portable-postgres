@@ -238,6 +238,21 @@
     "licenseFile": "LICENSE"
   },
   {
+    "id": "openssl",
+    "version": "3.5.9",
+    "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+    "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+    "upstream": {
+      "type": "github",
+      "repository": "openssl/openssl",
+      "tagPrefix": "openssl-",
+      "series": "3.5",
+      "releaseAsset": "openssl-{version}.tar.gz"
+    },
+    "license": "Apache-2.0",
+    "licenseFile": "LICENSE.txt"
+  },
+  {
     "id": "pgtap",
     "version": "1.3.4",
     "url": "https://codeload.github.com/theory/pgtap/tar.gz/refs/tags/v1.3.4",
