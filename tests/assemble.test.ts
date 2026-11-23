@@ -117,6 +117,28 @@ it("keeps every module that validation requires, and a conversion module that a 
   }
 });
 
+it.each([
+  ["linux-x64-glibc", ["lib/libicuuc.so.79", "lib/libicui18n.so.79.1", "lib/libicudata.so.79"]],
+  ["windows-x64", ["bin/icuuc79.dll", "bin/icuin79.dll", "bin/icudt79.dll"]],
+  ["macos-arm64", [
+    "lib/libicuuc.79.dylib",
+    "lib/libicui18n.79.1.dylib",
+    "lib/libicudata.79.dylib",
+  ]],
+] as const)("%s retains ICU code and its locale data", (target, paths) => {
+  for (const path of paths) expect(includesRuntimePath(path, target), path).toBe(true);
+  for (const path of [
+    "bin/icuinfo",
+    "bin/icuinfo.exe",
+    "lib/libicuuc.a",
+    "lib/icuuc.lib",
+    "share/man/man1/icuinfo.1",
+    "share/icu/79.1/config/mh-linux",
+  ]) {
+    expect(includesRuntimePath(path, target), path).toBe(false);
+  }
+});
+
 it("selects macOS libraries by their Darwin names, where only client libraries carry versions", () => {
   for (
     const path of [

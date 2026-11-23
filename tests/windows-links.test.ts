@@ -122,6 +122,11 @@ async function build(...origins: string[]) {
     archive([["D:\\crt\\mt\\exe_main.obj", object(".text$mn")]]));
   await put(join(toolset, "msvcrtd.lib"),
     archive([["D:\\crt\\mdd\\dll_dllmain.obj", object(".text$mn")]]));
+  await put(join(toolset, "msvcprt.lib"), archive([
+    ["vector_algorithms.obj", object(".text$mn")],
+    ["xonce2.obj", object(".text$mn")],
+    ["unreviewed.obj", object(".text$mn")],
+  ]));
   await put(
     join(sdk, "kernel32.lib"),
     archive([
@@ -151,7 +156,7 @@ async function build(...origins: string[]) {
   await put(output, peImage("postgres"));
   await put(output.replace(/\.exe$/, ".map"), linkMap(...origins));
   const inputs = [
-    ...["msvcrt.lib", "vcruntime.lib", "libcmt.lib", "msvcrtd.lib"].map(name =>
+    ...["msvcrt.lib", "vcruntime.lib", "libcmt.lib", "msvcrtd.lib", "msvcprt.lib"].map(name =>
       '"/defaultlib:' + join(toolset, name) + '"'
     ),
     ...["kernel32.lib", "WS2_32.Lib", "trick.lib"].map(name => '"' + join(sdk, name) + '"'),
@@ -195,6 +200,31 @@ it("refuses a recorded map without library symbols even when its hash matches", 
   const { installation, work } = await build();
   await expect(auditWindowsLinks(installation, work)).rejects.toThrow(
     "Incomplete or mismatched link map for bin/postgres.exe",
+  );
+});
+
+it("accepts ICU data without CRT members only when the PE image has no executable sections or entry point", async () => {
+  const { installation, work } = await build(...dynamicCrt);
+  const output = join(work, "icu", "icudt79.dll");
+  const image = Buffer.alloc(512);
+  peImage("icu").copy(image);
+  image.writeUInt16LE(1, 70);
+  image.writeUInt16LE(240, 84);
+  image.writeUInt32LE(0, 104);
+  image.writeUInt32LE(0x40_00_00_40, 364); // Readable initialized data.
+  await put(output, image);
+  await put(join(installation, "bin/icudt79.dll"), image);
+  await put(output.replace(/\.dll$/, ".map"),
+    linkMap("icudt79l_dat.obj").replace(" postgres", " icudt79"));
+  await put(output + ".inputs", "");
+  await recordLink(output, []);
+  await expect(auditWindowsLinks(installation, work)).resolves.toBeDefined();
+  image.writeUInt32LE(0x60_00_00_20, 364);
+  await put(output, image);
+  await put(join(installation, "bin/icudt79.dll"), image);
+  await recordLink(output, []);
+  await expect(auditWindowsLinks(installation, work)).rejects.toThrow(
+    "Incomplete or mismatched link map for bin/icudt79.dll",
   );
 });
 
@@ -283,6 +313,18 @@ it("refuses static Windows SDK code, naming the image, the library and the membe
     `bin/postgres.exe links the static member indef.obj of ${
       join(sdk, "WS2_32.Lib")
     }, which the licence gate`,
+  );
+});
+
+it("admits only the reviewed MSVC C++ support members from the selected toolset", async () => {
+  const accepted = await build(...dynamicCrt, "msvcprt:vector_algorithms.obj",
+    "msvcprt:xonce2.obj");
+  const result = await auditWindowsLinks(accepted.installation, accepted.work);
+  expect([...result.staticMicrosoftCode.get(join(accepted.toolset, "msvcprt.lib"))!].sort())
+    .toEqual(["vector_algorithms.obj", "xonce2.obj"]);
+  const rejected = await build(...dynamicCrt, "msvcprt:unreviewed.obj");
+  await expect(auditWindowsLinks(rejected.installation, rejected.work)).rejects.toThrow(
+    "msvcprt.lib, which the licence gate does not admit",
   );
 });
 

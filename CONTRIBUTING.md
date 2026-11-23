@@ -94,12 +94,15 @@ Reset it to 1 when the PostgreSQL pin changes.
 ### Linux x64
 
 The workflow builds on Ubuntu 22.04 with Clang and compiler-rt inside a Docker container.
+ICU is built first, using the release archive's full locale data.
+Its C++ compiler wrapper links LLVM's libc++, libc++abi and libunwind statically,
+so consumers need only the recorded glibc libraries.
 `binaries/linux/base.json` pins the Ubuntu image, the glibc baseline, and the LLVM major version.
 It checks the compiler link plan for GCC runtime contributions and measures the glibc symbol requirements of every packaged ELF file.
 The image's `clang.cfg` makes Clang link through `binaries/linux/image/traced-ld.sh`,
 which records what each link copies into its output.
 Packaging checks the record of every image in the candidate, also when it reassembles a build.
-Rebuild the image after changing the Dockerfile or `traced-ld.sh`.
+Rebuild the image after changing the Dockerfile, `traced-ld.sh` or `clang-cxx.sh`.
 A fresh build stops when the image was built from another Dockerfile, `traced-ld.sh`, or `base.json`.
 To build locally on Linux, run the same container from the repository root:
 
@@ -139,10 +142,13 @@ The Windows build selects Visual Studio Community, Professional or Enterprise wi
 and any other installation with them, such as Build Tools alone, only when none of these is installed.
 It never selects a preview or Insiders installation.
 The scripts use that installation's x64 toolchain and bundled Ninja.
+The ICU CMake recipe reads upstream's source lists and runs its data generator against the full data archive.
+Only its common, internationalization and data DLLs enter the runtime.
 The linker must support recording its input paths with `/LINKREPROFULLPATHRSP`
 (Visual Studio 2022 17.11 or later).
 Packaging checks the link map of every image and fails when one links static code from a Microsoft library
-other than `msvcrt.lib` and `vcruntime.lib`, for example from the Windows SDK;
+other than `msvcrt.lib`, `vcruntime.lib`, and the reviewed `vector_algorithms.obj`
+and `xonce2.obj` members of `msvcprt.lib`, for example from the Windows SDK;
 [native artifact format 1](docs/native-artifact.md) describes the check.
 They keep parser generators and other build-only tools outside the runtime archive.
 Native proofs retain private diagnostic directories and shut down their owned instance.
@@ -192,7 +198,7 @@ The script stops if it can still find a compiler.
 
 ## Updating pinned sources
 
-`binaries/sources/sources.json` pins PostgreSQL and every extension by version, archive URL, and SHA-256.
+`binaries/sources/sources.json` pins PostgreSQL, ICU and every extension by version, archive URL, and SHA-256.
 Its `upstream` entries say where new releases come from, so the pins are not edited by hand.
 `pnpm binaries:update-pins` finds the newest stable release of each source,
 keeping PostgreSQL within its pinned major version, and downloads every changed archive.
@@ -230,7 +236,8 @@ Without the file, the build produces a candidate whose review is pending.
 1. Build a candidate for the target.
 2. Run `pnpm binaries:review <target>` to write `review-draft.json` next to the build output.
    The draft assigns every shipped file to a component, including one component per toolchain part
-   linked into native binaries (`compiler-rt` and `glibc-startup` on Linux, `msvc-runtime` on Windows, none on macOS),
+   linked into native binaries (`compiler-rt`, `glibc-startup` and `llvm-cxx-runtime` on Linux,
+   `msvc-runtime` on Windows, none on macOS),
    and records the hash of every licence notice and the toolchain line.
    It starts from the tracked review and lists the parts it reopens.
    When it reopens nothing, it also lists anything the release gate would still reject.
@@ -309,6 +316,9 @@ It still reopens the component if the changed file is a pinned notice.
 
 The toolchain components carry fixed licences.
 `compiler-rt` carries `Apache-2.0 WITH LLVM-exception`.
+`llvm-cxx-runtime` covers the LLVM C++ runtimes linked into ICU's code libraries.
+It requires `Apache-2.0 WITH LLVM-exception` and retains their upstream licence texts.
+ICU's data library contains no executable code and needs no linked-runtime component.
 `glibc-startup` carries `LGPL-2.1-or-later WITH GCC-exception-2.0`.
 `msvc-runtime` carries `LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code`.
 Its draft also lists the project's notice `notices/msvc-runtime.txt` for the linked Microsoft code,

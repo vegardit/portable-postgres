@@ -96,7 +96,7 @@ it("the Meson install command in the message is the one that CONTRIBUTING.md doc
 /** An image recipe directory as the Dockerfile writes it, from this checkout's recipe. */
 async function imageRecipe(): Promise<string> {
   const directory = await createDirectory("image");
-  for (const file of ["Dockerfile", "traced-ld.sh"]) {
+  for (const file of ["Dockerfile", "traced-ld.sh", "clang-cxx.sh"]) {
     await copyFile(join(root, "binaries/linux/image", file), join(directory, file));
   }
   await writeFile(join(directory, "ubuntu-image"), baseline.image + "\n");
@@ -116,14 +116,15 @@ it("a fresh Linux build runs only in an image built from the current recipe", as
 
   // An image from before the image kept its recipe, or a host outside the image, has none.
   await expect(requireCurrentImage(join(image, "missing"))).rejects.toThrow(
-    "another recipe (Dockerfile, traced-ld.sh, Ubuntu image, LLVM major)",
+    "another recipe (Dockerfile, traced-ld.sh, clang-cxx.sh, Ubuntu image, LLVM major)",
   );
 });
 
 it("the Linux image keeps the recipe files and arguments where the build compares them", async () => {
   const dockerfile = await readFile(join(root, "binaries/linux/image/Dockerfile"), "utf8");
   expect(dockerfile).toMatch(
-    new RegExp("^COPY Dockerfile traced-ld\\.sh " + imageRecipeDirectory + "/$", "m"),
+    new RegExp("^COPY Dockerfile traced-ld\\.sh clang-cxx\\.sh " + imageRecipeDirectory + "/$",
+      "m"),
   );
   for (const [file, argument] of [["ubuntu-image", "UBUNTU_IMAGE"], ["llvm-major", "LLVM_MAJOR"]]) {
     expect(dockerfile).toContain(`"$${argument}" > ${imageRecipeDirectory}/${file}`);

@@ -19,7 +19,7 @@ import { compareVersions } from "./version.ts";
 /** Where a source's releases come from; the archive URL is derived from it and the chosen version. */
 export type Upstream =
   | { type: "postgresql"; major: number }
-  | { type: "github"; repository: string; tagPrefix: string };
+  | { type: "github"; repository: string; tagPrefix: string; releaseAsset?: string };
 
 export type PinnedSource = {
   id: string;
@@ -47,9 +47,15 @@ export function newestPostgresqlVersion(listing: string, major: number): string 
 }
 
 export function archiveUrl(upstream: Upstream, version: string): string {
-  return upstream.type === "postgresql"
-    ? `https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.bz2`
-    : `https://codeload.github.com/${upstream.repository}/tar.gz/refs/tags/${upstream.tagPrefix}${version}`;
+  if (upstream.type === "postgresql") {
+    return `https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.bz2`;
+  }
+  // ICU's release archive includes generated locale data that the repository tag archive omits.
+  if (upstream.releaseAsset) {
+    return `https://github.com/${upstream.repository}/releases/download/${upstream.tagPrefix}${version}/`
+      + upstream.releaseAsset.replaceAll("{version}", version);
+  }
+  return `https://codeload.github.com/${upstream.repository}/tar.gz/refs/tags/${upstream.tagPrefix}${version}`;
 }
 
 /**

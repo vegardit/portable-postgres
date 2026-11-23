@@ -14,6 +14,8 @@
 import { readFile } from "node:fs/promises";
 import { join, posix, relative, sep } from "node:path";
 import { elfImages, readelf } from "./abi.ts";
+import { dataOnlyElf } from "../artifact/data-library.ts";
+import { isIcuDataLibrary } from "../artifact/runtime-layout.ts";
 
 /** The directory in a build's work directory where build.sh has traced-ld store its traces. */
 export const linkRecordsDirectory = "link-records";
@@ -64,11 +66,14 @@ export async function auditLinks(
     const trace = id === undefined
       ? undefined
       : await readFile(join(records, id + ".trace"), "utf8").catch(() => undefined);
-    // Every link of an image starts with glibc's crti.o, so a trace without it is not a full one.
+    // Code-bearing images need glibc's crti.o. ICU's raw data library deliberately links with -nostdlib.
     // Errors quote the raw line, so that it can be found in the stored trace.
     const lines = (trace?.split("\n") ?? []).map(line => ({ line, file: tracedFile(line) }));
     if (!lines.some(({ file }) => file.endsWith("/x86_64-linux-gnu/crti.o"))) {
-      throw new Error("No linker record for " + name);
+      const dataOnly = isIcuDataLibrary(name, "linux-x64-glibc")
+        && lines.some(({ file }) => file.endsWith(".o"))
+        && dataOnlyElf(await readFile(path));
+      if (!dataOnly) throw new Error("No linker record for " + name);
     }
     const gcc = lines.find(({ file }) => file.includes(gccDirectory));
     if (gcc !== undefined) {

@@ -142,5 +142,44 @@ BEGIN
 END
 $$;
 
+CREATE COLLATION proof_german (provider = icu, locale = 'de-DE');
+CREATE COLLATION proof_case_insensitive (provider = icu, locale = 'und-u-ks-level2', deterministic = false);
+CREATE TABLE icu_words (word text COLLATE proof_german NOT NULL);
+INSERT INTO icu_words VALUES ('z'), (U&'\00E4'), ('a');
+CREATE INDEX icu_words_index ON icu_words (word);
+SET enable_seqscan = off;
+SELECT pg_temp.assert_plan_uses_index(
+  $query$SELECT word FROM icu_words WHERE word >= U&'\00E4' ORDER BY word$query$,
+  'icu_words_index', executed => true);
+DO $$
+BEGIN
+  IF (SELECT array_agg(word ORDER BY word) FROM icu_words) IS DISTINCT FROM ARRAY['a', U&'\00E4', 'z'] THEN
+    RAISE EXCEPTION 'The ICU index did not return German collation order';
+  END IF;
+  -- Byte order would exclude z from this range. German collation must return both rows through the index.
+  IF (SELECT count(*) FROM icu_words WHERE word >= U&'\00E4') <> 2 THEN
+    RAISE EXCEPTION 'The ICU index did not apply the German range comparison';
+  END IF;
+  IF NOT ('A' COLLATE proof_case_insensitive = 'a')
+     OR 'a' COLLATE proof_case_insensitive = U&'\00E4' THEN
+    RAISE EXCEPTION 'The ICU nondeterministic collation did not preserve accent-sensitive, case-insensitive equality';
+  END IF;
+END
+$$;
+RESET enable_seqscan;
+
 SHOW timescaledb.telemetry_level;
 SELECT extname, extversion FROM pg_extension ORDER BY extname;
+
+-- A per-column collation does not prove that a database can use ICU as its default provider.
+CREATE DATABASE icu_default TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER icu ICU_LOCALE 'de-DE';
+\connect icu_default
+DO $$
+BEGIN
+  IF (SELECT datlocprovider FROM pg_database WHERE datname = current_database()) <> 'i'
+     OR NOT (U&'\00E4' < 'z') THEN
+    RAISE EXCEPTION 'The database did not use its ICU default locale';
+  END IF;
+END
+$$;
+\connect postgres

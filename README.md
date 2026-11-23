@@ -23,17 +23,18 @@ Extract the archive and run PostgreSQL directly on your machine.
 
 ## <a name="platforms"></a>Platforms
 
-| Platform          | Status | Host requirement                                                         |
-| ----------------- | ------ | ------------------------------------------------------------------------ |
-| Linux x64 (glibc) | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                             |
-| Windows x64       | Built  | Microsoft Visual C++ runtime (`vcruntime140.dll`) and the Universal CRT. |
-| macOS arm64       | Built  | macOS 15 or newer on Apple silicon.                                      |
+| Platform          | Status | Host requirement                                            |
+| ----------------- | ------ | ----------------------------------------------------------- |
+| Linux x64 (glibc) | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
+| Windows x64       | Built  | Microsoft Visual C++ Redistributable and the Universal CRT. |
+| macOS arm64       | Built  | macOS 15 or newer on Apple silicon.                         |
 
 Linux distributions based on musl, such as Alpine, are not supported.
 
 ## <a name="what-is-included"></a>What is included
 
 The archives contain PostgreSQL 18 and the extensions below.
+They bundle ICU and its complete locale data for language-aware sorting on every platform.
 The exact source releases and their checksums are listed in [`binaries/sources/sources.json`](binaries/sources/sources.json).
 
 | Extension                                                             | What it does                                                               |
@@ -53,7 +54,6 @@ The archives are built for development and tests, with as few external dependenc
 Do not use them for production databases.
 
 - No TLS: PostgreSQL is built without OpenSSL, so connections are unencrypted.
-- No ICU collations.
 - No zlib, LZ4, or Zstandard compression, including for `pg_dump` and `pg_basebackup`.
 - `psql` has no line editing or command history, because readline is excluded.
 - TimescaleDB is the Apache-only build.
@@ -95,6 +95,18 @@ On Windows, in `cmd.exe`:
 set "pgwork=%LOCALAPPDATA%\portable-postgres"
 bin\initdb.exe -D "%pgwork%\data" -U postgres --pwprompt --auth=scram-sha-256 --encoding=UTF8 --no-locale
 ```
+
+For an ICU default locale, replace `--no-locale` in the initialization command with
+`--locale-provider=icu --icu-locale=de-DE`, using the locale you need.
+An existing database can also use individual ICU collations.
+
+```sql
+CREATE COLLATION german (provider = icu, locale = 'de-DE');
+```
+
+An ICU update can change sort order.
+Rebuild affected indexes before refreshing their recorded collation versions.
+See the [PostgreSQL collation maintenance guidance](https://www.postgresql.org/docs/18/sql-altercollation.html).
 
 TimescaleDB, pg_textsearch, and pg_cron must be loaded when the server starts.
 If you use any of them, add this line to `postgresql.conf` in the data directory first, listing only the ones you need:
@@ -163,7 +175,7 @@ The table compares it with other ways to run PostgreSQL locally, as of November 
 | pgvector, pg_textsearch, pgTAP                          | ✅ Included           | ❌ Not included                                   | ✅ Separate npm packages            | ❌ Not included                                                                           | ❌ Not included                                                                        |
 | TimescaleDB, pg_cron, HypoPG, plpgsql_check, pg_partman | ✅ Included           | ❌ Not included                                   | ❌ Not available                    | ❌ Not included                                                                           | ❌ Not included                                                                        |
 | TLS                                                     | ❌                    | ✅                                                | Not applicable                      | ✅                                                                                        | ✅                                                                                     |
-| ICU collations                                          | ❌                    | ✅                                                | ✅                                  | ✅                                                                                        | ✅                                                                                     |
+| ICU collations                                          | ✅                    | ✅                                                | ✅                                  | ✅                                                                                        | ✅                                                                                     |
 | Linux x64 (glibc)                                       | ✅                    | ✅                                                | ✅                                  | ✅                                                                                        | ❌                                                                                     |
 | Linux x64 (musl)                                        | ❌                    | ✅                                                | ✅                                  | ✅                                                                                        | ❌                                                                                     |
 | Windows x64                                             | ✅                    | In a Linux VM                                     | ✅                                  | ✅                                                                                        | ✅                                                                                     |

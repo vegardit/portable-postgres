@@ -30,6 +30,9 @@ compiler="$work_root/clang-with-link-map"
 cat > "$compiler" <<'EOF'
 #!/bin/bash
 set -e
+# C configure probes must keep C mode when they compile and link in one call.
+driver=clang
+case "${0##*/}" in clang++-with-link-map) driver=clang++ ;; esac
 link=1
 output=
 previous=
@@ -38,10 +41,10 @@ for argument in "$@"; do
   if [ "$previous" = "-o" ]; then output=$argument; fi
   previous=$argument
 done
-if [ "$link" = 0 ] || [ -z "$output" ]; then exec xcrun clang "$@"; fi
+if [ "$link" = 0 ] || [ -z "$output" ]; then exec xcrun "$driver" "$@"; fi
 map=$(mktemp "$PORTABLE_PG_LINK_RECORDS/link.XXXXXX")
 trap 'rm -f "$map" "$map.record"' EXIT
-xcrun clang "$@" -Wl,-headerpad_max_install_names "-Wl,-map,$map"
+xcrun "$driver" "$@" -Wl,-headerpad_max_install_names "-Wl,-map,$map"
 if [ -s "$map" ]; then
   uuid=$(otool -l "$output" | awk '$1 == "uuid" { print tolower($2); exit }' | tr -d '-')
   if [ -n "$uuid" ]; then
@@ -52,11 +55,20 @@ if [ -s "$map" ]; then
 fi
 EOF
 chmod +x "$compiler"
-export CC=$compiler PORTABLE_PG_LINK_RECORDS=$link_records
+ln -s "${compiler##*/}" "$work_root/clang++-with-link-map"
+export CC=$compiler CXX="$work_root/clang++-with-link-map" PORTABLE_PG_LINK_RECORDS=$link_records
 
+mkdir -p "$work_root/icu-build"
+cd "$work_root/icu-build"
+"$source_root/icu/source/configure" --prefix="$install_root" --libdir="$install_root/lib" \
+  --enable-shared --disable-static --with-data-packaging=library --enable-rpath \
+  --disable-tests --disable-samples --disable-extras --disable-icuio > "$work_root/icu-configure.log"
+make -j"$build_jobs" > "$work_root/icu-build.log" 2>&1
+make install > "$work_root/icu-install.log" 2>&1
+export PKG_CONFIG_PATH="$install_root/lib/pkgconfig"
 cd "$source_root/postgresql"
 # readline is GPL; optional runtime libraries remain excluded until their closure is reviewed.
-./configure --prefix="$install_root" --without-readline --without-zlib --without-icu \
+./configure --prefix="$install_root" --without-readline --without-zlib \
   --without-lz4 --without-zstd > "$work_root/postgresql-configure.log"
 make -j"$build_jobs" > "$work_root/postgresql-build.log" 2>&1
 make install > "$work_root/postgresql-install.log" 2>&1
@@ -118,6 +130,13 @@ for image in "${images[@]}"; do
     up=$(dirname "$name" | sed -E 's#[^/]+#..#g')
     install_name_tool -add_rpath "@loader_path/$up/lib" "$image"
   fi
+  # ICU's --enable-rpath also records the SDK search path, which must not survive relocation.
+  search_paths=$(otool -l "$image" | awk '$1 == "cmd" { rpath = ($2 == "LC_RPATH") } rpath && $1 == "path" { print $2 }')
+  while IFS= read -r search_path; do
+    if [ "$search_path" = "$install_root/lib" ]; then
+      install_name_tool -delete_rpath "$search_path" "$image"
+    fi
+  done <<< "$search_paths"
   codesign --force --sign - "$image"
 done
 

@@ -29,6 +29,7 @@ it("the Linux recipe builds every extension source", async () => {
     for (const id of loop.split(" ")) built.add(id);
   }
   built.delete("postgresql");
+  expect(built.delete("icu"), "ICU is built before PostgreSQL").toBe(true);
   expect([...built].sort()).toEqual(sourceIds);
 });
 

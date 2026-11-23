@@ -114,7 +114,7 @@ it("resolves the build and candidate from the record's current checkout", async 
     reviewFile: join(work, "missing-review.json"),
     build: { buildWork: work, developmentInstallation: sdk, recipe: "recipe" },
     toolchainNotices: toolchainNotices(target).map(notice =>
-      join(root, "binaries/windows", notice)
+      join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
     ),
     hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
   });
@@ -225,7 +225,7 @@ it("packaging writes the notices into the candidate and leaves the development i
     reviewFile: join(work, "missing-review.json"),
     build: { developmentInstallation, buildWork: work, recipe: "recipe" },
     toolchainNotices: toolchainNotices(target).map(notice =>
-      join(root, "binaries/windows", notice)
+      join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
     ),
     hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
   });
@@ -277,7 +277,7 @@ it(
         reviewFile,
         build: { developmentInstallation, buildWork: work, recipe: "recipe" },
         toolchainNotices: toolchainNotices(target).map(notice =>
-          join(root, "binaries/windows", notice)
+          join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
         ),
         hostEvidence: () => Promise.resolve(hostEvidence),
       });
@@ -348,7 +348,7 @@ async function reassemblyFixture(output: string, installation?: string) {
       reviewFile: join(older, "missing-review.json"),
       build,
       toolchainNotices: toolchainNotices(target).map(notice =>
-        join(root, "binaries/windows", notice)
+        join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
       ),
       hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
     });

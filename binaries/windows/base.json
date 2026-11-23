@@ -14,10 +14,12 @@
     "api-ms-win-crt-time-l1-1-0.dll",
     "api-ms-win-crt-utility-l1-1-0.dll",
     "kernel32.dll",
+    "msvcp140.dll",
     "secur32.dll",
     "shell32.dll",
     "user32.dll",
     "vcruntime140.dll",
+    "vcruntime140_1.dll",
     "version.dll",
     "ws2_32.dll"
   ]

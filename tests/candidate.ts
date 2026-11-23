@@ -17,6 +17,7 @@ import {
   type LicenseInventory,
   reviewedMsvcNoticeFile,
   sourceComponentLicenses,
+  toolchainImages,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
 import {
@@ -31,6 +32,9 @@ import {
   corePrograms,
   moduleSuffix,
   requiredModules,
+  requiredIcuLibraries,
+  isIcuLibrary,
+  isIcuDataLibrary,
 } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 
@@ -122,16 +126,30 @@ export function machOFixture(
 
 function fixtureImages(
   target: ArtifactTarget,
-): { executable: Buffer; client: Buffer; module: Buffer } {
+): { executable: Buffer; client: Buffer; module: Buffer; data: Buffer } {
   if (target === "macos-arm64") {
     return {
       executable: machOFixture(),
       client: machOFixture({ fileType: 6 }), // MH_DYLIB
       module: machOFixture({ fileType: 8 }), // MH_BUNDLE
+      data: machOFixture({ fileType: 6 }),
     };
   }
   const image = target === "windows-x64" ? peFixture() : elfFixture();
-  return { executable: image, client: image, module: image };
+  const data = Buffer.alloc(target === "windows-x64" ? 512 : 120);
+  image.copy(data);
+  if (target === "windows-x64") {
+    data.writeUInt16LE(1, 70);
+    data.writeUInt16LE(240, 84);
+    data.writeUInt32LE(0x40_00_00_40, 364);
+  } else {
+    data.writeBigUInt64LE(64n, 32);
+    data.writeUInt16LE(56, 54);
+    data.writeUInt16LE(1, 56);
+    data.writeUInt32LE(1, 64);
+    data.writeUInt32LE(4, 68);
+  }
+  return { executable: image, client: image, module: image, data };
 }
 
 /**
@@ -151,6 +169,11 @@ export const toolchainParts: Record<
   "linux-x64-glibc": [
     { id: "compiler-rt", evidence: "Clang major version" },
     { id: "glibc-startup", evidence: "glibc" },
+    {
+      id: "llvm-cxx-runtime",
+      evidence: "Clang major version",
+      notice: "notices/llvm-cxx-runtime.txt",
+    },
   ],
   "macos-arm64": [],
 };
@@ -160,6 +183,7 @@ export const toolchainLicenses: Record<string, string> = {
   "compiler-rt": "Apache-2.0 WITH LLVM-exception",
   "glibc-startup": "LGPL-2.1-or-later WITH GCC-exception-2.0",
   "msvc-runtime": "LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code",
+  "llvm-cxx-runtime": "Apache-2.0 WITH LLVM-exception",
 };
 
 /** Release validation admits only reviewed Visual Studio lines and editions, so Windows fixtures name real ones. */
@@ -167,6 +191,7 @@ const fixtureLines: Record<string, string> = {
   "compiler-rt": "fixture-1",
   "glibc-startup": "fixture-1",
   "msvc-runtime": "18",
+  "llvm-cxx-runtime": "fixture-1",
 };
 
 /**
@@ -295,6 +320,12 @@ export async function createCandidate(
         await readFile(join(projectNoticeRoot, source.id, notice.file)),
       );
     }
+    if (source.id === "icu") {
+      for (const path of requiredIcuLibraries(target, source.version))
+        await writeFile(join(root, path),
+          isIcuDataLibrary(path, target) ? images.data : images.client);
+      continue;
+    }
     if (source.id === "postgresql") continue;
     const name = source.id === "pgvector" ? "vector" : source.id;
     // pg_cron and plpgsql_check expose SQL versions independently from their source release.
@@ -323,7 +354,9 @@ export async function createCandidate(
   }
   for (const part of toolchainParts[target]) {
     if (part.notice !== undefined) {
-      await writeFile(join(root, part.notice), await readFile(reviewedMsvcNoticeFile));
+      await writeFile(join(root, part.notice), part.id === "msvc-runtime"
+        ? await readFile(reviewedMsvcNoticeFile)
+        : "Owned LLVM notice fixture");
     }
   }
   for (const [path, content] of Object.entries(files ?? {})) {
@@ -363,7 +396,13 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
   // These fixtures contain only our test bytes. This is not review evidence for native binaries.
   const components: LicenseInventory["components"] = manifest.sources.map(source => {
     const extension = manifest.extensions.find(candidate => candidate.sourceId === source.id);
-    const files = extension ? [extension.control, ...extension.sql, ...extension.libraries] : [];
+    const files = extension
+      ? [extension.control, ...extension.sql, ...extension.libraries]
+      : source.id === "icu"
+        ? manifest.files.filter(file => isIcuLibrary(file.path, manifest.target)).map(file =>
+          file.path
+        )
+        : [];
     return {
       id: source.id,
       licenses: ["MIT", ...sourceComponentLicenses.get(source.id) ?? []],
@@ -393,7 +432,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
       status: "verified",
       evidence: ["Owned contract-test fixture"],
       // The notice comes first, so that tests removing the last file remove an image.
-      files: [...notices, ...nativeImages(manifest)],
+      files: [...notices, ...toolchainImages(part.id, nativeImages(manifest), manifest.target)],
       notices,
       noticeSha256: noticeHashes(manifest, notices),
       toolchain: manifest.hostEvidence.find(entry => entry.component === part.evidence)!.version,

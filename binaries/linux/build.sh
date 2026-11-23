@@ -15,6 +15,7 @@ mkdir -p "$install_root"
 export PATH="$install_root/bin:$PATH"
 # GCC embeds GPL runtime helpers and CRT objects even without a libgcc shared dependency.
 export CC=clang-${LLVM_MAJOR:?The LLVM major from base.json must be supplied by the TypeScript orchestrator}
+export CXX=/usr/local/bin/portable-clang-cxx
 # The build image's clang.cfg selects compiler-rt for every link and links through traced-ld, which
 # records the input files and archive members of each link under the output's build ID. Packaging
 # reads the records from this directory, so its name must match linkRecordsDirectory in links.ts.
@@ -32,9 +33,18 @@ if grep -qE '"-lgcc[^\"]*"|/gcc/[^\"]*/crt(begin|end)' "$work_root/compiler-link
   exit 1
 fi
 
+mkdir -p "$work_root/icu-build"
+cd "$work_root/icu-build"
+"$source_root/icu/source/configure" --prefix="$install_root" --libdir="$install_root/lib" \
+  --enable-shared --disable-static --with-data-packaging=library \
+  --disable-tests --disable-samples --disable-extras --disable-icuio > "$work_root/icu-configure.log"
+make -j"$build_jobs" > "$work_root/icu-build.log" 2>&1
+make install > "$work_root/icu-install.log" 2>&1
+export PKG_CONFIG_PATH="$install_root/lib/pkgconfig"
+export LD_LIBRARY_PATH="$install_root/lib"
 cd "$source_root/postgresql"
 # readline is GPL; optional runtime libraries remain excluded until their closure is reviewed.
-./configure --prefix="$install_root" --without-readline --without-zlib --without-icu \
+./configure --prefix="$install_root" --without-readline --without-zlib \
   --without-lz4 --without-zstd > "$work_root/postgresql-configure.log"
 make -j"$build_jobs" > "$work_root/postgresql-build.log" 2>&1
 make install > "$work_root/postgresql-install.log" 2>&1

@@ -42,8 +42,8 @@ const recipeRoot = join(root, "binaries/linux");
  * Reassembly also relies on the fresh build's notice scan and TimescaleDB check.
  */
 export const linuxRecipe: readonly string[] = [
-  ...["build.sh", "image/Dockerfile", "image/traced-ld.sh", "base.json"].map(file =>
-    join(recipeRoot, file)
+  ...["build.sh", "image/Dockerfile", "image/traced-ld.sh", "image/clang-cxx.sh", "base.json"].map(
+    file => join(recipeRoot, file),
   ),
   join(root, "binaries/artifact/notice-scan.ts"),
   join(root, "binaries/timescaledb.ts"),
@@ -59,7 +59,7 @@ export const imageRecipeDirectory = "/usr/local/share/portable-postgres/recipe";
  */
 export async function requireCurrentImage(image: string = imageRecipeDirectory): Promise<void> {
   const differences: string[] = [];
-  for (const file of ["Dockerfile", "traced-ld.sh"]) {
+  for (const file of ["Dockerfile", "traced-ld.sh", "clang-cxx.sh"]) {
     const current = await readFile(join(recipeRoot, "image", file), "utf8");
     if (await readOptionalText(join(image, file)) !== current) differences.push(file);
   }
@@ -147,6 +147,7 @@ export async function build(command: string | undefined): Promise<void> {
     target: "linux-x64-glibc",
     output,
     reviewFile: reviewFiles["linux-x64-glibc"],
+    toolchainNotices: [join(recipeRoot, "notices/llvm-cxx-runtime.txt")],
     sourceRoot: join(current.buildWork, "sources"),
     build: current,
     hostEvidence: async installation => {

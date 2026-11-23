@@ -135,7 +135,33 @@ const nativeExtensions = Object.entries(extensionNames)
   .map(([, name]) => name);
 const sqlExtensions = new Set(["plpgsql", ...Object.values(extensionNames)]);
 
+/** ICU's shared code and complete locale data, excluding build tools and optional I/O libraries. */
+export function isIcuLibrary(path: string, target: ArtifactTarget): boolean {
+  if (target === "windows-x64") return /^bin\/icu(?:uc|in|dt)\d+\.dll$/.test(path);
+  return target === "macos-arm64"
+    ? /^lib\/libicu(?:uc|i18n|data)(?:\.\d+)*\.dylib$/.test(path)
+    : /^lib\/libicu(?:uc|i18n|data)\.so(?:\.\d+)*$/.test(path);
+}
+
+/** Identifies ICU's locale-data library, whose byte layout must contain no executable code. */
+export function isIcuDataLibrary(path: string, target: ArtifactTarget): boolean {
+  return isIcuLibrary(path, target)
+    && (path.startsWith("bin/icudt") || path.startsWith("lib/libicudata"));
+}
+
+/** Names that the loader needs for the ICU major version recorded in a candidate's source pins. */
+export function requiredIcuLibraries(target: ArtifactTarget, version: string): string[] {
+  const major = version.split(".")[0]!;
+  if (target === "windows-x64") return ["uc", "in", "dt"].map(part => `bin/icu${part}${major}.dll`);
+  return ["uc", "i18n", "data"].map(part =>
+    target === "macos-arm64" ? `lib/libicu${part}.${major}.dylib` : `lib/libicu${part}.so.${major}`
+  );
+}
+
 export function includesRuntimePath(path: string, target: ArtifactTarget): boolean {
+  if (isIcuLibrary(path, target)) return true;
+  // ICU installs make fragments and data-building tools here; runtime data is in its shared library.
+  if (/^share\/(?:icu|man)(?:\/|$)/.test(path)) return false;
   const windows = target === "windows-x64";
   const directory = posix.dirname(path);
   const name = posix.basename(path);

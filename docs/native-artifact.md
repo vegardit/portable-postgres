@@ -134,6 +134,28 @@ Absolute system imports must start with `/usr/lib/` or `/System/Library/` and co
 Bundled imports use `@rpath/<name>` and a search path relative to the image that reaches `lib/`.
 The build verifies each image's ad-hoc signature after relocation.
 
+## ICU collations
+
+Every installation must include ICU in its source pins.
+It must carry ICU's common, internationalization and full data libraries.
+The runtime keeps their versioned library names and loader aliases.
+Windows places `icuuc<major>.dll`, `icuin<major>.dll` and `icudt<major>.dll` in `bin/`.
+Linux and macOS place the corresponding `libicuuc`, `libicui18n` and `libicudata` libraries in `lib/`.
+Their files belong to the `icu` licence component.
+The Windows code libraries also import `msvcp140.dll` and `vcruntime140_1.dll`.
+The host review must cover these imports.
+ICU's build tools, headers and make fragments stay outside the runtime.
+
+Linux statically links LLVM's C++ runtimes into ICU's code libraries.
+The `llvm-cxx-runtime` component covers those files and retains the LLVM licence notices.
+The data library has no executable code or runtime startup objects.
+Link auditing checks its ELF load segments or PE sections before allowing that layout.
+All code-bearing images still require their complete startup and runtime link evidence.
+
+ICU support does not select a database's default locale.
+Native proofs exercise per-column collations, indexed sort order, nondeterministic equality,
+and a database whose default provider is ICU.
+
 ## Extension installation versions
 
 All eight selected extensions are mandatory:
@@ -332,14 +354,16 @@ Each component contains:
 Multiple reviewed components may contribute to the same binary, such as source code and a compiler runtime.
 Every payload file must have reviewed component coverage.
 Every native image must also be in the files of a source component, even when another component describes part of it.
-And it must be covered by each of the target's toolchain components,
-because the linker adds that code to every image:
+Each code-bearing image must also be covered by its linked toolchain components.
+The LLVM C++ runtime component covers ICU's code libraries.
+The generated ICU data library needs no linked-runtime coverage.
 
-| Target  | Component       | Linked code                                                          | Toolchain line in `hostEvidence` |
-| ------- | --------------- | -------------------------------------------------------------------- | -------------------------------- |
-| Linux   | `compiler-rt`   | Clang's runtime builtins and startup objects                         | `Clang major version`            |
-| Linux   | `glibc-startup` | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                          |
-| Windows | `msvc-runtime`  | MSVC code from `msvcrt.lib` and `vcruntime.lib`                      | `Visual Studio product line`     |
+| Target  | Component          | Linked code                                                          | Toolchain line in `hostEvidence` |
+| ------- | ------------------ | -------------------------------------------------------------------- | -------------------------------- |
+| Linux   | `compiler-rt`      | Clang's runtime builtins and startup objects                         | `Clang major version`            |
+| Linux   | `glibc-startup`    | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                          |
+| Linux   | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `Clang major version`            |
+| Windows | `msvc-runtime`     | MSVC startup code and the reviewed C++ support members               | `Visual Studio product line`     |
 
 The macOS linker maps must cover every image and have a complete list of object files.
 The audit resolves each input against the original link directory and build root, including after a checkout move.
@@ -368,8 +392,10 @@ and the `LIB` directories from `vcvars64.bat`.
 An unknown or ambiguous origin stops packaging.
 It reads each Microsoft library to tell its import records apart from code or data that the linker copies,
 so a member's `.dll` name does not count.
-Static members may come only from `msvcrt.lib` and `vcruntime.lib` in the Visual Studio toolset folder,
-which the `msvc-runtime` notice names; any other static Microsoft member fails, naming the image, library and member.
+Static members may come from `msvcrt.lib` and `vcruntime.lib` in the Visual Studio toolset folder.
+ICU also uses the reviewed `vector_algorithms.obj` and `xonce2.obj` members of `msvcprt.lib`.
+The `msvc-runtime` notice covers this code.
+Every other static Microsoft member fails, naming the image, library and member.
 This refuses the static and the debug CRT (`libcmt.lib`, `msvcrtd.lib`) and any static Windows SDK code.
 Each successful link records the hashes of its image and map.
 The build verifies both hashes and checks the map's module name, timestamp and symbol table
@@ -386,7 +412,8 @@ which names the line and product and says not to redistribute the binaries.
 The `msvc-runtime` component must list it in `files` and `notices`, so a changed notice text reopens its review.
 Each source's component must list all its retained notices in `notices`.
 Each extension's source component must list its control file, SQL files, and native libraries in `files`.
-The `postgresql` component must list every other native image, because PostgreSQL's own build makes them.
+The `icu` component must list ICU's native libraries.
+The `postgresql` component must list every remaining native image, because PostgreSQL's own build makes them.
 A compiler's license metadata alone does not describe its emitted runtime contributions.
 
 Release validation is the default.
@@ -412,8 +439,8 @@ glibc's startup sources add that exception to the LGPL, which permits linking th
 distributing the result; SPDX lists glibc's wording as a reference text for the exception.
 
 The Visual Studio identifier is the only proprietary licence admitted for bundled code.
-It covers the static code from Visual Studio toolset libraries that the linker copies into every Windows image;
-today these are startup objects of `msvcrt.lib` and members of `vcruntime.lib`.
+It covers startup and support code from `msvcrt.lib` and `vcruntime.lib`,
+and the two reviewed `msvcprt.lib` members used by ICU.
 Microsoft's Distributable List names runtime files, not this linked code.
 The project applies the conditions of the Distributable Code section to it, and `notices/msvc-runtime.txt` passes them on.
 The identifier belongs to Visual Studio 2026, which reports the product line `18`.
@@ -428,16 +455,17 @@ Some reviewed source code is under licences outside the permitted set.
 Each is admitted only for the source component that contains it, and that component must carry it,
 because the code ships in every build of the source:
 
-| Component    | Licence                     | Code                                                                 |
-| ------------ | --------------------------- | -------------------------------------------------------------------- |
-| `postgresql` | `Spencer-99`, `TCL`         | Henry Spencer's regex package and the Tcl code in it                 |
-| `postgresql` | `BSL-1.0`                   | Ryu (`src/common/d2s.c`, `f2s.c`), used under the Boost licence      |
-| `postgresql` | `LicenseRef-GEQO-Whitley`   | GEQO (`src/backend/optimizer/geqo`), granted for free distribution   |
-| `postgresql` | `LicenseRef-pg-dump-Warner` | parts of pg_dump                                                     |
-| `postgresql` | `LicenseRef-rbtree-Niemann` | `src/backend/lib/rbtree.c`                                           |
-| `postgresql` | `LicenseRef-X0213`          | the EUC-JIS-2004 and Shift_JIS-2004 conversion maps                  |
-| `pg_cron`    | `Vixie-Cron`                | Paul Vixie's cron code, which may be sold only with buildable source |
-| `pg_cron`    | `BSD-4.3TAHOE`              | `bitstring.h`, developed by the University of California, Berkeley   |
+| Component    | Licence                     | Code                                                                      |
+| ------------ | --------------------------- | ------------------------------------------------------------------------- |
+| `postgresql` | `Spencer-99`, `TCL`         | Henry Spencer's regex package and the Tcl code in it                      |
+| `postgresql` | `BSL-1.0`                   | Ryu (`src/common/d2s.c`, `f2s.c`), used under the Boost licence           |
+| `postgresql` | `LicenseRef-GEQO-Whitley`   | GEQO (`src/backend/optimizer/geqo`), granted for free distribution        |
+| `postgresql` | `LicenseRef-pg-dump-Warner` | parts of pg_dump                                                          |
+| `postgresql` | `LicenseRef-rbtree-Niemann` | `src/backend/lib/rbtree.c`                                                |
+| `postgresql` | `LicenseRef-X0213`          | the EUC-JIS-2004 and Shift_JIS-2004 conversion maps                       |
+| `pg_cron`    | `Vixie-Cron`                | Paul Vixie's cron code, which may be sold only with buildable source      |
+| `pg_cron`    | `BSD-4.3TAHOE`              | `bitstring.h`, developed by the University of California, Berkeley        |
+| `icu`        | `ICU`, `NAIST-2003`         | Legacy ICU terms and IPADIC dictionary data retained in `notices/icu.txt` |
 
 The `LicenseRef-` texts and the other notices ship among the source's retained notices.
 These licences are not host licences either.

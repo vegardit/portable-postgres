@@ -36,6 +36,7 @@ import {
   readMachO,
 } from "./macho.ts";
 import { additionalNoticeName } from "./notices.ts";
+import { dataOnlyElf, dataOnlyPe } from "./data-library.ts";
 import * as z from "zod";
 import {
   type ArtifactTarget,
@@ -45,8 +46,11 @@ import {
   extensionNames,
   includesRuntimePath,
   isMacOSClientLibrary,
+  isIcuLibrary,
+  isIcuDataLibrary,
   moduleSuffix,
   requiredModules,
+  requiredIcuLibraries,
   sqlOnlyExtensions,
 } from "./runtime-layout.ts";
 
@@ -58,11 +62,9 @@ export const msvcRuntimeNoticePath = "notices/msvc-runtime.txt";
 export const reviewedMsvcNoticeFile = join(projectRoot, "binaries/windows", msvcRuntimeNoticePath);
 
 /**
- * Toolchain code that the linker puts into every native image, besides the code of the source it was
- * built from. Each part's licence review is a component of its own, which must cover every image.
- * Its code ships no upstream licence text to compare, so the review is bound to the host evidence naming
- * the toolchain line; the terms change with the line, not with each toolset update.
- * A part with a `notice` ships the project's own notice for that code, and its review binds that text too.
+ * Toolchain code linked into native images besides the source's own code. Each part has its own review,
+ * covering the images to which it contributes. Reviews bind the host evidence naming the toolchain line.
+ * A part with a `notice` retains the project's notice or upstream licence texts, which the review binds too.
  */
 export const toolchainComponents: Record<
   ArtifactTarget,
@@ -72,6 +74,11 @@ export const toolchainComponents: Record<
     { id: "compiler-rt", evidence: "Clang major version" },
     // Scrt1.o, crti.o, crtn.o and members of libc_nonshared.a are linked statically into every ELF image.
     { id: "glibc-startup", evidence: "glibc" },
+    {
+      id: "llvm-cxx-runtime",
+      evidence: "Clang major version",
+      notice: "notices/llvm-cxx-runtime.txt",
+    },
   ],
   "windows-x64": [
     {
@@ -100,6 +107,19 @@ export function toolchainEvidence(id: string): string {
   return part.evidence;
 }
 
+/** The LLVM C++ runtime is statically linked only into ICU's Linux code libraries. */
+export function toolchainImages(
+  id: string,
+  images: readonly string[],
+  target: ArtifactTarget,
+): string[] {
+  // The generated locale-data library has no executable code or linked CRT startup.
+  const codeImages = images.filter(path => !isIcuDataLibrary(path, target));
+  return id === "llvm-cxx-runtime"
+    ? codeImages.filter(path => isIcuLibrary(path, target))
+    : codeImages;
+}
+
 /**
  * glibc's startup sources add the GCC linking exception to the LGPL; SPDX lists glibc's wording of it as a
  * reference text. This is not GCC's own runtime, whose GPL licence stays forbidden.
@@ -124,7 +144,8 @@ export const releaseVisualStudioEditions: readonly string[] = [
 /**
  * Visual Studio product lines whose licence terms were reviewed, and the identifier for the static code from
  * Visual Studio toolset libraries that their linker copies into every image; today these are startup objects
- * of msvcrt.lib and members of vcruntime.lib. Microsoft's Distributable List names runtime files, not this
+ * of msvcrt.lib, members of vcruntime.lib, and the reviewed msvcprt.lib helpers used by ICU.
+ * Microsoft's Distributable List names runtime files, not this
  * linked code; the project applies the conditions of the Distributable Code section to it, and the shipped
  * notice passes them on, as CPython's does. Both Windows notices name these lines:
  * `notices/msvc-runtime.txt` describes them, and `notices/msvc-runtime-candidate.txt` calls them the release
@@ -168,7 +189,9 @@ export function visualStudioReleaseGap(hostEvidence: readonly HostEvidence[]): s
 function toolchainLicenses(manifest: ArtifactManifest): Map<string, string> {
   const licenses = new Map<string, string>();
   for (const part of toolchainComponents[manifest.target]) {
-    if (part.id === "compiler-rt") licenses.set(part.id, compilerRtLicense);
+    if (part.id === "compiler-rt" || part.id === "llvm-cxx-runtime") {
+      licenses.set(part.id, compilerRtLicense);
+    }
     if (part.id === "glibc-startup") licenses.set(part.id, glibcStartupLicense);
     if (part.id === "msvc-runtime") {
       const gap = visualStudioReleaseGap(manifest.hostEvidence);
@@ -264,6 +287,8 @@ export const sourceComponentLicenses: ReadonlyMap<string, readonly string[]> = n
   ]],
   // Paul Vixie's cron code and the Berkeley bitstring.h.
   ["pg_cron", ["Vixie-Cron", "BSD-4.3TAHOE"]],
+  // ICU retains its older licence and the IPADIC dictionary's additional terms in its full data library.
+  ["icu", ["ICU", "NAIST-2003"]],
 ]);
 
 const errorPrefix = "Native artifact: ";
@@ -767,11 +792,12 @@ const manifestSchema = z.object({
   postgresqlVersion: z.string().regex(/^18\.\d+$/, "PostgreSQL 18 is required"),
   executables: z.record(z.enum(executableNames), text),
   extensions: z.array(extensionSchema).length(8, "expected all eight extensions"),
-  sources: z.array(sourceSchema).min(9, "expected all nine source inputs").check(context => {
+  // All targets include ICU; a manifest cannot opt out of its runtime and licence checks.
+  sources: z.array(sourceSchema).min(10, "expected all ten source inputs").check(context => {
     const ids = context.value.map(source => source.id);
     const problems = [
       ...ids.some((id, index) => ids.indexOf(id) !== index) ? ["duplicate source ID"] : [],
-      ...["postgresql", ...Object.keys(extensionNames)].filter(id => !ids.includes(id))
+      ...["postgresql", "icu", ...Object.keys(extensionNames)].filter(id => !ids.includes(id))
         .map(id => "missing source: " + id),
     ];
     for (const message of problems) {
@@ -902,7 +928,7 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
         "missing toolchain notice for " + part.id + ": " + part.notice,
       );
     }
-    for (const image of images) {
+    for (const image of toolchainImages(part.id, images, manifest.target)) {
       requireCondition(
         toolchain.files.includes(image),
         "missing toolchain coverage for " + part.id + ": " + image,
@@ -915,13 +941,16 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   // Global coverage also counts toolchain components, components added by hand, and other sources, none
   // of which built the image; the source that built it must still be credited with it. Extensions build
   // the libraries in their layout, which are checked with their other files below, and PostgreSQL's own
-  // build makes every other image.
+  // build makes every other image except the bundled ICU dependency.
   const extensionLibraries = new Set(manifest.extensions.flatMap(extension => extension.libraries));
   const postgresql = new Set(components.get("postgresql")?.files);
   for (const image of images) {
+    const owner = isIcuLibrary(image, manifest.target) ? "icu" : "postgresql";
     requireCondition(
-      extensionLibraries.has(image) || postgresql.has(image),
-      "missing license coverage for postgresql: " + image,
+      extensionLibraries.has(image) || (owner === "postgresql"
+        ? postgresql.has(image)
+        : components.get(owner)?.files.includes(image)),
+      "missing license coverage for " + owner + ": " + image,
     );
   }
   for (const source of manifest.sources) {
@@ -1201,6 +1230,10 @@ async function inspectArtifact(
     "payload inventory/hash/permission mismatch",
   );
   const entries = new Map(current.map(file => [file.path, file]));
+  const icu = manifest.sources.find(source => source.id === "icu")!;
+  for (const path of requiredIcuLibraries(expectedTarget, icu.version)) {
+    requireCondition(entries.has(path), "missing ICU runtime library: " + path);
+  }
   const images: string[] = [];
   for (const file of current) {
     const path = join(installation, file.path);
@@ -1212,6 +1245,14 @@ async function inspectArtifact(
       || (file.kind === "file" && await isNativeImage(path))
     ) {
       validateMachine(await readFile(path), expectedTarget, file.path);
+      // A library name alone cannot exempt executable code from the linked-runtime licence review.
+      if (isIcuDataLibrary(file.path, expectedTarget)
+        && expectedTarget !== "macos-arm64")
+      {
+        const data = await readFile(path);
+        requireCondition(expectedTarget === "windows-x64" ? dataOnlyPe(data) : dataOnlyElf(data),
+          "ICU data library contains executable code: " + file.path);
+      }
       // A symlink is checked through its target, but only the target is an image that needs coverage.
       if (file.kind === "file") images.push(file.path);
     }

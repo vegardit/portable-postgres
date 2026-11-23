@@ -47,7 +47,16 @@ if errorlevel 1 exit /b 1
 set "PATH=%WORK_ROOT%\windows-tools\winflexbison;%VS_ROOT%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
 REM NOTE: Git's MSYS Perl rewrites MSVC switches as paths; reconsider when using native Windows Perl.
 set "MSYS2_ARG_CONV_EXCL=*"
-"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=disabled -Dicu=disabled -Dssl=none -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
+cmake -S "%PROJECT_ROOT%\binaries\windows\icu" -B "%WORK_ROOT%\windows-icu" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%PG_PREFIX%" -DICU_ROOT="%WORK_ROOT%\windows-sources\icu" > "%WORK_ROOT%\icu-configure.log" 2>&1
+if errorlevel 1 exit /b 1
+node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-icu\CMakeFiles\rules.ninja"
+if errorlevel 1 exit /b 1
+cmake --build "%WORK_ROOT%\windows-icu" --parallel %BUILD_JOBS% > "%WORK_ROOT%\icu-build.log" 2>&1
+if errorlevel 1 exit /b 1
+cmake --install "%WORK_ROOT%\windows-icu" > "%WORK_ROOT%\icu-install.log" 2>&1
+if errorlevel 1 exit /b 1
+set "ICU_ROOT=%PG_PREFIX%"
+"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --native-file "%PG_PREFIX%\icu-dependencies.ini" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=disabled -Dicu=enabled -Dssl=none -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
 if errorlevel 1 (
   type "%WORK_ROOT%\windows-postgresql-configure.log"
   exit /b 1

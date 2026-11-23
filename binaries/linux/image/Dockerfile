@@ -26,7 +26,8 @@ RUN test -n "$LLVM_MAJOR" \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
     bison build-essential "clang-$LLVM_MAJOR" cmake file flex "libclang-rt-$LLVM_MAJOR-dev" "llvm-$LLVM_MAJOR" \
-    patchelf perl pkg-config python3 \
+     "libc++-$LLVM_MAJOR-dev" "libc++abi-$LLVM_MAJOR-dev" "libunwind-$LLVM_MAJOR-dev" \
+     patchelf perl pkg-config python3 \
  && rm -rf /var/lib/apt/lists/* /tmp/llvm.asc \
  # Clang reads clang.cfg next to its binary on every call, so even a link whose recipe drops LDFLAGS
  # uses compiler-rt instead of GCC's GPL runtime and links through traced-ld, which records the link's
@@ -36,9 +37,10 @@ RUN test -n "$LLVM_MAJOR" \
     > "/usr/lib/llvm-$LLVM_MAJOR/bin/clang.cfg" \
  && node --version
 COPY --chmod=0755 traced-ld.sh /usr/local/bin/traced-ld
+COPY --chmod=0755 clang-cxx.sh /usr/local/bin/portable-clang-cxx
 # A fresh build compares these with the checkout's recipe, so that it never runs in an image that an older
 # recipe built.
 ARG UBUNTU_IMAGE
-COPY Dockerfile traced-ld.sh /usr/local/share/portable-postgres/recipe/
+COPY Dockerfile traced-ld.sh clang-cxx.sh /usr/local/share/portable-postgres/recipe/
 RUN printf '%s\n' "$UBUNTU_IMAGE" > /usr/local/share/portable-postgres/recipe/ubuntu-image \
  && printf '%s\n' "$LLVM_MAJOR" > /usr/local/share/portable-postgres/recipe/llvm-major

@@ -33,10 +33,12 @@ import {
   reviewedMsvcNoticeFile,
   toolchainComponents,
   toolchainNotices,
+  toolchainImages,
   validateArtifact,
   visualStudioReleaseGap,
   writeDescribedManifest,
 } from "./artifact.ts";
+import { isIcuLibrary } from "./runtime-layout.ts";
 
 /**
  * The tracked per-target review: the licence inventory and host requirements for one payload file list.
@@ -173,6 +175,9 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       files: [
         ...source.notices,
         ...extension ? [extension.control, ...extension.sql, ...extension.libraries] : [],
+        ...source.id === "icu"
+          ? manifest.files.filter(file => isIcuLibrary(file.path, target)).map(file => file.path)
+          : [],
       ],
       notices: [...source.notices],
       noticeSha256: noticeSha256(source.notices),
@@ -211,7 +216,7 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       id: part.id,
       licenses: [],
       status: "pending",
-      files: [...notices, ...images],
+      files: [...notices, ...toolchainImages(part.id, images, target)],
       notices,
       noticeSha256: noticeSha256(notices),
       // A candidate without toolchain evidence still drafts; release validation then names the gap.

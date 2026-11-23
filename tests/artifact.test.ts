@@ -24,12 +24,13 @@ import {
   type ArtifactManifest,
   artifactManifestName,
   type ArtifactTarget,
+  parseArtifactManifest,
   sourceComponentLicenses,
   validateArtifact,
   verifyArtifactArchive,
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
-import { moduleSuffix } from "../binaries/artifact/runtime-layout.ts";
+import { moduleSuffix, requiredIcuLibraries } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import {
   createCandidate,
@@ -120,6 +121,39 @@ it("candidate metadata records portable executables and real control/SQL version
   );
 });
 
+it.each(releaseTargets)("%s requires the complete ICU runtime and its source ownership",
+  async target => {
+    const { root, manifest } = await fixture(target);
+    const withoutIcu = manifest.sources.filter(source => source.id !== "icu");
+    // ICU is mandatory; an unrelated source cannot satisfy the requirement by restoring the count.
+    for (const inputs of [withoutIcu, [...withoutIcu, { ...withoutIcu[0]!, id: "unrelated" }]]) {
+      expect.soft(() => parseArtifactManifest(JSON.stringify({ ...manifest, sources: inputs })))
+        .toThrow(/missing source: icu|expected all ten source inputs/);
+    }
+    manifest.hostRequirements = hostRequirementsFixture(target);
+    manifest.licenseInventory = reviewedFixture(manifest);
+    const icu = manifest.licenseInventory.components.find(component => component.id === "icu")!;
+    const path = requiredIcuLibraries(target,
+      sources.find(source => source.id === "icu")!.version)[0]!;
+    icu.files = icu.files.filter(file => file !== path);
+    // Another source's coverage must never substitute for the component that built ICU.
+    manifest.licenseInventory.components.find(component => component.id === "postgresql")!.files
+      .push(path);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target)).rejects.toThrow(
+      "missing license coverage for icu: " + path,
+    );
+    await rm(join(root, path));
+    await rm(join(root, artifactManifestName));
+    await expect(writeArtifactManifest(root, {
+      target,
+      packagingRevision: 2,
+      hostEvidence: manifest.hostEvidence,
+    })).rejects.toThrow(
+      "missing ICU runtime library: " + path,
+    );
+  });
+
 it.each([
   "lib/vector.dll",
   "bin/libpq.dll",
@@ -132,6 +166,28 @@ it.each([
     const { root } = await fixture();
     await rm(join(root, path));
     await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow();
+  },
+);
+
+it.each(releaseTargets.filter(target => target !== "macos-arm64"))(
+  "%s refuses executable code disguised as ICU locale data",
+  async target => {
+    const { root, manifest } = await fixture(target);
+    const path = requiredIcuLibraries(target,
+      sources.find(source => source.id === "icu")!.version)[2]!;
+    const image = await readFile(join(root, path));
+    image.writeUInt32LE(target === "windows-x64" ? 0x60_00_00_20 : 5,
+      target === "windows-x64" ? 364 : 68);
+    await writeFile(join(root, path), image);
+    await rm(join(root, artifactManifestName));
+    await expect(
+      writeArtifactManifest(root, {
+        target,
+        packagingRevision: 2,
+        hostEvidence: manifest.hostEvidence,
+      }),
+    )
+      .rejects.toThrow("ICU data library contains executable code: " + path);
   },
 );
 

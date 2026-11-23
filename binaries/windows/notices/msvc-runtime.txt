@@ -3,13 +3,15 @@ Conditions for the Microsoft code in the Windows binaries
 
 The Windows binaries in this archive were built with the Microsoft C/C++
 compiler of Visual Studio 2026 and use the dynamically linked Microsoft C
-runtime. The linker copies some Microsoft code into every .exe and .dll file:
-startup and support code from msvcrt.lib and vcruntime.lib. This code is
+runtime. The linker copies Microsoft startup and support code from msvcrt.lib
+and vcruntime.lib into code-bearing .exe and .dll files. ICU's common library
+also includes vector_algorithms.obj and xonce2.obj from msvcprt.lib. This code is
 copyrighted by Microsoft Corporation. The open-source licenses in this archive
 do not apply to it.
 
-The Microsoft C runtime libraries, vcruntime140.dll and the Universal C
-Runtime (ucrtbase.dll), are not part of this archive. The computer that runs
+The Microsoft C and C++ runtime libraries, vcruntime140.dll,
+vcruntime140_1.dll, msvcp140.dll and the Universal C Runtime (ucrtbase.dll),
+are not part of this archive. The computer that runs
 the binaries must provide them. Windows 10 and later include the Universal C
 Runtime.
 

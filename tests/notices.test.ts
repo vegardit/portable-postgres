@@ -45,17 +45,20 @@ it("ships both Regents notices from PostgreSQL under runtime-safe names", async 
 });
 
 it("each toolchain notice has its text next to the target's recipe and ships under its archive path", async () => {
-  // The Windows build passes the recipe file with the same relative path as the archive path.
-  for (const notice of toolchainNotices("windows-x64")) {
-    const text = join(root, "binaries/windows", notice);
-    const installation = await directory();
-    await copySourceNotices(await sourceTree(await directory()), installation, [text]);
-    await expect(readFile(join(installation, notice), "utf8")).resolves.toBe(
-      await readFile(text, "utf8"),
-    );
+  for (const [target, recipe] of [
+    ["windows-x64", "windows"],
+    ["linux-x64-glibc", "linux"],
+  ] as const) {
+    for (const notice of toolchainNotices(target)) {
+      const text = join(root, "binaries", recipe, notice);
+      const installation = await directory();
+      await copySourceNotices(await sourceTree(await directory()), installation, [text]);
+      await expect(readFile(join(installation, notice), "utf8")).resolves.toBe(
+        await readFile(text, "utf8"),
+      );
+    }
   }
-  // The Linux build passes no toolchain notices; a Linux notice would need it to.
-  expect(toolchainNotices("linux-x64-glibc")).toEqual([]);
+  expect(toolchainNotices("linux-x64-glibc")).toContain("notices/llvm-cxx-runtime.txt");
 });
 
 it("ships every project notice with its pinned bytes, and refuses a text edited after pinning", async () => {

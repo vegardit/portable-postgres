@@ -28,6 +28,8 @@ fi
 umask 077
 export LC_ALL=C
 unset "${!PG@}"
+# Locale data must come from the archive during the proof.
+unset ICU_DATA
 # Preserve diagnostic data on failure; this proof never removes an installation or cluster.
 proof_work=$(mktemp -d /tmp/portable-postgres-proof.XXXXXXXX)
 # The clean consumer copies this directory even on failure. Keep the cluster and credentials outside it.

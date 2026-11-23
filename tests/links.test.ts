@@ -49,6 +49,25 @@ it("accepts an image whose link copied only reviewed toolchain code", async () =
   await expect(auditLinks(installation, records, buildId)).resolves.toBeUndefined();
 });
 
+it("checks ICU's data-only library without requiring C startup objects", async () => {
+  const path = "lib/libicudata.so.79.1";
+  const { installation, records } = await candidate(path, ["/build/icudt79l_dat.o"]);
+  const image = Buffer.alloc(120);
+  elfFixture().copy(image);
+  image.writeBigUInt64LE(64n, 32);
+  image.writeUInt16LE(56, 54);
+  image.writeUInt16LE(1, 56);
+  image.writeUInt32LE(1, 64); // PT_LOAD.
+  image.writeUInt32LE(4, 68); // Readable data, without PF_X.
+  await writeFile(join(installation, path), image);
+  await expect(auditLinks(installation, records, buildId)).resolves.toBeUndefined();
+  image.writeUInt32LE(5, 68);
+  await writeFile(join(installation, path), image);
+  await expect(auditLinks(installation, records, buildId)).rejects.toThrow(
+    "No linker record for " + path,
+  );
+});
+
 it.each([
   ["bin/postgres", undefined],
   // Assembly ships images outside bin and lib as well, and validation finds them by their bytes.

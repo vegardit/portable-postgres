@@ -9,7 +9,7 @@
  * Checks what the linker copied into each PE image of a Windows candidate. build.cmd has every link write a
  * `/MAP` file beside its output, which names the library member behind every public and static symbol.
  * The link output must be byte-identical to the packaged image, so a map always describes the image it is
- * checked for. Static Microsoft code may only come from the Visual Studio toolset libraries that the
+ * checked for. Static Microsoft code may only come from the reviewed Visual Studio toolset libraries and members that the
  * `msvc-runtime` notice names; import stubs may come from any Microsoft library.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -19,15 +19,21 @@ import { z } from "zod";
 import { readOptionalText } from "../files.ts";
 import { fileSha256 } from "../hash.ts";
 import { linkEnvironmentFile } from "./link-recipe.ts";
+import { dataOnlyPe } from "../artifact/data-library.ts";
+import { isIcuDataLibrary } from "../artifact/runtime-layout.ts";
 
 export { linkEnvironmentFile } from "./link-recipe.ts";
 
 /**
  * The only Microsoft libraries whose static members may be linked: the dynamic CRT's startup and support code,
- * which `notices/msvc-runtime.txt` names, from the Visual Studio toolset folder. Their static CRT (`libcmt`,
+ * which `notices/msvc-runtime.txt` names, from the Visual Studio toolset folder. The reviewed C++ helpers
+ * are listed separately below. Their static CRT (`libcmt`,
  * `libvcruntime`) and debug (`msvcrtd`, `vcruntimed`) siblings live in the same folder and fail.
  */
 const admittedStaticLibraries = new Set(["msvcrt", "vcruntime"]);
+// ICU's standard-library use links these two support members even with the dynamic C++ runtime.
+// Further members require a notice and licence review before they can be admitted here.
+const admittedStlMembers = new Set(["vector_algorithms.obj", "xonce2.obj"]);
 
 export type LinkEnvironment = { toolsetLibrary: string; sdkVersion: string; libraryPath: string[] };
 
@@ -237,17 +243,18 @@ type LinkOutput = { map: string; output: string };
 async function classifyImage(
   name: string,
   link: LinkOutput & { libraries: string[] },
-  timestamp: number,
+  image: { timestamp: number; dataOnly: boolean },
   map: Buffer,
   index: LibraryIndex,
   problems: string[],
 ): Promise<ImageEvidence["staticMembers"]> {
   const text = map.toString("latin1");
+  const { timestamp, dataOnly } = image;
   const membersByLibrary = mapContributions(text);
   const stamp = /^\s*Timestamp is ([a-f\d]+)\b/im.exec(text)?.[1];
   if (text.split(/\r?\n/, 1)[0]?.trim().toLowerCase() !== libraryKey(link.output)
     || !stamp || Number.parseInt(stamp, 16) !== timestamp
-    || membersByLibrary.size === 0 || !/^\s*entry point at\s+/im.test(text))
+    || (membersByLibrary.size === 0 && !dataOnly) || !/^\s*entry point at\s+/im.test(text))
   {
     throw new Error("Incomplete or mismatched link map for " + name + ": " + link.map);
   }
@@ -288,7 +295,8 @@ async function classifyImage(
       const kind = kinds.get(member.toLowerCase());
       if (kind === "import") continue;
       if (kind === "static" && pathKey(dirname(path)) === index.toolset
-        && admittedStaticLibraries.has(key))
+        && (admittedStaticLibraries.has(key)
+          || (key === "msvcprt" && admittedStlMembers.has(member.toLowerCase()))))
       {
         (staticMembers[path] ??= []).push(member);
       } else {
@@ -308,13 +316,15 @@ export async function auditWindowsLinks(
   buildWork: string,
   mode: "build" | "assemble" = "build",
 ): Promise<WindowsLinkSummary> {
-  const images = new Map<string, { hash: string; timestamp: number }>();
+  const images = new Map<string, { hash: string; timestamp: number; dataOnly: boolean }>();
   for (const file of await filesBelow(installation)) {
     const data = await readFile(file);
     if (isPeImage(data)) {
       images.set(relative(installation, file).split(sep).join("/"), {
         hash: createHash("sha256").update(data).digest("hex"),
         timestamp: data.readUInt32LE(data.readUInt32LE(60) + 8),
+        dataOnly: isIcuDataLibrary(relative(installation, file).split(sep).join("/"), "windows-x64")
+          && dataOnlyPe(data),
       });
     }
   }
@@ -348,7 +358,7 @@ export async function auditWindowsLinks(
   const problems: string[] = [];
   const evidence: Record<string, ImageEvidence> = {};
   const staticMicrosoftCode = new Map<string, Set<string>>();
-  for (const [name, { hash, timestamp }] of images) {
+  for (const [name, { hash, timestamp, dataOnly }] of images) {
     const matches = records.get(hash) ?? [];
     if (matches.length !== 1) {
       problems.push(
@@ -373,8 +383,10 @@ export async function auditWindowsLinks(
       }
       entry = {
         mapHash,
-        staticMembers: await classifyImage(name, { ...link, libraries: record.libraries },
-          timestamp, map, index, problems),
+        staticMembers: await classifyImage(name, { ...link, libraries: record.libraries }, {
+          timestamp,
+          dataOnly,
+        }, map, index, problems),
       };
       evidence[hash] = entry;
     }

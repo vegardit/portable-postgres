@@ -34,7 +34,9 @@ await mkdir(output, { recursive: true });
 const proof = await mkdtemp(join(output, "native proof-"));
 const systemRoot = process.env["SystemRoot"] ?? "C:\\Windows";
 const env = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("PG")),
+  Object.entries(process.env).filter(([key]) =>
+    !key.toUpperCase().startsWith("PG") && key.toUpperCase() !== "ICU_DATA"
+  ),
 );
 env["LC_ALL"] = "C";
 // Restrict DLL/tool search to the candidate and Windows; developer tools must not make this proof pass.

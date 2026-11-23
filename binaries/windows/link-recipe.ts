@@ -55,7 +55,7 @@ if (import.meta.main) {
     const build = basename(directory) === "CMakeFiles" ? dirname(directory) : directory;
     const helper = 'node "' + relative(build, import.meta.filename) + '" trace ';
     const updated = rules.replaceAll(
-      /^rule (?:c_LINKER(?:_RSP)?|C_(?:MODULE|SHARED)_LIBRARY_LINKER__\S+)\r?\n(?:[ \t]+[^\r\n]*(?:\r?\n|$))+/gm,
+      /^rule (?:c_LINKER(?:_RSP)?|(?:C|CXX)_(?:MODULE|SHARED)_LIBRARY_LINKER__\S+)\r?\n(?:[ \t]+[^\r\n]*(?:\r?\n|$))+/gm,
       rule => {
         // CMake hides successful linker stdout inside vs_link_dll. Trace the linker inside that command.
         const traced = rule.replace(/^( command = )("link")/m, "$1" + helper + "$out $2")
