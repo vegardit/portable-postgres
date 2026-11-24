@@ -15,6 +15,15 @@ CREATE EXTENSION pg_cron;
 CREATE SCHEMA partman;
 CREATE EXTENSION pg_partman SCHEMA partman;
 CREATE EXTENSION pgtap;
+CREATE EXTENSION pgmq;
+CREATE EXTENSION btree_gist;
+CREATE EXTENSION citext;
+CREATE EXTENSION hstore;
+CREATE EXTENSION ltree;
+CREATE EXTENSION pg_stat_statements;
+CREATE EXTENSION pg_trgm;
+CREATE EXTENSION pgcrypto;
+CREATE EXTENSION unaccent;
 
 -- Match the exact index name in the structured plan because a sequential scan can return the same rows.
 -- With executed, the query runs under EXPLAIN ANALYZE and the index node must have run at least once;
@@ -167,6 +176,79 @@ BEGIN
 END
 $$;
 RESET enable_seqscan;
+
+SELECT pgmq.create('proof_queue');
+SELECT pgmq.send('proof_queue', '{"proof": 1}'::jsonb);
+DO $$
+DECLARE
+  received record;
+BEGIN
+  SELECT * INTO STRICT received FROM pgmq.read(queue_name => 'proof_queue', vt => 30, qty => 1);
+  IF received.message IS DISTINCT FROM '{"proof": 1}'::jsonb THEN
+    RAISE EXCEPTION 'pgmq returned an unexpected message';
+  END IF;
+  -- The visibility timeout hides the message from a second reader until it is archived or expires.
+  IF EXISTS (SELECT FROM pgmq.read(queue_name => 'proof_queue', vt => 30, qty => 1))
+     OR NOT pgmq.archive('proof_queue', received.msg_id) THEN
+    RAISE EXCEPTION 'pgmq did not hide and archive the message it delivered';
+  END IF;
+END
+$$;
+
+-- An equality operator in a GiST exclusion constraint needs btree_gist's operator classes.
+CREATE TABLE bookings (room integer, during tstzrange, EXCLUDE USING gist (room WITH =, during WITH &&));
+INSERT INTO bookings VALUES (1, '[2026-01-01, 2026-01-02)'), (2, '[2026-01-01, 2026-01-02)');
+DO $$
+BEGIN
+  INSERT INTO bookings VALUES (1, '[2026-01-01 12:00, 2026-01-03)');
+  RAISE EXCEPTION 'The btree_gist exclusion constraint accepted an overlapping booking';
+EXCEPTION WHEN exclusion_violation THEN
+  NULL;
+END
+$$;
+
+CREATE INDEX document_trigram_index ON documents USING gin (content gin_trgm_ops);
+SET enable_seqscan = off;
+SELECT pg_temp.assert_plan_uses_index(
+  $query$SELECT id FROM documents WHERE content LIKE '%postgres%'$query$,
+  'document_trigram_index', executed => true);
+RESET enable_seqscan;
+
+DO $$
+DECLARE
+  password_hash text := crypt('proof', gen_salt('bf', 4));
+BEGIN
+  IF 'Portable'::citext <> 'PORTABLE'::citext THEN
+    RAISE EXCEPTION 'citext compared case-sensitively';
+  END IF;
+  IF ('a=>1, b=>2'::hstore -> 'b') IS DISTINCT FROM '2' THEN
+    RAISE EXCEPTION 'hstore returned an unexpected value';
+  END IF;
+  IF NOT ('Top.Science.Astronomy'::ltree <@ 'Top.Science'::ltree) THEN
+    RAISE EXCEPTION 'ltree did not recognize a descendant path';
+  END IF;
+  IF similarity('postgres', 'postgras') NOT BETWEEN 0.4 AND 0.9 THEN
+    RAISE EXCEPTION 'pg_trgm returned an unexpected similarity';
+  END IF;
+  -- The rules come from share/tsearch_data/unaccent.rules, which the extension reads on first use.
+  IF unaccent(U&'H\00F4tel') IS DISTINCT FROM 'Hotel' THEN
+    RAISE EXCEPTION 'unaccent did not remove the accent';
+  END IF;
+  -- The digest and the cipher run in the bundled OpenSSL; ZIP compression runs in the bundled zlib.
+  IF encode(digest('abc', 'sha256'), 'hex')
+       <> 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+     OR crypt('proof', password_hash) IS DISTINCT FROM password_hash
+     OR crypt('other', password_hash) = password_hash
+     OR pgp_sym_decrypt(pgp_sym_encrypt(repeat('proof', 100), 'key', 'compress-algo=1'), 'key')
+       <> repeat('proof', 100) THEN
+    RAISE EXCEPTION 'pgcrypto returned an unexpected digest, password hash or PGP message';
+  END IF;
+  -- The view fails unless the server preloaded pg_stat_statements; this session has run statements.
+  IF NOT EXISTS (SELECT FROM pg_stat_statements WHERE calls > 0) THEN
+    RAISE EXCEPTION 'pg_stat_statements recorded no statement';
+  END IF;
+END
+$$;
 
 -- Keep a table that both dump proofs can restore independently of the extensions.
 CREATE TABLE compression_sample (value text COMPRESSION lz4);

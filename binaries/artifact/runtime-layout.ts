@@ -40,7 +40,23 @@ export const extensionNames = {
   pg_cron: "pg_cron",
   pg_partman: "pg_partman",
   pgtap: "pgtap",
+  pgmq: "pgmq",
 } as const;
+
+/**
+ * The modules from PostgreSQL's contrib directory that every runtime ships. PostgreSQL's own source builds
+ * them, so they have no source pin of their own; every other contrib module stays out of the runtime.
+ */
+export const contribExtensions = [
+  "btree_gist",
+  "citext",
+  "hstore",
+  "ltree",
+  "pg_stat_statements",
+  "pg_trgm",
+  "pgcrypto",
+  "unaccent",
+] as const;
 
 export const corePrograms = [
   "clusterdb",
@@ -129,11 +145,14 @@ export const requiredModules: readonly string[] = [...coreModules, ...encodingMo
 // only states what must be there.
 const encodingModule = /^(?:[a-z0-9_]+_and_[a-z0-9_]+|euc2004_sjis2004)$/;
 /** Extension sources that install only SQL and control files, without a native library. */
-export const sqlOnlyExtensions: ReadonlySet<string> = new Set(["pg_partman", "pgtap"]);
-const nativeExtensions = Object.entries(extensionNames)
-  .filter(([source]) => !sqlOnlyExtensions.has(source))
-  .map(([, name]) => name);
-const sqlExtensions = new Set(["plpgsql", ...Object.values(extensionNames)]);
+export const sqlOnlyExtensions: ReadonlySet<string> = new Set(["pg_partman", "pgtap", "pgmq"]);
+/** Every extension that a runtime ships besides PL/pgSQL, as source ID and name, in manifest order. */
+export const bundledExtensions: ReadonlyArray<readonly [string, string]> = [
+  ...Object.entries(extensionNames),
+  ...contribExtensions.map(name => ["postgresql", name] as const),
+];
+
+export const unaccentRules = "share/tsearch_data/unaccent.rules";
 
 /** ICU's shared code and complete locale data, excluding build tools and optional I/O libraries. */
 export function isIcuLibrary(path: string, target: ArtifactTarget): boolean {
@@ -212,7 +231,9 @@ export function includesRuntimePath(path: string, target: ArtifactTarget): boole
     if (target === "linux-x64-glibc" && clientLibrary.test(stem)) return true;
     if (library[2]) return false;
     return coreModule.test(stem) || encodingModule.test(stem)
-      || nativeExtensions.some(extension => stem === extension)
+      || bundledExtensions.some(([id, extension]) =>
+        stem === extension && !sqlOnlyExtensions.has(id)
+      )
       || /^timescaledb-\d+(?:\.\d+)*$/.test(stem)
       || (windows && stem === "pgevent");
   }
@@ -222,9 +243,11 @@ export function includesRuntimePath(path: string, target: ArtifactTarget): boole
     // installs add, is never loaded and would ship on one target only.
     const extension = (/^([a-z_]+)(?:(?:--[^/]+)?\.control|--[^/]+\.sql)$/.exec(name))?.[1];
     return directory === "share/extension" && extension !== undefined
-      && sqlExtensions.has(extension);
+      && (extension === "plpgsql"
+        || bundledExtensions.some(([, selected]) => selected === extension));
   }
   if (path.startsWith("share/tsearch_data/")) {
+    if (path === unaccentRules) return true;
     return directory === "share/tsearch_data"
       && /^(?:[a-z]+\.stop|(?:hunspell|ispell)_sample(?:_long|_num)?\.(?:affix|dict)|synonym_sample\.syn|thesaurus_sample\.ths)$/
         .test(name);

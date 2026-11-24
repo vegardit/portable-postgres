@@ -79,6 +79,11 @@ CPPFLAGS="-I$install_root/include" LDFLAGS="-L$install_root/lib" \
   --with-lz4 --without-zstd > "$work_root/postgresql-configure.log"
 make -j"$build_jobs" > "$work_root/postgresql-build.log" 2>&1
 make install > "$work_root/postgresql-install.log" 2>&1
+# The contrib modules that the runtime ships; the list must match contribExtensions in runtime-layout.ts.
+for module in btree_gist citext hstore ltree pg_stat_statements pg_trgm pgcrypto unaccent; do
+  make -C "contrib/$module" -j"$build_jobs" > "$work_root/contrib-$module-build.log" 2>&1
+  make -C "contrib/$module" install > "$work_root/contrib-$module-install.log" 2>&1
+done
 
 for extension in pgvector pg_textsearch hypopg plpgsql_check pg_cron; do
   echo "Building $extension against $(pg_config --version)"
@@ -103,6 +108,13 @@ make -C "$source_root/pg_partman" PG_CONFIG="$install_root/bin/pg_config" NO_BGW
   > "$work_root/pg_partman-install.log" 2>&1
 make -C "$source_root/pgtap" PG_CONFIG="$install_root/bin/pg_config" install \
   > "$work_root/pgtap-install.log" 2>&1
+# pgmq is SQL only; its extension lies beside client libraries that the runtime does not ship.
+# Its Makefile copies the current script to its versioned name and lists the scripts to install with a
+# wildcard that make has already expanded by then. Only a second run installs the versioned script.
+make -C "$source_root/pgmq/pgmq-extension" PG_CONFIG="$install_root/bin/pg_config" \
+  > "$work_root/pgmq-build.log" 2>&1
+make -C "$source_root/pgmq/pgmq-extension" PG_CONFIG="$install_root/bin/pg_config" install \
+  > "$work_root/pgmq-install.log" 2>&1
 
 images=()
 while IFS= read -r candidate; do

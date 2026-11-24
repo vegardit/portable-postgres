@@ -2,7 +2,8 @@
 BEGIN;
 SELECT plan(6);
 SELECT is((SELECT count(*)::integer FROM pg_extension WHERE extname IN
-  ('vector', 'timescaledb', 'pg_textsearch', 'hypopg', 'plpgsql_check', 'pg_cron', 'pg_partman', 'pgtap')), 8,
+  ('vector', 'timescaledb', 'pg_textsearch', 'hypopg', 'plpgsql_check', 'pg_cron', 'pg_partman', 'pgtap', 'pgmq',
+   'btree_gist', 'citext', 'hstore', 'ltree', 'pg_stat_statements', 'pg_trgm', 'pgcrypto', 'unaccent')), 17,
   'all selected extensions coexist');
 -- On three rows the planner prefers a sequential scan; the assertion must go through the HNSW index.
 SET LOCAL enable_seqscan = off;

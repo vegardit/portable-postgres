@@ -11,16 +11,21 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { extensionNames, sqlOnlyExtensions } from "../binaries/artifact/runtime-layout.ts";
+import {
+  contribExtensions,
+  extensionNames,
+  sqlOnlyExtensions,
+} from "../binaries/artifact/runtime-layout.ts";
 import { linkRecordsDirectory } from "../binaries/linux/links.ts";
 import { linkEnvironmentFile, parseLinkEnvironment } from "../binaries/windows/links.ts";
 import { root } from "../binaries/paths.ts";
+import { sources } from "../binaries/sources/sources.ts";
 
 const read = (path: string) => readFile(join(root, path), "utf8");
 const captures = (text: string, pattern: RegExp) =>
   [...text.matchAll(pattern)].map(match => match[1]!);
 const sourceIds = Object.keys(extensionNames).sort();
-const names = Object.values(extensionNames).sort();
+const names = [...Object.values(extensionNames), ...contribExtensions].sort();
 
 it("the Linux recipe builds every extension source", async () => {
   const script = await read("binaries/linux/build.sh");
@@ -32,6 +37,14 @@ it("the Linux recipe builds every extension source", async () => {
   expect(built.delete("openssl"), "OpenSSL is built before PostgreSQL").toBe(true);
   expect(built.delete("icu"), "ICU is built before PostgreSQL").toBe(true);
   expect([...built].sort()).toEqual(sourceIds);
+});
+
+it("the make recipes build every selected contrib module", async () => {
+  // Meson builds all of contrib on Windows, where the runtime layout alone selects what ships.
+  for (const file of ["binaries/linux/build.sh", "binaries/macos/build.sh"]) {
+    const loops = captures(await read(file), /^for module in ([\w ]+); do$/gm);
+    expect(loops.map(loop => loop.split(" ")), file).toEqual([[...contribExtensions]]);
+  }
 });
 
 it("the Windows recipe builds every extension source", async () => {
@@ -124,6 +137,19 @@ it("the README's pg_cron settings are the ones the native proofs run with", asyn
   expect(settings, "README.md shows the pg_cron settings").toBeDefined();
   const server = (await read("tests/native/server.conf")).split(/\r?\n/);
   for (const setting of settings!) expect(server, setting).toContain(setting);
+});
+
+it("the README lists every pinned extension with the license of its source pin", async () => {
+  const rows = (await read("README.md")).split(/\r?\n/).filter(line => line.startsWith("| ["));
+  for (const id of sourceIds) {
+    const source = sources.find(candidate => candidate.id === id)!;
+    const repository = "upstream" in source && "repository" in source.upstream
+      ? source.upstream.repository
+      : undefined;
+    const row = rows.find(line => line.includes(`](https://github.com/${repository})`));
+    expect(row, id + " has a row in the README's extension table").toBeDefined();
+    expect(row!.split("|").at(-2)!.trim(), id).toBe(source.license);
+  }
 });
 
 it("the native SQL proofs create and count every extension", async () => {

@@ -17,9 +17,21 @@ export async function installWindowsSql(sourceRoot: string, prefix: string): Pro
   for (const id of sqlOnlyExtensions) {
     const source = sources.find(candidate => candidate.id === id);
     if (!source) throw new Error("Missing SQL extension source pin: " + id);
-    const directory = join(sourceRoot, id);
+    // pgmq keeps its extension beside client libraries that the runtime does not ship.
+    const directory = id === "pgmq" ? join(sourceRoot, id, "pgmq-extension") : join(sourceRoot, id);
     await cp(join(directory, id + ".control"), join(destination, id + ".control"));
-    if (id === "pg_partman") {
+    if (id === "pgmq") {
+      // As upstream's Makefile installs it: the current script under its version, and the upgrade scripts.
+      await cp(
+        join(directory, "sql/pgmq.sql"),
+        join(destination, id + "--" + source.version + ".sql"),
+      );
+      for (const file of await readdir(join(directory, "sql"))) {
+        if (file.includes("--") && file.endsWith(".sql")) {
+          await cp(join(directory, "sql", file), join(destination, file));
+        }
+      }
+    } else if (id === "pg_partman") {
       // Types and tables must exist before functions and procedures refer to them.
       const inputs: Buffer[] = [];
       for (const category of ["types", "tables", "functions", "procedures"]) {

@@ -40,13 +40,21 @@
       "src/bin/pg_dump/pg_backup_archiver.c",
       "src/backend/lib/rbtree.c",
       "src/backend/regex/regc_locale.c",
-      "src/bin/pg_controldata/pg_controldata.c"
+      "src/bin/pg_controldata/pg_controldata.c",
+      "contrib/pgcrypto/pgcrypto.h",
+      "contrib/pgcrypto/px.c",
+      "contrib/pgcrypto/pgp.c",
+      "contrib/pgcrypto/crypt-des.c",
+      "contrib/pgcrypto/crypt-blowfish.c",
+      "contrib/pgcrypto/crypt-gensalt.c",
+      "contrib/pgcrypto/crypt-sha.c",
+      "contrib/pgcrypto/crypt-md5.c"
     ],
     "projectNotices": [
       {
         "file": "unicode-license-v3.txt",
         "origin": "https://www.unicode.org/license.txt (retrieved 2026-11-21)",
-        "covers": "Unicode data in PostgreSQL's Unicode tables (UCD 16.0) and encoding conversion maps (Unicode mapping files, ICU data)",
+        "covers": "Unicode data in PostgreSQL's Unicode tables (UCD 16.0), encoding conversion maps (Unicode mapping files, ICU data), and the unaccent rules in share/tsearch_data (UCD, CLDR Latin-ASCII transform)",
         "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
         "anchors": [
           {
@@ -58,6 +66,11 @@
             "file": "src/backend/utils/mb/Unicode/Makefile",
             "match": "^\\s*[^\\s#]",
             "sha256": "9d77b7a46147c7dc6055adce9076255dd72ab6f376854c1a798e5ca243b6c3c2"
+          },
+          {
+            "file": "src/Makefile.global.in",
+            "match": "^CLDR_VERSION",
+            "text": "CLDR_VERSION = 47"
           }
         ]
       },
@@ -296,5 +309,18 @@
     },
     "license": "PostgreSQL",
     "licenseFile": "doc/pgtap.mmd"
+  },
+  {
+    "id": "pgmq",
+    "version": "1.13.2",
+    "url": "https://codeload.github.com/pgmq/pgmq/tar.gz/refs/tags/v1.13.2",
+    "sha256": "a09f6db254a72a8b240f7071f8adf6540108cd959adf0f7ddfcfa118ee345ccc",
+    "upstream": {
+      "type": "github",
+      "repository": "pgmq/pgmq",
+      "tagPrefix": "v"
+    },
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE"
   }
 ]

@@ -29,6 +29,7 @@ import { additionalNoticeName, projectNoticeRoot } from "../binaries/artifact/no
 import { type Review, writeReviewedManifest } from "../binaries/artifact/review.ts";
 import {
   clientLibraryPath,
+  contribExtensions,
   corePrograms,
   moduleSuffix,
   requiredModules,
@@ -37,6 +38,7 @@ import {
   compressionLibraries,
   opensslLibraries,
   isIcuDataLibrary,
+  sqlOnlyExtensions,
 } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 
@@ -288,7 +290,8 @@ export async function createCandidate(
     } = {},
 ): Promise<ArtifactManifest> {
   const { files, links, remove, trackedReview, ...artifactOptions } = options;
-  for (const directory of ["bin", "lib", "share/extension", "notices"]) {
+  const payloadDirectories = ["bin", "lib", "share/extension", "share/tsearch_data", "notices"];
+  for (const directory of payloadDirectories) {
     await mkdir(join(root, directory), { recursive: true });
   }
   const images = fixtureImages(target);
@@ -305,6 +308,17 @@ export async function createCandidate(
   }
   await writeFile(join(root, "share/extension/plpgsql.control"), "default_version = '1.0'\n");
   await writeFile(join(root, "share/extension/plpgsql--1.0.sql"), "fixture");
+  await writeFile(join(root, "share/tsearch_data/unaccent.rules"), "fixture");
+  // PostgreSQL's own build installs the selected contrib modules, each with a library.
+  for (const name of contribExtensions) {
+    await writeFile(
+      join(root, "share/extension", name + ".control"),
+      "default_version = '1.1'\n",
+    );
+    await writeFile(join(root, "share/extension", name + "--1.0.sql"), "fixture");
+    await writeFile(join(root, "share/extension", name + "--1.0--1.1.sql"), "fixture");
+    await writeFile(join(root, "lib", name + librarySuffix), images.module);
+  }
   for (const source of sources) {
     await writeFile(join(root, "notices", source.id + ".txt"), "test-only license evidence");
     const additional = new Set(source.noticeFiles);
@@ -354,7 +368,7 @@ export async function createCandidate(
     } else {
       await writeFile(join(root, "share/extension", name + "--" + version + ".sql"), "fixture");
     }
-    if (source.id !== "pg_partman" && source.id !== "pgtap") {
+    if (!sqlOnlyExtensions.has(source.id)) {
       await writeFile(join(root, "lib", name + librarySuffix), images.module);
     }
     if (source.id === "timescaledb") {
@@ -380,10 +394,9 @@ export async function createCandidate(
   }
   if (target !== "windows-x64") {
     // The positive fixture must be valid even when the container uses a permissive builder umask.
-    for (const directory of ["bin", "lib", "share", "share/extension", "notices"]) {
+    await chmod(join(root, "share"), 0o755);
+    for (const directory of payloadDirectories) {
       await chmod(join(root, directory), 0o755);
-    }
-    for (const directory of ["bin", "lib", "share/extension", "notices"]) {
       for (const file of await readdir(join(root, directory))) {
         await chmod(join(root, directory, file), directory === "bin" ? 0o755 : 0o644);
       }
@@ -405,9 +418,13 @@ export async function createCandidate(
 export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
   // These fixtures contain only our test bytes. This is not review evidence for native binaries.
   const components: LicenseInventory["components"] = manifest.sources.map(source => {
-    const extension = manifest.extensions.find(candidate => candidate.sourceId === source.id);
-    const files = extension
-      ? [extension.control, ...extension.sql, ...extension.libraries]
+    const extensions = manifest.extensions.filter(candidate => candidate.sourceId === source.id);
+    const files = extensions.length > 0
+      ? extensions.flatMap(extension => [
+        extension.control,
+        ...extension.sql,
+        ...extension.libraries,
+      ])
       : manifest.files.filter(file => librarySource(file.path, manifest.target) === source.id)
         .map(file => file.path);
     return {

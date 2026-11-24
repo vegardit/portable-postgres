@@ -93,8 +93,10 @@ Release validation deliberately fails until the artifact's license inventory and
 
 An archive is named after its release, for example `portable-postgres-18.7-r1-linux-x64-glibc.tar.gz`.
 The name combines the pinned PostgreSQL version with the packaging revision in `binaries/sources/revision.json`.
-Increase the revision for any change to the archives that keeps the PostgreSQL version,
-such as an extension pin, a build recipe, or a review file.
+The revision counts the releases of one PostgreSQL version.
+Leave it unchanged while the current revision is unreleased.
+After a release, the first change to the archives that keeps the PostgreSQL version,
+such as an extension pin, a build recipe, or a review file, takes the next revision.
 Reset it to 1 when the PostgreSQL pin changes.
 
 ### Linux x64
@@ -215,7 +217,9 @@ The script stops if it can still find a compiler.
 
 ## Updating pinned sources
 
-`binaries/sources/sources.json` pins PostgreSQL, OpenSSL, ICU, zlib, LZ4 and every extension by version, archive URL, and SHA-256.
+`binaries/sources/sources.json` pins PostgreSQL, OpenSSL, ICU, zlib, LZ4 and every separately released extension by version, archive URL, and SHA-256.
+The contrib modules that the archives include come from the PostgreSQL pin;
+`contribExtensions` in `binaries/artifact/runtime-layout.ts` selects them.
 Its `upstream` entries say where new releases come from, so the pins are not edited by hand.
 `pnpm binaries:update-pins` finds the newest stable release of each source,
 keeping PostgreSQL within its pinned major version, and downloads every changed archive.

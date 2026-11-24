@@ -43,7 +43,7 @@ import {
   artifactTargets,
   clientLibraryPath,
   corePrograms,
-  extensionNames,
+  bundledExtensions,
   includesRuntimePath,
   isMacOSClientLibrary,
   isIcuLibrary,
@@ -55,6 +55,7 @@ import {
   requiredModules,
   requiredIcuLibraries,
   sqlOnlyExtensions,
+  unaccentRules,
 } from "./runtime-layout.ts";
 
 export const artifactManifestName = "native-artifact.json";
@@ -557,10 +558,10 @@ async function extensionLayout(
   const suffix = moduleSuffix(target);
   const paths = await readdir(join(installation, "share/extension"));
   const extensions: Extension[] = [];
-  const installedExtensions = [
+  const installedExtensions: ReadonlyArray<readonly [string, string]> = [
     ["postgresql", "plpgsql"],
-    ...Object.entries(extensionNames),
-  ] as const;
+    ...bundledExtensions,
+  ];
   for (const [sourceId, name] of installedExtensions) {
     const source = inputs.find(candidate => candidate.id === sourceId);
     requireCondition(source, "missing source: " + sourceId);
@@ -577,13 +578,14 @@ async function extensionLayout(
       : ["lib/" + name + suffix];
     if (sourceId === "timescaledb") libraries.push("lib/timescaledb-" + source.version + suffix);
     for (const path of libraries) {
-      requireCondition(
-        (await lstat(join(installation, path))).isFile(),
-        "missing library: " + path,
-      );
+      const info = await lstat(join(installation, path)).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return undefined;
+      });
+      requireCondition(info?.isFile() === true, "missing library: " + path);
     }
-    // PL/pgSQL is a required part of PostgreSQL. The manifest lists separately pinned extensions.
-    if (sourceId !== "postgresql") {
+    // PL/pgSQL is a required part of PostgreSQL. The manifest lists the extensions that the project selected.
+    if (name !== "plpgsql") {
       extensions.push({ sourceId, name, version, control, sql, libraries });
     }
   }
@@ -794,19 +796,8 @@ const manifestSchema = z.object({
   target: z.enum(artifactTargets, "unsupported target"),
   postgresqlVersion: z.string().regex(/^18\.\d+$/, "PostgreSQL 18 is required"),
   executables: z.record(z.enum(executableNames), text),
-  extensions: z.array(extensionSchema).length(8, "expected all eight extensions"),
-  // All targets include ICU; a manifest cannot opt out of its runtime and licence checks.
-  sources: z.array(sourceSchema).min(10, "expected all ten source inputs").check(context => {
-    const ids = context.value.map(source => source.id);
-    const problems = [
-      ...ids.some((id, index) => ids.indexOf(id) !== index) ? ["duplicate source ID"] : [],
-      ...["postgresql", "icu", ...Object.keys(extensionNames)].filter(id => !ids.includes(id))
-        .map(id => "missing source: " + id),
-    ];
-    for (const message of problems) {
-      context.issues.push({ code: "custom", input: context.value, message });
-    }
-  }),
+  extensions: z.array(extensionSchema),
+  sources: z.array(sourceSchema).check(unique(source => source.id, () => "duplicate source ID")),
   hostEvidence: z.array(hostEvidenceSchema),
   hostRequirements: hostRequirementsSchema.nullable(),
   buildProfile: z.object({
@@ -833,6 +824,21 @@ export function firstIssue(error: z.ZodError): string {
 function validateShape(value: unknown): asserts value is ArtifactManifest {
   const result = manifestSchema.safeParse(value);
   requireCondition(result.success, result.success ? "" : firstIssue(result.error));
+  const { extensions } = result.data;
+  const ids = new Set(result.data.sources.map(source => source.id));
+  // PostgreSQL links ICU, OpenSSL, zlib and LZ4 in every build, and pgcrypto calls OpenSSL and zlib.
+  // A manifest cannot opt out of their runtime and licence checks by leaving out a pin.
+  for (const id of ["postgresql", "icu", "openssl", "zlib", "lz4"]) {
+    requireCondition(ids.has(id), "missing source: " + id);
+  }
+  requireCondition(extensions.length === bundledExtensions.length,
+    "expected all " + bundledExtensions.length + " extensions");
+  for (const [index, [id, name]] of bundledExtensions.entries()) {
+    requireCondition(ids.has(id), "missing source: " + id);
+    const entry = extensions[index]!;
+    requireCondition(entry.sourceId === id && entry.name === name,
+      "extension layout/version mismatch: " + name);
+  }
 }
 
 /** Parses manifest text into the object as written; whoever reads a manifest from outside must use this. */
@@ -1233,25 +1239,15 @@ async function inspectArtifact(
     "payload inventory/hash/permission mismatch",
   );
   const entries = new Map(current.map(file => [file.path, file]));
+  requireCondition(entries.get(unaccentRules)?.kind === "file",
+    "missing unaccent dictionary: " + unaccentRules);
   const icu = manifest.sources.find(source => source.id === "icu")!;
-  // Earlier format-1 archives predate TLS and have no OpenSSL source pin.
-  const tlsLibraries = opensslLibraries(expectedTarget);
-  if (manifest.sources.some(source => source.id === "openssl")) {
-    for (const path of tlsLibraries) {
-      requireCondition(entries.get(path)?.kind === "file",
-        "missing OpenSSL runtime library: " + path);
-    }
-  } else {
-    requireCondition(!tlsLibraries.some(path => entries.has(path)),
-      "missing OpenSSL source for TLS libraries");
+  for (const path of opensslLibraries(expectedTarget)) {
+    requireCondition(entries.get(path)?.kind === "file",
+      "missing OpenSSL runtime library: " + path);
   }
-  // Format 1 also covers archives built before either compression library was bundled.
-  for (const [id, path] of Object.entries(compressionLibraries(expectedTarget))) {
-    if (manifest.sources.some(source => source.id === id)) {
-      requireCondition(entries.get(path)?.kind === "file", "missing runtime library: " + path);
-    } else {
-      requireCondition(!entries.has(path), "missing compression source: " + id);
-    }
+  for (const path of Object.values(compressionLibraries(expectedTarget))) {
+    requireCondition(entries.get(path)?.kind === "file", "missing runtime library: " + path);
   }
   for (const path of requiredIcuLibraries(expectedTarget, icu.version)) {
     requireCondition(entries.has(path), "missing ICU runtime library: " + path);

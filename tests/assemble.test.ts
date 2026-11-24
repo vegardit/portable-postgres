@@ -11,7 +11,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
 import { assembleRuntime } from "../binaries/artifact/assemble.ts";
-import { includesRuntimePath, requiredModules } from "../binaries/artifact/runtime-layout.ts";
+import {
+  contribExtensions,
+  includesRuntimePath,
+  moduleSuffix,
+  requiredModules,
+} from "../binaries/artifact/runtime-layout.ts";
 
 it("assembles the same programs and extension payload from either platform's SDK", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "portable-postgres-assembly-"));
@@ -41,7 +46,7 @@ it("assembles the same programs and extension payload from either platform's SDK
       "bin/oid2name" + executableSuffix,
       pgClient,
       "lib/vector" + librarySuffix,
-      "lib/pg_trgm" + librarySuffix,
+      "lib/tablefunc" + librarySuffix,
       "lib/test_decoding" + librarySuffix,
       "lib/libpq.a",
       "lib/pgxs/missing",
@@ -50,10 +55,10 @@ it("assembles the same programs and extension payload from either platform's SDK
       "share/extension/plpgsql.control",
       "share/extension/vector--1.0.sql",
       "share/extension/vector.control",
-      "share/extension/pg_trgm.control",
-      "share/extension/pg_stat_statements--1.0.sql",
+      "share/extension/tablefunc.control",
+      "share/extension/pageinspect--1.0.sql",
       "share/tsearch_data/english.stop",
-      "share/tsearch_data/unaccent.rules",
+      "share/tsearch_data/xsyn_sample.rules",
       "share/doc/extension/refint.example",
     ]) {
       await writeFile(join(prefix, file), "fixture");
@@ -108,6 +113,32 @@ it.each(["linux-x64-glibc", "windows-x64", "macos-arm64"] as const)(
   },
 );
 
+it.each(["linux-x64-glibc", "windows-x64", "macos-arm64"] as const)(
+  "%s keeps the selected contrib modules with their scripts and data, and no other contrib module",
+  target => {
+    const suffix = moduleSuffix(target);
+    for (const name of contribExtensions) {
+      for (const path of [
+        "lib/" + name + suffix,
+        "share/extension/" + name + ".control",
+        "share/extension/" + name + "--1.0--1.1.sql",
+      ]) {
+        expect(includesRuntimePath(path, target), path).toBe(true);
+      }
+    }
+    expect(includesRuntimePath("share/tsearch_data/unaccent.rules", target)).toBe(true);
+    for (const path of [
+      "lib/tablefunc" + suffix,
+      "lib/hstore_plperl" + suffix,
+      "share/extension/tablefunc.control",
+      "share/extension/pg_trgm.sql",
+      "share/tsearch_data/xsyn_sample.rules",
+    ]) {
+      expect(includesRuntimePath(path, target), path).toBe(false);
+    }
+  },
+);
+
 it("keeps every module that validation requires, and a conversion module that a later release adds", () => {
   // A later PostgreSQL release may add a conversion; the runtime ships it although nothing requires it.
   for (const module of [...requiredModules, "utf8_and_future"]) {
@@ -147,6 +178,7 @@ it("selects macOS libraries by their Darwin names, where only client libraries c
       "lib/libecpg_compat.3.dylib",
       "lib/libpqwalreceiver.dylib",
       "lib/vector.dylib",
+      "lib/pg_trgm.dylib",
       "lib/timescaledb-2.32.0.dylib",
       "bin/postgres",
     ]
@@ -157,7 +189,7 @@ it("selects macOS libraries by their Darwin names, where only client libraries c
     const path of [
       "lib/libpq.a",
       "lib/libpq.so.5",
-      "lib/pg_trgm.dylib",
+      "lib/tablefunc.dylib",
       "lib/vector.1.dylib",
       "lib/libfoo.1.dylib",
       "bin/postgres.exe",

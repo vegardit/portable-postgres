@@ -163,7 +163,8 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
     shippedNoticeSha256(hashes, notices);
   const noticeExamples = new Map<string, Record<string, string[]>>();
   const components: LicenseInventory["components"] = manifest.sources.map(source => {
-    const extension = manifest.extensions.find(candidate => candidate.sourceId === source.id);
+    // PostgreSQL's source also builds the selected contrib modules, so one source can have several.
+    const extensions = manifest.extensions.filter(candidate => candidate.sourceId === source.id);
     const examples = source.noticeSignatures === undefined ? undefined : Object.fromEntries(
       source.noticeSignatures.map(({ signature, files }) => [signature, files]),
     );
@@ -174,7 +175,11 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       status: "pending",
       files: [
         ...source.notices,
-        ...extension ? [extension.control, ...extension.sql, ...extension.libraries] : [],
+        ...extensions.flatMap(extension => [
+          extension.control,
+          ...extension.sql,
+          ...extension.libraries,
+        ]),
         ...manifest.files.filter(file => librarySource(file.path, target) === source.id)
           .map(file => file.path),
       ],

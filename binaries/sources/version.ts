@@ -10,7 +10,10 @@ import type { ArtifactTarget } from "../artifact/runtime-layout.ts";
 import revision from "./revision.json" with { type: "json" };
 import { sources } from "./sources.ts";
 
-/** Counts packagings of one PostgreSQL release; any other change to the archives needs a new value. */
+/**
+ * Counts the released packagings of one PostgreSQL release. Changes to the archives join the current
+ * revision until it has been released; only then does the next change take a new value.
+ */
 export const packagingRevision: number = revision.packagingRevision;
 
 /**

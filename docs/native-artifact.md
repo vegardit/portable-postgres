@@ -41,8 +41,8 @@ notices/
 Consumers do not need Node.js or npm to extract or run the installation.
 Build environments may use Node.js and native build tools.
 All three targets contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
-The extension payload contains PL/pgSQL and the eight extensions listed below.
-The packager excludes optional PostgreSQL contrib modules and their SQL and data files, upstream test helpers,
+The extension payload contains PL/pgSQL and the extensions listed below.
+The packager excludes every other PostgreSQL contrib module with its SQL and data files, upstream test helpers,
 development headers, PGXS, static libraries, and optional SDK documentation.
 It also excludes pg_partman's worker and Python helpers, pgTAP's Perl runner, and TimescaleDB Community libraries.
 
@@ -77,7 +77,7 @@ and extraction outside its owned staging directory before writing those entries.
 | `target`            | Exact `linux-x64-glibc`, `windows-x64` or `macos-arm64`.                                             |
 | `postgresqlVersion` | Exact PostgreSQL 18 minor release from the recorded source pin.                                      |
 | `executables`       | Relative paths for `postgres`, `initdb`, `pg_ctl`, and `psql`.                                       |
-| `extensions`        | All eight extension installation versions, controls, SQL files, and native libraries.                |
+| `extensions`        | Every selected extension's installation version, control, SQL files, and native libraries.           |
 | `sources`           | Source release URLs, SHA-256 values, declared licenses, original notice paths, and retained notices. |
 | `hostEvidence`      | Observed component versions and their evidence; these do not imply minimum prerequisites.            |
 | `hostRequirements`  | Verified OS/CPU/library prerequisites, or `null` while those are unresolved.                         |
@@ -158,7 +158,7 @@ and a database whose default provider is ICU.
 
 ## TLS runtime
 
-Archives built with the OpenSSL 3.5 source pin include both shared libraries under their loader names.
+Every archive pins an OpenSSL 3.5 source and includes both shared libraries under their loader names.
 Windows places `libssl-3-x64.dll` and `libcrypto-3-x64.dll` in `bin/`.
 Linux places `libssl.so.3` and `libcrypto.so.3` in `lib/`, and macOS uses
 `libssl.3.dylib` and `libcrypto.3.dylib` there.
@@ -170,14 +170,15 @@ The native proof uses a caller-supplied certificate after relocating the archive
 
 ## Compression libraries
 
-Archives with a zlib or LZ4 pin carry the corresponding shared library under its loader name.
+Every archive pins zlib and LZ4 and carries each shared library under its loader name.
 Windows uses `bin/libz.dll` and `bin/lz4.dll`, Linux uses `lib/libz.so.1` and `lib/liblz4.so.1`,
 and macOS uses `lib/libz.1.dylib` and `lib/liblz4.1.dylib`.
 Each library belongs to its own source licence component.
 
 ## Extension installation versions
 
-All eight selected extensions are mandatory:
+All selected extensions are mandatory.
+Nine come from their own source pins:
 
 | Source ID       | Database extension | Native profile                              |
 | --------------- | ------------------ | ------------------------------------------- |
@@ -189,6 +190,15 @@ All eight selected extensions are mandatory:
 | `pg_cron`       | `pg_cron`          | Native library; explicit scheduling.        |
 | `pg_partman`    | `pg_partman`       | SQL only.                                   |
 | `pgtap`         | `pgtap`            | SQL/PLpgSQL only.                           |
+| `pgmq`          | `pgmq`             | SQL/PLpgSQL only.                           |
+
+Eight are contrib modules that the pinned PostgreSQL source builds:
+`btree_gist`, `citext`, `hstore`, `ltree`, `pg_stat_statements`, `pg_trgm`, `pgcrypto` and `unaccent`.
+Their entries name `postgresql` as `sourceId`, and each has one native library.
+`pgcrypto` uses the bundled OpenSSL and zlib.
+`unaccent` reads its default rules from `share/tsearch_data/unaccent.rules`.
+The make recipes build exactly these modules.
+Meson builds all of contrib on Windows, and the packager keeps only these.
 
 An extension entry contains `sourceId`, `name`, `version`, `control`, `sql`, and `libraries`.
 Its installation `version` is read from the control file's `default_version`.
@@ -430,9 +440,10 @@ or Build Tools alone, ships a candidate text there instead,
 which names the line and product and says not to redistribute the binaries.
 The `msvc-runtime` component must list it in `files` and `notices`, so a changed notice text reopens its review.
 Each source's component must list all its retained notices in `notices`.
-Each extension's source component must list its control file, SQL files, and native libraries in `files`.
+Each extension's source component must list its control file, SQL files, and native libraries in `files`;
+for the contrib modules that is the `postgresql` component.
 The `icu` component must list ICU's native libraries.
-The `openssl` component must list both TLS libraries when the archive includes OpenSSL.
+The `openssl` component must list both TLS libraries.
 The `postgresql` component must list every remaining native image, because PostgreSQL's own build makes them.
 A compiler's license metadata alone does not describe its emitted runtime contributions.
 

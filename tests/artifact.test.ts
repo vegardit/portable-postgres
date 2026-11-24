@@ -31,6 +31,7 @@ import {
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
 import {
+  contribExtensions,
   moduleSuffix,
   compressionLibraries,
   opensslLibraries,
@@ -126,13 +127,73 @@ it("candidate metadata records portable executables and real control/SQL version
   );
 });
 
+it.each(releaseTargets)(
+  "%s lists the selected contrib modules as extensions of the PostgreSQL source and requires their files",
+  async target => {
+    const { root, manifest } = await fixture(target);
+    const contrib = manifest.extensions.filter(extension => extension.sourceId === "postgresql");
+    expect(contrib.map(extension => extension.name)).toEqual([...contribExtensions]);
+    const pgcrypto = contrib.find(extension => extension.name === "pgcrypto")!;
+    const library = "lib/pgcrypto" + moduleSuffix(target);
+    expect(pgcrypto).toMatchObject({ version: "1.1", libraries: [library] });
+    expect(pgcrypto.sql).toHaveLength(2);
+
+    manifest.hostRequirements = hostRequirementsFixture(target);
+    manifest.licenseInventory = reviewedFixture(manifest);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target)).resolves.toBeDefined();
+    // Another component's coverage must not stand in for the source that built the module.
+    const components = manifest.licenseInventory.components;
+    const postgresql = components.find(part => part.id === "postgresql")!;
+    postgresql.files = postgresql.files.filter(path => path !== pgcrypto.control);
+    components.find(part => part.id === "icu")!.files.push(pgcrypto.control);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target)).rejects.toThrow(
+      "missing license coverage for postgresql: " + pgcrypto.control,
+    );
+
+    // Keep the inventory in sync so the layout check sees the missing library.
+    await rm(join(root, library));
+    manifest.files = manifest.files.filter(file => file.path !== library);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing library: " + library,
+    );
+  },
+);
+
+it.each(releaseTargets)("%s requires unaccent's default dictionary when writing a candidate",
+  async target => {
+    const root = await directory();
+    await expect(createCandidate(root, target, { remove: ["share/tsearch_data/unaccent.rules"] }))
+      .rejects.toThrow("missing unaccent dictionary");
+  });
+
+it("requires every selected extension and the source pin of each", async () => {
+  const { manifest } = await fixture();
+  const parse = (changed: Partial<ArtifactManifest>) => () =>
+    parseArtifactManifest(JSON.stringify({ ...manifest, ...changed }));
+  const withoutPgmq = manifest.sources.filter(source => source.id !== "pgmq");
+  // A manifest cannot choose a smaller bundle by leaving out entries together with their source pin.
+  const separatelyPinned = manifest.extensions.filter(entry =>
+    entry.sourceId !== "postgresql" && entry.sourceId !== "pgmq"
+  );
+  expect(separatelyPinned).toHaveLength(8);
+  expect(parse({ extensions: separatelyPinned, sources: withoutPgmq })).toThrow(
+    "expected all 17 extensions",
+  );
+  expect(parse({ sources: withoutPgmq })).toThrow("missing source: pgmq");
+});
+
 it.each(releaseTargets)("%s ties each compression library to its source pin", async target => {
   const { root, manifest } = await fixture(target);
-  for (const [id, path] of Object.entries(compressionLibraries(target))) {
+  // LZ4 first: its library stays removed, and the validator looks for zlib's library before LZ4's.
+  for (const id of ["lz4", "zlib"] as const) {
+    const path = compressionLibraries(target)[id];
     const remainingSources = manifest.sources.filter(source => source.id !== id);
     await rewrite(root, { ...manifest, sources: remainingSources });
-    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
-      "missing compression source: " + id,
+    await expect.soft(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing source: " + id,
     );
     await rm(join(root, path));
     manifest.files = manifest.files.filter(file => file.path !== path);
@@ -140,19 +201,16 @@ it.each(releaseTargets)("%s ties each compression library to its source pin", as
     await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
       "missing runtime library: " + path,
     );
-    manifest.sources = remainingSources;
   }
-  await rewrite(root, manifest);
-  await expect(validateArtifact(root, target, { mode: "candidate" })).resolves.toBeDefined();
 });
 
-it.each(releaseTargets)("%s checks TLS libraries and their coverage when OpenSSL is pinned",
+it.each(releaseTargets)("%s requires the OpenSSL source, both TLS libraries and their coverage",
   async target => {
     const { root, manifest } = await fixture(target);
     const withoutOpenSsl = manifest.sources.filter(source => source.id !== "openssl");
     await rewrite(root, { ...manifest, sources: withoutOpenSsl });
-    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
-      "missing OpenSSL source",
+    await expect.soft(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing source: openssl",
     );
     manifest.hostRequirements = hostRequirementsFixture(target);
     manifest.licenseInventory = reviewedFixture(manifest);
@@ -172,26 +230,14 @@ it.each(releaseTargets)("%s checks TLS libraries and their coverage when OpenSSL
     await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
       "missing OpenSSL runtime library: " + crypto,
     );
-
-    // Format-1 archives built before TLS have neither the source nor any of its payload.
-    const remaining = new Set([ssl!, ...component.notices]);
-    for (const path of remaining) await rm(join(root, path));
-    manifest.files = manifest.files.filter(file => !remaining.has(file.path));
-    manifest.sources = withoutOpenSsl;
-    manifest.licenseInventory = reviewedFixture(manifest);
-    await rewrite(root, manifest);
-    await expect(validateArtifact(root, target)).resolves.toBeDefined();
   });
 
 it.each(releaseTargets)("%s requires the complete ICU runtime and its source ownership",
   async target => {
     const { root, manifest } = await fixture(target);
     const withoutIcu = manifest.sources.filter(source => source.id !== "icu");
-    // ICU is mandatory; an unrelated source cannot satisfy the requirement by restoring the count.
-    for (const inputs of [withoutIcu, [...withoutIcu, { ...withoutIcu[0]!, id: "unrelated" }]]) {
-      expect.soft(() => parseArtifactManifest(JSON.stringify({ ...manifest, sources: inputs })))
-        .toThrow(/missing source: icu|expected all ten source inputs/);
-    }
+    expect.soft(() => parseArtifactManifest(JSON.stringify({ ...manifest, sources: withoutIcu })))
+      .toThrow("missing source: icu");
     manifest.hostRequirements = hostRequirementsFixture(target);
     manifest.licenseInventory = reviewedFixture(manifest);
     const icu = manifest.licenseInventory.components.find(component => component.id === "icu")!;
@@ -283,10 +329,10 @@ it.each([
   "bin/helper.py",
   "bin/test_cloexec.exe",
   "bin/vacuumlo.exe",
-  "lib/pg_trgm.dll",
-  "share/extension/pg_trgm.control",
-  "share/extension/pg_stat_statements--1.0.sql",
-  "share/tsearch_data/unaccent.rules",
+  "lib/tablefunc.dll",
+  "share/extension/tablefunc.control",
+  "share/extension/pageinspect--1.0.sql",
+  "share/tsearch_data/xsyn_sample.rules",
 ])(
   "rejects excluded components even when the manifest could be regenerated: %s",
   async path => {
