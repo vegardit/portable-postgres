@@ -70,6 +70,8 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64, Windows x64 and macOS arm64 archives on GitHub Actions.
 It skips changes to Markdown files alone; the [Documentation workflow](.github/workflows/docs.yml) runs `pnpm check` for them.
 Each job records the archive's SHA-256 in its summary.
+On each target the native tests restore gzip and LZ4 dumps and use the bundled `pg_verifybackup`
+to check compressed base backups against their manifests.
 A final job requires a payload manifest for every target and fails when their PostgreSQL version, source pins,
 or extension versions and files differ.
 Private CI runs also retain the archive and checksum as workflow artifacts.
@@ -95,7 +97,7 @@ Reset it to 1 when the PostgreSQL pin changes.
 ### Linux x64
 
 The workflow builds on Ubuntu 22.04 with Clang and compiler-rt inside a Docker container.
-OpenSSL and ICU are built before PostgreSQL, using ICU's complete release locale data.
+OpenSSL, zlib, LZ4 and ICU are built before PostgreSQL, using ICU's complete release locale data.
 Its C++ compiler wrapper links LLVM's libc++, libc++abi and libunwind statically,
 so consumers need only the recorded glibc libraries.
 `binaries/linux/base.json` pins the Ubuntu image, the glibc baseline, and the LLVM major version.
@@ -202,13 +204,15 @@ The script stops if it can still find a compiler.
 
 ## Updating pinned sources
 
-`binaries/sources/sources.json` pins PostgreSQL, OpenSSL, ICU and every extension by version, archive URL, and SHA-256.
+`binaries/sources/sources.json` pins PostgreSQL, OpenSSL, ICU, zlib, LZ4 and every extension by version, archive URL, and SHA-256.
 Its `upstream` entries say where new releases come from, so the pins are not edited by hand.
 `pnpm binaries:update-pins` finds the newest stable release of each source,
 keeping PostgreSQL within its pinned major version, and downloads every changed archive.
 OpenSSL stays on the 3.5 LTS patch series.
-PostgreSQL and OpenSSL release archives are checked against their publishers' SHA-256 checksums.
-GitHub publishes no checksum for tag archives, so the first verified download defines their pin.
+PostgreSQL, OpenSSL and LZ4 release archives are checked against their publishers' SHA-256 checksum files.
+For named GitHub release assets such as zlib and ICU, the updater checks the exact archive's SHA-256
+from the selected release when there is no separate checksum file.
+GitHub publishes no checksum for generated tag archives, so the first download defines their pin.
 The command also sets the packaging revision: a new PostgreSQL release restarts it at 1,
 and other changes open the next revision once the current one has been released.
 

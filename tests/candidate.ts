@@ -34,6 +34,7 @@ import {
   requiredModules,
   requiredIcuLibraries,
   librarySource,
+  compressionLibraries,
   opensslLibraries,
   isIcuDataLibrary,
 } from "../binaries/artifact/runtime-layout.ts";
@@ -325,6 +326,10 @@ export async function createCandidate(
       for (const path of requiredIcuLibraries(target, source.version))
         await writeFile(join(root, path),
           isIcuDataLibrary(path, target) ? images.data : images.client);
+      continue;
+    }
+    if (source.id === "zlib" || source.id === "lz4") {
+      await writeFile(join(root, compressionLibraries(target)[source.id]), images.client);
       continue;
     }
     if (source.id === "postgresql") continue;

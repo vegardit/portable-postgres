@@ -16,6 +16,7 @@ import {
   mkdtemp,
   readFile,
   rename,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
@@ -176,6 +177,46 @@ try {
   env["PGPASSFILE"] = pgpass;
   const connection = connect(port, "postgres");
   run(executable("psql"), [...connection, "-f", join(nativeTests, "smoke.sql")], "sql.log");
+  const client = ["-w", "-h", "127.0.0.1", "-p", String(port), "-U", "proof"];
+  for (const codec of ["gzip", "lz4"]) {
+    const database = "restore_" + codec;
+    const archive = join(proof, codec + ".dump");
+    const backup = join(proof, "backup-" + codec);
+    run(executable("pg_dump"), [
+      ...client,
+      "-d",
+      "postgres",
+      "-Fc",
+      "--compress=" + codec,
+      "-t",
+      "public.compression_sample",
+      "-f",
+      archive,
+    ], codec + "-dump.log");
+    run(executable("createdb"), [...client, database], codec + "-createdb.log");
+    run(executable("pg_restore"), [...client, "--exit-on-error", "-d", database, archive],
+      codec + "-restore.log");
+    run(executable("psql"), [
+      ...connect(port, database),
+      "-f",
+      join(nativeTests, "compression.sql"),
+    ], codec + "-rows.log");
+    run(executable("pg_basebackup"), [
+      ...client,
+      "-D",
+      backup,
+      "-Ft",
+      "-X",
+      "none",
+      "--checkpoint=fast",
+      "--compress=" + codec,
+    ], codec + "-backup.log");
+    const suffix = codec === "gzip" ? "gz" : codec;
+    if ((await stat(join(backup, "base.tar." + suffix))).size === 0) {
+      throw new Error("Empty base backup");
+    }
+    run(executable("pg_verifybackup"), ["--no-parse-wal", backup], codec + "-verifybackup.log");
+  }
   const tap = run(
     executable("psql"),
     [

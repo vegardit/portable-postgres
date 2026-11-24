@@ -66,6 +66,7 @@ bash "$project_root/binaries/linux/smoke.sh" "$installation" | tee "$work/smoke.
 # system program such as a shell, so the variable goes straight to the archive's own programs.
 loaded="$work/loaded-libraries.txt"
 DYLD_PRINT_LIBRARIES=1 "$installation/bin/psql" --version 2> "$loaded"
+DYLD_PRINT_LIBRARIES=1 "$installation/bin/pg_dump" --version 2>> "$loaded"
 # Single-user mode connects as the operating system user, whom initdb makes the superuser by default.
 "$installation/bin/initdb" -D "$work/loader-data" --auth=trust --no-locale > "$work/loader-initdb.log"
 printf "CREATE EXTENSION vector;\nSELECT '[1,2]'::vector;\n" \
@@ -73,7 +74,7 @@ printf "CREATE EXTENSION vector;\nSELECT '[1,2]'::vector;\n" \
     -c shared_preload_libraries=timescaledb,pg_textsearch -c timescaledb.telemetry_level=off postgres \
     > "$work/loader-postgres.log" 2>> "$loaded"
 paths=$(sed -n 's/^dyld\[[0-9]*\]: <[^>]*> //p' "$loaded")
-for expected in lib/libpq.5.dylib lib/libssl.3.dylib lib/libcrypto.3.dylib lib/vector.dylib lib/pg_textsearch.dylib lib/timescaledb.dylib; do
+for expected in lib/libpq.5.dylib lib/libssl.3.dylib lib/libcrypto.3.dylib lib/libz.1.dylib lib/liblz4.1.dylib lib/vector.dylib lib/pg_textsearch.dylib lib/timescaledb.dylib; do
   if ! grep -F "$installation/" <<< "$paths" | grep -q -F "/$(basename "$expected")"; then
     echo "The loader trace lacks the bundled $expected" >&2
     exit 1

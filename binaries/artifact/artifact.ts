@@ -48,6 +48,7 @@ import {
   isMacOSClientLibrary,
   isIcuLibrary,
   librarySource,
+  compressionLibraries,
   opensslLibraries,
   isIcuDataLibrary,
   moduleSuffix,
@@ -381,7 +382,7 @@ function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): 
     if (path.startsWith("bin/")) {
       requireCondition(image.fileType === fileTypes.execute,
         "expected a Mach-O executable: " + path);
-    } else if (isMacOSClientLibrary(path) || librarySource(path, target) === "openssl") {
+    } else if (isMacOSClientLibrary(path) || librarySource(path, target)) {
       requireCondition(image.fileType === fileTypes.dylib,
         "expected a Mach-O client dylib: " + path);
     } else if (path.startsWith("lib/")) {
@@ -1243,6 +1244,14 @@ async function inspectArtifact(
   } else {
     requireCondition(!tlsLibraries.some(path => entries.has(path)),
       "missing OpenSSL source for TLS libraries");
+  }
+  // Format 1 also covers archives built before either compression library was bundled.
+  for (const [id, path] of Object.entries(compressionLibraries(expectedTarget))) {
+    if (manifest.sources.some(source => source.id === id)) {
+      requireCondition(entries.get(path)?.kind === "file", "missing runtime library: " + path);
+    } else {
+      requireCondition(!entries.has(path), "missing compression source: " + id);
+    }
   }
   for (const path of requiredIcuLibraries(expectedTarget, icu.version)) {
     requireCondition(entries.has(path), "missing ICU runtime library: " + path);

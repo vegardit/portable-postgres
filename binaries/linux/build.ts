@@ -47,6 +47,7 @@ export const linuxRecipe: readonly string[] = [
   ),
   join(root, "binaries/artifact/notice-scan.ts"),
   join(root, "binaries/build-openssl.sh"),
+  join(root, "binaries/compression/CMakeLists.txt"),
   join(root, "binaries/timescaledb.ts"),
 ];
 

@@ -33,9 +33,11 @@ unset ICU_DATA
 # A developer SDK on the host must not supply either process's TLS libraries.
 unset LD_LIBRARY_PATH
 if [[ $(uname -s) == Linux ]]; then
-  for program in postgres psql; do
+  for program in postgres psql pg_dump; do
     loaded=$(LD_TRACE_LOADED_OBJECTS=1 "$installation/bin/$program")
-    for lib in libcrypto.so.3 libssl.so.3; do
+    libraries=(libcrypto.so.3 libssl.so.3)
+    if [[ $program == pg_dump ]]; then libraries+=(libz.so.1 liblz4.so.1); fi
+    for lib in "${libraries[@]}"; do
       # Keep spaces in the installation path and resolve loader paths containing ../lib.
       path=$(awk -v lib="$lib" '$1 == lib && $2 == "=>" { sub(/^.* => /, ""); sub(/ \(0x[0-9a-f]+\)$/, ""); print }' <<< "$loaded")
       if [[ ! "$path" -ef "$installation/lib/$lib" ]]; then
@@ -108,6 +110,22 @@ export PGPASSFILE="$proof_work/pgpass"
 "$installation/bin/psql" -X -w -h 127.0.0.1 -p "$port" -U proof -d postgres \
   -v ON_ERROR_STOP=1 -f "$project_root/tests/native/smoke.sql" > "$proof_root/sql.log"
 cat "$proof_root/sql.log"
+connection=(-w -h 127.0.0.1 -p "$port" -U proof)
+for codec in gzip lz4; do
+  database="restore_$codec"
+  "$installation/bin/pg_dump" "${connection[@]}" -d postgres -Fc --compress="$codec" \
+    -t public.compression_sample -f "$proof_work/$codec.dump"
+  "$installation/bin/createdb" "${connection[@]}" "$database"
+  "$installation/bin/pg_restore" "${connection[@]}" --exit-on-error -d "$database" "$proof_work/$codec.dump"
+  "$installation/bin/psql" "${connection[@]}" -X -v ON_ERROR_STOP=1 -d "$database" \
+    -f "$project_root/tests/native/compression.sql"
+  "$installation/bin/pg_basebackup" "${connection[@]}" -D "$proof_work/backup-$codec" \
+    -Ft -X none --checkpoint=fast --compress="$codec"
+  suffix=$codec
+  if [[ $codec == gzip ]]; then suffix=gz; fi
+  test -s "$proof_work/backup-$codec/base.tar.$suffix"
+  "$installation/bin/pg_verifybackup" --no-parse-wal "$proof_work/backup-$codec"
+done
 "$installation/bin/psql" -X -w -h 127.0.0.1 -p "$port" -U proof -d postgres \
   -v ON_ERROR_STOP=1 -qAt -f "$project_root/tests/native/tap.sql" > "$proof_root/results.tap"
 cat "$proof_root/results.tap"

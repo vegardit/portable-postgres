@@ -32,6 +32,7 @@ import {
 } from "../binaries/artifact/artifact.ts";
 import {
   moduleSuffix,
+  compressionLibraries,
   opensslLibraries,
   requiredIcuLibraries,
 } from "../binaries/artifact/runtime-layout.ts";
@@ -123,6 +124,26 @@ it("candidate metadata records portable executables and real control/SQL version
   await expect(validateArtifact(root, "linux-x64-glibc", { mode: "candidate" })).rejects.toThrow(
     "wrong target",
   );
+});
+
+it.each(releaseTargets)("%s ties each compression library to its source pin", async target => {
+  const { root, manifest } = await fixture(target);
+  for (const [id, path] of Object.entries(compressionLibraries(target))) {
+    const remainingSources = manifest.sources.filter(source => source.id !== id);
+    await rewrite(root, { ...manifest, sources: remainingSources });
+    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing compression source: " + id,
+    );
+    await rm(join(root, path));
+    manifest.files = manifest.files.filter(file => file.path !== path);
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "missing runtime library: " + path,
+    );
+    manifest.sources = remainingSources;
+  }
+  await rewrite(root, manifest);
+  await expect(validateArtifact(root, target, { mode: "candidate" })).resolves.toBeDefined();
 });
 
 it.each(releaseTargets)("%s checks TLS libraries and their coverage when OpenSSL is pinned",

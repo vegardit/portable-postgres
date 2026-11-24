@@ -362,6 +362,14 @@ it("measures the system libraries and minimum macOS of a relocated installation"
   });
 });
 
+it("rejects a system zlib import when the archive supplies its own zlib", async () => {
+  const root = await installation(image({ dylibs: ["/usr/lib/libz.1.dylib"] }));
+  await writeFile(join(root, "lib/libz.1.dylib"), image({ id: "@rpath/libz.1.dylib" }));
+  await expect(inspectMacOSRuntime(root, "15.0")).rejects.toThrow(
+    "bin/psql uses the system copy of a bundled library: /usr/lib/libz.1.dylib",
+  );
+});
+
 it("uses the first existing bundled library in loader search order", async () => {
   const root = await installation(image({
     dylibs: ["@rpath/libpq.5.dylib"],

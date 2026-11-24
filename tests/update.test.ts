@@ -6,7 +6,8 @@
  */
 
 /** Checks release discovery, pin rewriting, and packaging revision rules without network access. */
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
@@ -56,6 +57,7 @@ it("rejects an OpenSSL release whose bytes differ from the published SHA-256", a
       type: "github",
       repository: "openssl/openssl",
       tagPrefix: "openssl-",
+      releaseAsset: "openssl-{version}.tar.gz",
       series: "3.5",
     },
   };
@@ -63,7 +65,7 @@ it("rejects an OpenSSL release whose bytes differ from the published SHA-256", a
     .mockResolvedValueOnce(new Response("0".repeat(64) + " *openssl.tar.gz\n"))
     .mockResolvedValueOnce(new Response("different bytes"));
   try {
-    await expect(downloadReleaseDigest(directory, source, url)).rejects.toThrow(
+    await expect(downloadReleaseDigest(directory, source, url, "3.5.10")).rejects.toThrow(
       "integrity check failed",
     );
     expect(fetch.mock.calls.map(([requested]) => requested)).toEqual([url + ".sha256", url]);
@@ -72,6 +74,56 @@ it("rejects an OpenSSL release whose bytes differ from the published SHA-256", a
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+const archiveBytes = "release archive";
+const archiveHash = createHash("sha256").update(archiveBytes).digest("hex");
+
+it.each([
+  { id: "icu", digest: "sha256:" + archiveHash, error: undefined },
+  { id: "zlib", digest: "sha256:" + "0".repeat(64), error: "integrity check failed" },
+  { id: "zlib", digest: null, error: "SHA-256" },
+  { id: "zlib", digest: "sha512:" + archiveHash, error: "SHA-256" },
+])("checks the new $id release asset against its published digest ($digest)",
+  async ({ id, digest, error }) => {
+    const upstream = {
+      type: "github" as const,
+      repository: "example/" + id,
+      tagPrefix: "release-",
+      releaseAsset: id + "-{version}.tar.gz",
+    };
+    const source = {
+      id,
+      upstream,
+      version: "1.0",
+      url: archiveUrl(upstream, "1.0"),
+      sha256: archiveHash,
+    };
+    const url = archiveUrl(upstream, "2.0");
+    const release = "https://api.github.com/repos/example/" + id + "/releases/tags/release-2.0";
+    const directory = await mkdtemp(join(tmpdir(), "portable-postgres-asset-pin-"));
+    const fetch = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({
+        assets: [
+          { browser_download_url: url + ".asc", digest: "sha256:" + "1".repeat(64) },
+          { browser_download_url: url, digest },
+        ],
+      }))
+      .mockResolvedValueOnce(new Response(archiveBytes));
+    try {
+      const result = downloadReleaseDigest(directory, source, url, "2.0");
+      if (error) {
+        await expect(result).rejects.toThrow(error);
+        await expect(readdir(directory)).resolves.toEqual([]);
+      } else {
+        await expect(result).resolves.toBe(archiveHash);
+      }
+      const expectedRequests = error === "SHA-256" ? [release] : [release, url];
+      expect(fetch.mock.calls.map(([requested]) => requested)).toEqual(expectedRequests);
+    } finally {
+      fetch.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
 it("refreshes only a pin-only branch at the remote tip inspected by the updater", async () => {
   const directory = await mkdtemp(join(tmpdir(), "portable-postgres-update-branch-"));

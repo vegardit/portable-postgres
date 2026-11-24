@@ -33,6 +33,11 @@ if grep -qE '"-lgcc[^\"]*"|/gcc/[^\"]*/crt(begin|end)' "$work_root/compiler-link
   exit 1
 fi
 
+cmake -S "$(dirname "$0")/../compression" -B "$work_root/compression-build" \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$install_root" -DSOURCE_ROOT="$source_root"
+cmake --build "$work_root/compression-build" --parallel "$build_jobs"
+cmake --install "$work_root/compression-build"
+
 mkdir -p "$work_root/icu-build"
 bash "$(dirname "$0")/../build-openssl.sh" linux-x86_64 "$source_root/openssl"
 cd "$work_root/icu-build"
@@ -46,8 +51,8 @@ cd "$source_root/postgresql"
 # readline is GPL; optional runtime libraries remain excluded until their closure is reviewed.
 # Only configure probes need the SDK search path. Host CMake uses the OS copy of libcrypto.
 LD_LIBRARY_PATH="$install_root/lib" CPPFLAGS="-I$install_root/include" LDFLAGS="-L$install_root/lib" \
-  ./configure --prefix="$install_root" --with-ssl=openssl --without-readline --without-zlib \
-  --without-lz4 --without-zstd > "$work_root/postgresql-configure.log"
+  ./configure --prefix="$install_root" --with-ssl=openssl --without-readline \
+  --with-lz4 --without-zstd > "$work_root/postgresql-configure.log"
 make -j"$build_jobs" > "$work_root/postgresql-build.log" 2>&1
 make install > "$work_root/postgresql-install.log" 2>&1
 

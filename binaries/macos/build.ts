@@ -53,6 +53,7 @@ export const macOSRecipe: readonly string[] = [
   baselineFile,
   join(root, "binaries/artifact/notice-scan.ts"),
   join(root, "binaries/build-openssl.sh"),
+  join(root, "binaries/compression/CMakeLists.txt"),
   join(root, "binaries/timescaledb.ts"),
 ];
 

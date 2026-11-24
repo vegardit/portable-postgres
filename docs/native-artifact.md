@@ -168,6 +168,13 @@ Windows uses OpenSSL's build-time Program Files default, `OpenSSL\lib\ossl-modul
 Set `OPENSSL_MODULES` to use another provider directory.
 The native proof uses a caller-supplied certificate after relocating the archive.
 
+## Compression libraries
+
+Archives with a zlib or LZ4 pin carry the corresponding shared library under its loader name.
+Windows uses `bin/libz.dll` and `bin/lz4.dll`, Linux uses `lib/libz.so.1` and `lib/liblz4.so.1`,
+and macOS uses `lib/libz.1.dylib` and `lib/liblz4.1.dylib`.
+Each library belongs to its own source licence component.
+
 ## Extension installation versions
 
 All eight selected extensions are mandatory:

@@ -55,6 +55,15 @@ cmake --build "%WORK_ROOT%\windows-icu" --parallel %BUILD_JOBS% > "%WORK_ROOT%\i
 if errorlevel 1 exit /b 1
 cmake --install "%WORK_ROOT%\windows-icu" > "%WORK_ROOT%\icu-install.log" 2>&1
 if errorlevel 1 exit /b 1
+cmake -S "%PROJECT_ROOT%\binaries\compression" -B "%WORK_ROOT%\compression-build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%PG_PREFIX%" -DSOURCE_ROOT="%WORK_ROOT%\windows-sources"
+if errorlevel 1 exit /b 1
+node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\compression-build\CMakeFiles\rules.ninja"
+if errorlevel 1 exit /b 1
+cmake --build "%WORK_ROOT%\compression-build" --parallel %BUILD_JOBS% > "%WORK_ROOT%\compression-build.log" 2>&1
+if errorlevel 1 exit /b 1
+cmake --install "%WORK_ROOT%\compression-build"
+if errorlevel 1 exit /b 1
+set "CMAKE_PREFIX_PATH=%PG_PREFIX%"
 set "ICU_ROOT=%PG_PREFIX%"
 REM OpenSSL's Windows build needs a Perl that uses native Windows paths.
 set "PATH=%WORK_ROOT%\windows-tools\nasm;%PATH%"
@@ -90,7 +99,7 @@ set "PKG_CONFIG_PATH=%PG_PREFIX%\lib\pkgconfig"
 set "PKG_CONFIG_LIBDIR=%PKG_CONFIG_PATH%"
 set "INCLUDE=%PG_PREFIX%\include;%INCLUDE%"
 set "LIB=%PG_PREFIX%\lib;%LIB%"
-"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --native-file "%PG_PREFIX%\icu-dependencies.ini" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=disabled -Dicu=enabled -Dssl=openssl -Dlz4=disabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
+"%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --native-file "%PG_PREFIX%\icu-dependencies.ini" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=enabled -Dicu=enabled -Dssl=openssl -Dlz4=enabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
 if errorlevel 1 (
   type "%WORK_ROOT%\windows-postgresql-configure.log"
   exit /b 1

@@ -7,7 +7,7 @@
 
 /** Measures what the packaged Mach-O images need from the host and checks that they stay relocatable. */
 import { open, readdir, readFile, realpath } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { insideInstallation } from "../artifact/artifact.ts";
 import {
   hasMachOMagic,
@@ -110,6 +110,10 @@ export async function inspectMacOSRuntime(
         continue;
       }
       if (systemLibrary.test(library) && !library.split("/").includes("..")) {
+        // A successful load of Apple's zlib can hide a link against the wrong SDK library.
+        if (bundled.has(basename(library))) {
+          throw new Error(`${name} uses the system copy of a bundled library: ${library}`);
+        }
         imports.add(library);
         continue;
       }

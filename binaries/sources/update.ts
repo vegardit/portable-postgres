@@ -153,22 +153,38 @@ async function newestVersion(upstream: Upstream): Promise<string> {
   return version;
 }
 
-/** Downloads the release into the source cache and verifies the publisher's digest when available. */
+const githubRelease = z.object({
+  assets: z.array(z.object({ browser_download_url: z.string(), digest: z.string().nullish() })),
+});
+
+/** Downloads a release into the source cache and checks the published digest for release assets. */
 export async function downloadReleaseDigest(
   downloads: string,
   source: PinnedSource,
   url: string,
+  version: string,
 ): Promise<string> {
-  if (source.upstream.type === "postgresql" || source.id === "openssl") {
-    // Both publishers provide the checksum alongside the release tarball.
+  const { upstream } = source;
+  let expectedSha256: string | undefined;
+  if (upstream.type === "postgresql" || source.id === "openssl" || source.id === "lz4") {
+    // These publishers provide the checksum alongside the release tarball.
     const published = (await fetchText(url + ".sha256")).trim().split(/\s+/)[0];
     if (!published || !/^[a-f0-9]{64}$/.test(published)) {
       throw new Error("Unreadable published checksum for " + url);
     }
-    return (await downloadArchive(downloads, source.id, url, published)).sha256;
+    expectedSha256 = published;
+  } else if (upstream.releaseAsset) {
+    const tag = upstream.tagPrefix + version;
+    const release = githubRelease.parse(JSON.parse(
+      await fetchText(`https://api.github.com/repos/${upstream.repository}/releases/tags/${tag}`),
+    ));
+    // One release can contain several archives and their signatures, each with a different digest.
+    const asset = release.assets.find(entry => entry.browser_download_url === url);
+    expectedSha256 = /^sha256:([a-f0-9]{64})$/.exec(asset?.digest ?? "")?.[1];
+    if (!expectedSha256) throw new Error("Missing or invalid release asset SHA-256 for " + url);
   }
-  // GitHub publishes no digest for tag archives, so the first verified download defines the pin.
-  return (await downloadArchive(downloads, source.id, url)).sha256;
+  // Only GitHub's generated tag archives have no published digest to check.
+  return (await downloadArchive(downloads, source.id, url, expectedSha256)).sha256;
 }
 
 /** Whether the release for the current version already exists, which needs the tags in the checkout. */
@@ -209,7 +225,8 @@ if (import.meta.main) {
   };
   const { sources, changes } = await updatePins(inputs, {
     newestVersion,
-    digest: (source, url) => downloadReleaseDigest(join(workRoot, "downloads"), source, url),
+    digest: (source, url, version) =>
+      downloadReleaseDigest(join(workRoot, "downloads"), source, url, version),
   });
   if (changes.length === 0) {
     console.log("All pinned sources are current.");

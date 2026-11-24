@@ -169,8 +169,18 @@ export function opensslLibraries(target: ArtifactTarget): string[] {
   );
 }
 
+/** Loader names of the shared libraries used by PostgreSQL's compression methods. */
+export function compressionLibraries(target: ArtifactTarget): Record<"zlib" | "lz4", string> {
+  if (target === "windows-x64") return { zlib: "bin/libz.dll", lz4: "bin/lz4.dll" };
+  if (target === "macos-arm64") return { zlib: "lib/libz.1.dylib", lz4: "lib/liblz4.1.dylib" };
+  return { zlib: "lib/libz.so.1", lz4: "lib/liblz4.so.1" };
+}
+
 /** Identifies runtime dependencies built separately from PostgreSQL and its extensions. */
 export function librarySource(path: string, target: ArtifactTarget): string | undefined {
+  for (const [source, library] of Object.entries(compressionLibraries(target))) {
+    if (path === library) return source;
+  }
   if (isIcuLibrary(path, target)) return "icu";
   if (opensslLibraries(target).includes(path)) return "openssl";
   return undefined;

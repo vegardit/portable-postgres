@@ -64,6 +64,7 @@ export const windowsRecipe: readonly string[] = [
     "requirements.txt",
     "tools.json",
   ].map(file => join(recipeRoot, file)),
+  join(root, "binaries/compression/CMakeLists.txt"),
   join(root, "binaries/patch.ts"),
   join(root, "binaries/artifact/data-library.ts"),
   join(root, "binaries/artifact/notice-scan.ts"),

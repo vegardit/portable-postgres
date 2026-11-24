@@ -168,6 +168,10 @@ END
 $$;
 RESET enable_seqscan;
 
+-- Keep a table that both dump proofs can restore independently of the extensions.
+CREATE TABLE compression_sample (value text COMPRESSION lz4);
+INSERT INTO compression_sample VALUES (repeat('portable-postgres', 1024));
+
 SHOW timescaledb.telemetry_level;
 SELECT extname, extversion FROM pg_extension ORDER BY extname;
 
