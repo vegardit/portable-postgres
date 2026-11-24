@@ -32,10 +32,6 @@ on: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-
         description: "candidate checks the archive layout; release also requires the reviewed licences and host requirements"
         type: string
         required: true
-      upload:
-        description: "uploads the archives for the release job, which publishes them only after it checks them all"
-        type: boolean
-        default: false
 
 defaults:
   run:
@@ -266,13 +262,12 @@ jobs:
         run: pnpm binaries:validate "$TARGET" "$INSTALLATION"
 
       - name: "Share: native archive"
-        # Public distribution requires the license and host compatibility checks in docs/native-artifact.md,
-        # so only a Release run that publishes asks for archives in a public repository; its dry run checks them
-        # without making them downloadable. act's artifact server rejects this upload action.
-        # A public upload also needs release validation, which the step above runs only in release mode.
-        # Such an upload is a workflow artifact that signed-in users can download as soon as this job ends, before
-        # the other targets finish or anyone approves the release; it has already passed this target's checks.
-        if: (inputs.upload && inputs.validation == 'release') || (github.event.repository.private && !env.ACT)
+        # Every run shares its archive as a workflow artifact, which signed-in users can download as soon as
+        # this job ends. Only the archive of a Release run that publishes has passed the license and host
+        # compatibility checks in docs/native-artifact.md; any other is an unreviewed candidate for testing,
+        # as its manifest's pending review says. Every archive expires after 14 days.
+        # act's artifact server rejects this upload action.
+        if: ${{ !env.ACT }}
         # https://github.com/actions/upload-artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -282,8 +277,8 @@ jobs:
             ${{ steps.archive.outputs.checksum }}
           if-no-files-found: error
           compression-level: 0
-          # The repository's retention applies: the release job downloads these only once the release is
-          # approved, which may be days later.
+          # The release job downloads these in the same run, so a release needs no longer retention.
+          retention-days: 14
 
   ###########################################################
   compare:

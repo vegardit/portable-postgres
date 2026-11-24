@@ -76,10 +76,11 @@ On each target the native tests restore gzip and LZ4 dumps and use the bundled `
 to check compressed base backups against their manifests.
 A final job requires a payload manifest for every target and fails when their PostgreSQL version, source pins,
 or extension versions and files differ.
-Private CI runs also retain the archive and checksum as workflow artifacts.
-Build runs, manual ones included, check candidates without release validation.
+Every run also shares the archive and checksum as a workflow artifact, `portable-postgres-<target>`,
+which signed-in GitHub users can download from the run's page for 14 days.
+Build runs, manual ones included, check candidates without release validation,
+so these archives are unreviewed candidates for testing and not for redistribution.
 A dry run of the [Release workflow](#releasing) runs release validation on each archive without publishing.
-In a public repository only a Release run that publishes uploads archives, after release validation.
 
 Run `pnpm install --frozen-lockfile` from the repository root before building for any target.
 Every native build uses fresh source, object, and SDK directories.

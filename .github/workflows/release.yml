@@ -32,9 +32,8 @@ jobs:
     ###########################################################
     uses: ./.github/workflows/build.yml
     with:
-      # Every build job runs release validation. In a run that publishes, it also uploads its archive for the release job.
+      # Every build job runs release validation and uploads its archive, which the release job downloads.
       validation: release
-      upload: ${{ !inputs.dry-run && github.ref == 'refs/heads/main' }}
 
   ###########################################################
   release:
