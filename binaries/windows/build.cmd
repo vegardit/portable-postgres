@@ -47,6 +47,9 @@ if errorlevel 1 exit /b 1
 set "PATH=%WORK_ROOT%\windows-tools\winflexbison;%VS_ROOT%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
 REM NOTE: Git's MSYS Perl rewrites MSVC switches as paths; reconsider when using native Windows Perl.
 set "MSYS2_ARG_CONV_EXCL=*"
+REM Each phase writes its output to a log file, so these lines are all a CI log shows of the build.
+REM The CI log timestamps them, which tells how long each phase took.
+echo Building ICU.
 cmake -S "%PROJECT_ROOT%\binaries\windows\icu" -B "%WORK_ROOT%\windows-icu" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%PG_PREFIX%" -DICU_ROOT="%WORK_ROOT%\windows-sources\icu" > "%WORK_ROOT%\icu-configure.log" 2>&1
 if errorlevel 1 exit /b 1
 node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-icu\CMakeFiles\rules.ninja"
@@ -55,6 +58,7 @@ cmake --build "%WORK_ROOT%\windows-icu" --parallel %BUILD_JOBS% > "%WORK_ROOT%\i
 if errorlevel 1 exit /b 1
 cmake --install "%WORK_ROOT%\windows-icu" > "%WORK_ROOT%\icu-install.log" 2>&1
 if errorlevel 1 exit /b 1
+echo Building zlib and LZ4.
 cmake -S "%PROJECT_ROOT%\binaries\compression" -B "%WORK_ROOT%\compression-build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%PG_PREFIX%" -DSOURCE_ROOT="%WORK_ROOT%\windows-sources"
 if errorlevel 1 exit /b 1
 node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\compression-build\CMakeFiles\rules.ninja"
@@ -65,8 +69,9 @@ cmake --install "%WORK_ROOT%\compression-build"
 if errorlevel 1 exit /b 1
 set "CMAKE_PREFIX_PATH=%PG_PREFIX%"
 set "ICU_ROOT=%PG_PREFIX%"
+echo Building OpenSSL.
 REM OpenSSL's Windows build needs a Perl that uses native Windows paths.
-set "PATH=%WORK_ROOT%\windows-tools\nasm;%PATH%"
+set "PATH=%WORK_ROOT%\windows-tools\nasm;%WORK_ROOT%\windows-tools\jom;%PATH%"
 if not defined OPENSSL_BUILD_PERL set "OPENSSL_BUILD_PERL=C:\Strawberry\perl\bin\perl.exe"
 pushd "%WORK_ROOT%\windows-sources\openssl" || exit /b 1
 REM Keep OpenSSL's Program Files provider path. The copies below install the DLLs into our SDK.
@@ -74,11 +79,17 @@ REM Keep OpenSSL's Program Files provider path. The copies below install the DLL
 if errorlevel 1 exit /b 1
 nmake /nologo build_generated > "%WORK_ROOT%\openssl-generated-build.log" 2>&1
 if errorlevel 1 exit /b 1
+REM NMake compiles one file at a time. jom reads the same makefile and runs up to BUILD_JOBS compilers at once.
+REM Every compiler writes ossl_static.pdb, which concurrent compilers can only share with /FS. CL passes it
+REM without adding it to the compiler flags that OpenSSL records in libcrypto.
+setlocal
+set "CL=%CL% /FS"
 REM Build each DLL separately so the link audit can bind the map and inputs to its finished bytes.
 for %%L in (crypto ssl) do (
-  node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" trace lib%%L-3-x64.dll nmake /nologo lib%%L-3-x64.dll > "%WORK_ROOT%\openssl-%%L-build.log" 2>&1
+  node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" trace lib%%L-3-x64.dll jom /nologo /J %BUILD_JOBS% lib%%L-3-x64.dll > "%WORK_ROOT%\openssl-%%L-build.log" 2>&1
   if errorlevel 1 exit /b 1
 )
+endlocal
 REM install_dev starts another nmake that can relink libssl after its evidence was recorded.
 REM Install the traced DLLs and just the headers and import libraries the SDK needs.
 mkdir "%PG_PREFIX%\include\openssl"
@@ -99,6 +110,7 @@ set "PKG_CONFIG_PATH=%PG_PREFIX%\lib\pkgconfig"
 set "PKG_CONFIG_LIBDIR=%PKG_CONFIG_PATH%"
 set "INCLUDE=%PG_PREFIX%\include;%INCLUDE%"
 set "LIB=%PG_PREFIX%\lib;%LIB%"
+echo Building PostgreSQL.
 "%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-postgresql" "%WORK_ROOT%\windows-sources\postgresql" --prefix "%PG_PREFIX%" --native-file "%PG_PREFIX%\icu-dependencies.ini" --buildtype release --backend ninja -Db_vscrt=md -Db_pch=true -Dreadline=disabled -Dzlib=enabled -Dicu=enabled -Dssl=openssl -Dlz4=enabled -Dzstd=disabled -Dnls=disabled -Dplperl=disabled -Dplpython=disabled -Dpltcl=disabled -Dlibxml=disabled -Dlibxslt=disabled -Dldap=disabled -Dgssapi=disabled -Ddocs=disabled -Dtap_tests=disabled > "%WORK_ROOT%\windows-postgresql-configure.log" 2>&1
 if errorlevel 1 (
   type "%WORK_ROOT%\windows-postgresql-configure.log"

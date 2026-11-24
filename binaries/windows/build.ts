@@ -177,6 +177,13 @@ async function compileAndPackage(
       "*/nasm.exe",
       "-y",
     ]);
+    await run("7z", [
+      "e",
+      tools.get("jom")!,
+      "-o" + join(buildWork, "windows-tools/jom"),
+      "jom.exe",
+      "-y",
+    ]);
     // Relative to the repository root, where run() starts every tool: cmd.exe would split an absolute
     // path at a character such as "&", which a checkout directory may contain.
     await run("cmd.exe", ["/d", "/c", relative(root, join(recipeRoot, "build.cmd"))], {

@@ -131,6 +131,17 @@ it("Windows scripts never put a variable directly before a redirection", async (
   }
 });
 
+it("OpenSSL's parallel Windows compilers can share their program database", async () => {
+  const script = await read("binaries/windows/build.cmd");
+  const compile = script.indexOf("jom /nologo /J %BUILD_JOBS% lib%%L-3-x64.dll");
+  expect(compile, "OpenSSL compiles with jom at the build's job count").toBeGreaterThan(-1);
+  // Without /FS a compiler fails with C1041 only when another one is writing ossl_static.pdb at the same
+  // moment, so a build that happens to succeed does not show that the flag is missing.
+  const flag = script.indexOf('set "CL=%CL% /FS"');
+  expect(flag, "the compilers receive /FS").toBeGreaterThan(-1);
+  expect(flag).toBeLessThan(compile);
+});
+
 it("the README's pg_cron settings are the ones the native proofs run with", async () => {
   const readme = (await read("README.md")).replaceAll("\r\n", "\n");
   const settings = (/```ini\n(cron\.database_name[^`]*)```/.exec(readme))?.[1]?.trim().split("\n");

@@ -48,8 +48,8 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 - `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
 - `pnpm binaries:test:linux:clean <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
 - `pnpm binaries:build:windows`: build and package the Windows candidate with MSVC.
-  The Ninja and CMake steps use up to `BUILD_JOBS` parallel compile jobs (4 by default).
-  OpenSSL and pgvector compile serially with NMake.
+  The Ninja, CMake and OpenSSL steps use up to `BUILD_JOBS` parallel compile jobs (4 by default).
+  pgvector compiles serially with NMake.
 - `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
 - `pnpm binaries:prune:windows`: preview Windows work directories, their sizes and retention status.
   Add `--remove <name> [name ...]` to remove selected directories from the preview.
@@ -137,7 +137,7 @@ The clean Ubuntu 22.04 consumer runs PostgreSQL without build tools or network a
 Windows builds need Visual Studio C++ tools, CMake, Python, 7-Zip, and Git's Perl.
 OpenSSL also needs native Strawberry Perl at `C:\Strawberry\perl\bin\perl.exe`,
 or at the executable path set in `OPENSSL_BUILD_PERL`.
-The build fetches the pinned NASM assembler for OpenSSL.
+The build fetches the pinned NASM assembler and the pinned jom make tool for OpenSSL.
 Create the isolated Meson environment before the first Windows build.
 A fresh build stops when its Meson differs from the pin in `binaries/windows/requirements.txt`;
 the `pip install` line below then installs the pinned version.

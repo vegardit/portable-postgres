@@ -7,9 +7,12 @@
 REM Builds pinned native extensions against the exact PostgreSQL SDK from build.cmd and inherited MSVC environment.
 setlocal
 set "PATH=%PG_PREFIX%\bin;%PATH%"
+REM As in build.cmd, a line per phase lets the timestamps of a CI log show how long each one took.
+echo Building pgvector.
 call :nmake_extension pgvector
 if errorlevel 1 exit /b 1
 
+echo Building the extensions of binaries\windows\extensions.
 cmake -S "%PROJECT_ROOT%\binaries\windows\extensions" -B "%WORK_ROOT%\windows-extra-build" -G Ninja "-DPG_ROOT=%PG_PREFIX%" "-DSOURCE_ROOT=%WORK_ROOT%\windows-sources" -DCMAKE_BUILD_TYPE=Release > "%WORK_ROOT%\windows-extra-configure.log" 2>&1
 if errorlevel 1 exit /b 1
 node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-extra-build\CMakeFiles\rules.ninja"
@@ -19,6 +22,7 @@ if errorlevel 1 exit /b 1
 cmake --install "%WORK_ROOT%\windows-extra-build" > "%WORK_ROOT%\windows-extra-install.log" 2>&1
 if errorlevel 1 exit /b 1
 
+echo Building plpgsql_check.
 "%PYTHON_BUILD%" -m mesonbuild.mesonmain setup "%WORK_ROOT%\windows-plpgsql-check" "%WORK_ROOT%\windows-sources\plpgsql_check" --buildtype release --backend ninja -Db_vscrt=md > "%WORK_ROOT%\windows-plpgsql-check-configure.log" 2>&1
 if errorlevel 1 exit /b 1
 node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-plpgsql-check\build.ninja"
@@ -28,6 +32,7 @@ if errorlevel 1 exit /b 1
 "%PYTHON_BUILD%" -m mesonbuild.mesonmain install -C "%WORK_ROOT%\windows-plpgsql-check" --no-rebuild > "%WORK_ROOT%\windows-plpgsql-check-install.log" 2>&1
 if errorlevel 1 exit /b 1
 
+echo Building TimescaleDB.
 cmake -S "%WORK_ROOT%\windows-sources\timescaledb" -B "%WORK_ROOT%\windows-timescaledb" -G Ninja "-DPG_CONFIG=%PG_PREFIX%\bin\pg_config.exe" -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DAPACHE_ONLY=ON -DUSE_OPENSSL=OFF -DUSE_TELEMETRY=OFF -DSEND_TELEMETRY_DEFAULT=OFF -DREGRESS_CHECKS=OFF > "%WORK_ROOT%\windows-timescaledb-configure.log" 2>&1
 if errorlevel 1 exit /b 1
 node "%PROJECT_ROOT%\binaries\windows\link-recipe.ts" ninja "%WORK_ROOT%\windows-timescaledb\CMakeFiles\rules.ninja"
