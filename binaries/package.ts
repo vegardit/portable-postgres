@@ -67,7 +67,7 @@ const recordLockWaitMs = 60_000;
  * from the record whether to replace it, so a fresh build must not record itself between the two steps.
  * The lock is a directory, whose creation fails atomically while another process holds it.
  */
-async function withRecordLock<T>(output: string, update: () => Promise<T>): Promise<T> {
+export async function withRecordLock<T>(output: string, update: () => Promise<T>): Promise<T> {
   await mkdir(output, { recursive: true });
   const lock = join(output, recordName + ".lock");
   const deadline = Date.now() + recordLockWaitMs;
@@ -84,7 +84,7 @@ async function withRecordLock<T>(output: string, update: () => Promise<T>): Prom
           { cause: error },
         );
       }
-      // A holder only reads and replaces one small file.
+      // Holders update metadata or claim a directory. Large tree removals happen outside the lock.
       await delay(50);
     }
   }
@@ -127,7 +127,7 @@ export async function recordBuild(output: string, build: NativeBuild): Promise<v
  * The record as written, with its paths relative to `output`, or `undefined` when there is none. Any other
  * failure propagates: a record that cannot be read may name a newer build that packaging must not replace.
  */
-async function readRecord(output: string): Promise<Partial<BuildRecord> | undefined> {
+export async function readRecord(output: string): Promise<Partial<BuildRecord> | undefined> {
   const text = await readOptionalText(join(output, recordName));
   return text === undefined ? undefined : JSON.parse(text) as Partial<BuildRecord>;
 }

@@ -21,11 +21,11 @@ import { inspectWindowsRuntime } from "./imports.ts";
 import { auditWindowsLinks, linkEnvironmentFile, parseLinkEnvironment } from "./links.ts";
 import { requireApacheOnlyTimescaleDB } from "../timescaledb.ts";
 import { installWindowsSql } from "./sql.ts";
+import { withWindowsBuild } from "./work.ts";
 import { msvcRuntimeNotice, selectVisualStudio, visualStudioEvidence } from "./visual-studio.ts";
 import {
   type NativeBuild,
   packageCandidate,
-  readBuild,
   recipeIdentity,
   recordBuild,
   recordedToolchain,
@@ -99,9 +99,8 @@ export async function build(command: string = "build"): Promise<void> {
   }
   const downloads = join(workRoot, "downloads");
   const output = join(outputRoot, "windows-x64");
-  const systemTar = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32/tar.exe");
   const recipe = await recipeIdentity(windowsRecipe);
-  let current: NativeBuild;
+  let inputs: WindowsInputs | undefined;
   if (command === "build") {
     if (!existsSync(toolchainPython)) {
       throw new Error(
@@ -115,10 +114,23 @@ export async function build(command: string = "build"): Promise<void> {
     // Extraction must read the exact files that fetching verified.
     const archives = await fetchSources(downloads);
     const tools = await fetchSources(downloads, windowsTools);
-    // Sources, objects, and the SDK must never carry material from a previous input identity.
-    const buildWork = await mkdtemp(join(workRoot, "windows-build-"));
-    // Meson uses the PostgreSQL name in the prefix to keep the SDK directories flat.
-    current = { buildWork, developmentInstallation: join(buildWork, "postgresql-sdk"), recipe };
+    inputs = { archives, tools };
+  }
+  await withWindowsBuild(workRoot, output, command, recipe,
+    current => compileAndPackage(output, current, inputs));
+}
+
+type WindowsInputs = { archives: Map<string, string>; tools: Map<string, string> };
+
+async function compileAndPackage(
+  output: string,
+  current: NativeBuild,
+  inputs?: WindowsInputs,
+): Promise<void> {
+  if (inputs) {
+    const { archives, tools } = inputs;
+    const { buildWork } = current;
+    const systemTar = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32/tar.exe");
     // NOTE: Windows bsdtar's external bzip2 helper stalled locally. Reconsider 7-Zip when native decoding works.
     const expandedArchive = join(buildWork, "windows-postgresql.tar");
     const archiveOutput = openSync(expandedArchive, "w");
@@ -137,6 +149,7 @@ export async function build(command: string = "build"): Promise<void> {
         "-C",
         destination,
       ]);
+      if (source.id === "postgresql") await rm(expandedArchive);
     }
     // Before patching and compiling: a source update that changed a fact behind a project notice fails here.
     await verifyNoticeAnchors(join(buildWork, "windows-sources"));
@@ -187,7 +200,6 @@ export async function build(command: string = "build"): Promise<void> {
     await installWindowsSql(join(buildWork, "windows-sources"), current.developmentInstallation);
     await recordBuild(output, current);
   } else {
-    current = await readBuild(output, recipe);
     // Notice pins can change while the source archives and compiled SDK stay the same.
     await verifyNoticeAnchors(join(current.buildWork, "windows-sources"));
   }
@@ -209,7 +221,8 @@ export async function build(command: string = "build"): Promise<void> {
       hostEvidence: async installation => {
         // The candidate's images, on every assembly: a reassembly reuses a development installation
         // that may have changed since its build.
-        const links = await auditWindowsLinks(installation, current.buildWork, command);
+        const links = await auditWindowsLinks(installation, current.buildWork,
+          inputs ? "build" : "assemble");
         const linked = [...links.staticMicrosoftCode]
           .map(([library, { size }]) =>
             `${basename(library)} (${size} ${size === 1 ? "member" : "members"})`

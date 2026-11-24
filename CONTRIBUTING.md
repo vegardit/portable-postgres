@@ -51,6 +51,8 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
   The Ninja and CMake steps use up to `BUILD_JOBS` parallel compile jobs (4 by default).
   OpenSSL and pgvector compile serially with NMake.
 - `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
+- `pnpm binaries:prune:windows`: preview Windows work directories, their sizes and retention status.
+  Add `--remove <name> [name ...]` to remove selected directories from the preview.
 - `pnpm binaries:test:windows`: test the relocated Windows candidate with native SQL and TAP.
 - `pnpm binaries:build:macos`: build and package the macOS arm64 candidate with the pinned Xcode.
 - `pnpm binaries:assemble:macos`: reassemble the last matching macOS SDK with current notices and metadata.
@@ -143,6 +145,14 @@ python -m venv binaries/work/windows-toolchain
 pnpm binaries:build:windows
 pnpm binaries:test:windows
 ```
+
+At the end of a Windows build or reassembly, cleanup can remove work directories from earlier
+successfully packaged builds, including their SDKs, sources, object files and build logs.
+Save any logs you need before starting a replacement build.
+Automatic cleanup requires a recorded packaged candidate and keeps its work directory, directories
+still in use, failed builds and legacy work directories.
+When another checkout reassembles the same SDK, cleanup keeps its build tree until that reader exits.
+Use `pnpm binaries:prune:windows` to preview what remains.
 
 The Windows build selects Visual Studio Community, Professional or Enterprise with the C++ tools,
 and any other installation with them, such as Build Tools alone, only when none of these is installed.
