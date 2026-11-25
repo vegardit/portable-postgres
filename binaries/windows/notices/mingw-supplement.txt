@@ -1,0 +1,31 @@
+Additional notices from mingw-w64 e3d18511f
+
+mingw-w64-crt/stdio/mingw_snprintf.c (LicenseRef-MinGW-printf)
+Written by Keith Marshall <keithmarshall@users.sourceforge.net>
+
+This is free software.  You may redistribute and/or modify it as you
+see fit, without restriction of copyright.
+
+This software is provided "as is", in the hope that it may be useful,
+but WITHOUT WARRANTY OF ANY KIND, not even any implied warranty of
+MERCHANTABILITY, nor of FITNESS FOR ANY PARTICULAR PURPOSE.  At no
+time will the author accept any form of liability for any damages,
+however caused, resulting from the use of this software.
+
+DISCLAIMER.PD
+
+This file has no copyright assigned and is placed in the Public Domain.
+This file is part of the mingw-w64 runtime package.
+
+The mingw-w64 runtime package and its code is distributed in the hope that it
+will be useful but WITHOUT ANY WARRANTY.  ALL WARRANTIES, EXPRESSED OR
+IMPLIED ARE HEREBY DISCLAIMED.  This includes but is not limited to
+warranties of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Additional copyright notices for the MIT terms in libwinpthread/COPYING
+mingw-w64-libraries/winpthreads/src/mutex.c, misc.c, spinlock.c and time.c
+
+Copyright (c) 2011, 2014, 2026 mingw-w64 project
+Copyright (c) 2015 Intel Corporation
+Copyright (c) 2011-2016, 2026 mingw-w64 project
+Copyright (c) 2026 mingw-w64 project

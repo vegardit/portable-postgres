@@ -16,20 +16,6 @@ import { sources } from "../binaries/sources/sources.ts";
 import { windowsPatches, windowsRecipe } from "../binaries/windows/build.ts";
 
 const patchRoot = join(root, "binaries/windows/patches");
-const radiusPatch = join(patchRoot, "postgresql/18-radius-in6addr-any.patch");
-/** The lines of PostgreSQL 18's auth.c that the RADIUS patch changes, with its context. */
-const radiusLines = [
-  "",
-  "\tmemset(&localaddr, 0, sizeof(localaddr));",
-  "\tlocaladdr.sin6_family = serveraddrs[0].ai_family;",
-  "\tlocaladdr.sin6_addr = in6addr_any;",
-  "\tif (localaddr.sin6_family == AF_INET6)",
-  "\t\taddrsize = sizeof(struct sockaddr_in6);",
-  "\telse",
-];
-const filler = (count: number) =>
-  Array.from({ length: count }, (_, index) => `/* line ${index} */`);
-
 /** A patch of `src/file.c` from its lines: the hunk header counts them. */
 function patchOf(...hunks: string[][]): string {
   const body = hunks.flatMap(lines => {
@@ -41,14 +27,13 @@ function patchOf(...hunks: string[][]): string {
 }
 const simplePatch = patchOf([" one", "-two", "+TWO", " three"]);
 
-it("the RADIUS patch deletes only the in6addr_any assignment, wherever the code moved to", async () => {
-  const patch = parsePatch(await readFile(radiusPatch, "utf8"));
-  expect(patch.path).toBe("src/backend/libpq/auth.c");
-  // Far from the line numbers in the hunk header, as after an upstream change elsewhere in the file.
-  const original = [...filler(10), ...radiusLines, ...filler(3), ""].join("\n");
-  const patched = applyHunks(original, patch);
-  expect(patched).toBe(original.replace("\tlocaladdr.sin6_addr = in6addr_any;\n", ""));
-  expect(patched).not.toContain("in6addr_any");
+it("the UCRT patch switches only the MinGW setjmp implementation", async () => {
+  const patch = parsePatch(await readFile(join(patchRoot, "postgresql/ucrt-setjmp.patch"), "utf8"));
+  expect(patch.path).toBe("src/include/c.h");
+  const original = ["/* a different line number */", ...patch.hunks[0]!.oldLines, ""].join("\n");
+  expect(applyHunks(original, patch)).toBe(
+    original.replace("#ifdef __MINGW64__", "#if defined(__MINGW64__) && !defined(_UCRT)"),
+  );
 });
 
 it("a patch that is already applied, or no longer fits, stops the build", () => {

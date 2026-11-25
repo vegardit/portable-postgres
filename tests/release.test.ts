@@ -144,12 +144,12 @@ it("a release publishes its source bundle with a checksum and a pointer in the n
   await expect(readFile(join(release, "release-notes.md"), "utf8")).resolves.toContain(
     `\`${bundle}\` contains what these archives were built from: this repository at the release commit, `
       + "with the pinned PostgreSQL and extension source archives in the download cache that the build reads. "
-      // The archives also carry code that the linker adds, such as Microsoft's startup code, without its source.
+      // The archives also carry code that the linker adds, such as MinGW startup code, without its source.
       + "It contains no build tools and none of the toolchain code that linking adds.",
   );
 });
 
-it("the release notes point to the conditions for the Microsoft code in a Windows archive", async () => {
+it("the release notes point to the runtime notices in a Windows archive", async () => {
   const assets = await directory();
   await archive(assets, "windows-x64");
   await prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
@@ -157,14 +157,14 @@ it("the release notes point to the conditions for the Microsoft code in a Window
   });
   // The release page is where people download, so it must not leave these conditions to the archive alone.
   await expect(readFile(join(assets, "release", "release-notes.md"), "utf8")).resolves.toContain(
-    "The Windows archive contains Microsoft runtime code that the linker copies into every program. "
-      + "Read `notices/msvc-runtime.txt` in the archive before you redistribute it.",
+    "The Windows archive includes MinGW and LLVM runtime code. "
+      + "Read `notices/mingw-runtime.txt` in the archive before you redistribute it.",
   );
 });
 
 // Linux candidates need executable permissions, which only a POSIX host can validate.
 it.skipIf(process.platform === "win32")(
-  "the release notes of a Linux archive name no Microsoft code",
+  "the release notes of a Linux archive omit the Windows runtime notice",
   async () => {
     const assets = await directory();
     await archive(assets, "linux-x64-glibc");
@@ -173,7 +173,7 @@ it.skipIf(process.platform === "win32")(
     });
     await expect(readFile(join(assets, "release", "release-notes.md"), "utf8")).resolves.not
       .toContain(
-        "Microsoft",
+        "notices/mingw-runtime.txt",
       );
   },
 );

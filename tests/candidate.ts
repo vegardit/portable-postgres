@@ -15,7 +15,6 @@ import {
   type ArtifactTarget,
   type HostEvidence,
   type LicenseInventory,
-  reviewedMsvcNoticeFile,
   sourceComponentLicenses,
   toolchainImages,
   writeArtifactManifest,
@@ -39,6 +38,7 @@ import {
   opensslLibraries,
   isIcuDataLibrary,
   sqlOnlyExtensions,
+  mingwRuntimeDlls,
 } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 
@@ -166,9 +166,9 @@ export const toolchainParts: Record<
   Array<{ id: string; evidence: string; notice?: string }>
 > = {
   "windows-x64": [{
-    id: "msvc-runtime",
-    evidence: "Visual Studio product line",
-    notice: "notices/msvc-runtime.txt",
+    id: "mingw-runtime",
+    evidence: "CLANG64 packages and linked objects",
+    notice: "notices/mingw-runtime.txt",
   }],
   "linux-x64-glibc": [
     { id: "compiler-rt", evidence: "Clang major version" },
@@ -182,19 +182,30 @@ export const toolchainParts: Record<
   "macos-arm64": [],
 };
 
-/** The licences that the fixture reviews give each toolchain component; two are admitted only there. */
-export const toolchainLicenses: Record<string, string> = {
-  "compiler-rt": "Apache-2.0 WITH LLVM-exception",
-  "glibc-startup": "LGPL-2.1-or-later WITH GCC-exception-2.0",
-  "msvc-runtime": "LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code",
-  "llvm-cxx-runtime": "Apache-2.0 WITH LLVM-exception",
+/** The licence sets used by verified toolchain fixtures. */
+export const toolchainLicenses: Record<string, string[]> = {
+  "compiler-rt": ["Apache-2.0 WITH LLVM-exception"],
+  "glibc-startup": ["LGPL-2.1-or-later WITH GCC-exception-2.0"],
+  "mingw-runtime": [
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "LicenseRef-Public-Domain",
+    "ZPL-2.1",
+    "ISC",
+    "BSD-2-Clause",
+    "LicenseRef-MinGW-gdtoa",
+    "LicenseRef-MinGW-printf",
+  ],
+  "llvm-cxx-runtime": ["Apache-2.0 WITH LLVM-exception"],
 };
 
-/** Release validation admits only reviewed Visual Studio lines and editions, so Windows fixtures name real ones. */
+/** The toolchain identities recorded by the fixture builds. */
 const fixtureLines: Record<string, string> = {
   "compiler-rt": "fixture-1",
   "glibc-startup": "fixture-1",
-  "msvc-runtime": "18",
+  "mingw-runtime": "fixture-1",
   "llvm-cxx-runtime": "fixture-1",
 };
 
@@ -205,7 +216,7 @@ const fixtureLines: Record<string, string> = {
 export const hostMeasurements: Record<ArtifactTarget, HostEvidence> = {
   "windows-x64": {
     component: "PE host library imports",
-    version: "vcruntime140.dll, ucrtbase.dll",
+    version: "ucrtbase.dll",
     evidence: "Contract test",
   },
   "linux-x64-glibc": {
@@ -242,11 +253,11 @@ export function fixtureEvidence(target: ArtifactTarget): HostEvidence[] {
       evidence: "Contract test",
     })),
     ...target === "windows-x64"
-      ? [{
-        component: "Visual Studio edition",
-        version: "Microsoft.VisualStudio.Product.Enterprise",
+      ? sources.filter(source => !sqlOnlyExtensions.has(source.id)).map(source => ({
+        component: "CLANG64 packages and linked objects: " + source.id,
+        version: source.id + "-1",
         evidence: "Contract test",
-      }]
+      }))
       : [],
     hostMeasurements[target],
     ...target === "macos-arm64" ? [macOSMinimum, parserGenerators] : [],
@@ -376,11 +387,12 @@ export async function createCandidate(
         images.module);
     }
   }
+  if (target === "windows-x64") {
+    for (const dll of mingwRuntimeDlls) await writeFile(join(root, dll), images.client);
+  }
   for (const part of toolchainParts[target]) {
     if (part.notice !== undefined) {
-      await writeFile(join(root, part.notice), part.id === "msvc-runtime"
-        ? await readFile(reviewedMsvcNoticeFile)
-        : "Owned LLVM notice fixture");
+      await writeFile(join(root, part.notice), "Owned runtime notice fixture");
     }
   }
   for (const [path, content] of Object.entries(files ?? {})) {
@@ -430,12 +442,20 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
     return {
       id: source.id,
       licenses: ["MIT", ...sourceComponentLicenses.get(source.id) ?? []],
+      ...manifest.target === "windows-x64" && !sqlOnlyExtensions.has(source.id)
+        ? {
+          toolchain:
+            manifest.hostEvidence.find(entry =>
+              entry.component === "CLANG64 packages and linked objects: " + source.id
+            )!.version,
+        }
+        : {},
       status: "verified",
       evidence: ["Owned contract-test fixture"],
       files: [...source.notices, ...files],
       notices: [...source.notices],
       noticeSha256: noticeHashes(manifest, source.notices),
-      noticeSignatures: source.noticeSignatures?.map(entry => entry.signature) ?? [],
+      noticeSignatures: source.noticeSignatures.map(entry => entry.signature),
     };
   });
   const toolchainNotices = toolchainParts[manifest.target].flatMap(part =>
@@ -444,6 +464,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
   const assigned = new Set([
     ...components.flatMap(component => component.files),
     ...toolchainNotices,
+    ...mingwRuntimeDlls,
   ]);
   const postgres = components.find(component => component.id === "postgresql")!;
   postgres.files.push(...manifest.files.map(file => file.path).filter(path => !assigned.has(path)));
@@ -452,7 +473,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
     const notices = part.notice === undefined ? [] : [part.notice];
     components.push({
       id: part.id,
-      licenses: [toolchainLicenses[part.id]!],
+      licenses: [...toolchainLicenses[part.id]!],
       status: "verified",
       evidence: ["Owned contract-test fixture"],
       // The notice comes first, so that tests removing the last file remove an image.
@@ -473,7 +494,7 @@ export function complete(draft: Review): Review {
       components: draft.licenseInventory.components.map(component => ({
         ...component,
         licenses: [
-          toolchainLicenses[component.id] ?? "MIT",
+          ...toolchainLicenses[component.id] ?? ["MIT"],
           ...sourceComponentLicenses.get(component.id) ?? [],
         ],
         status: "verified",
@@ -555,12 +576,6 @@ export function hostRequirementsFixture(
     os: "Contract-test fixture",
     cpu: "x64 fixture",
     libraries: [
-      {
-        name: "vcruntime140.dll",
-        requirement: "fixture",
-        license: "LicenseRef-Microsoft-Windows",
-        evidence: "fixture",
-      },
       {
         name: "ucrtbase.dll",
         requirement: "fixture",

@@ -6,9 +6,7 @@
  */
 
 /** Guards values that shell, batch, CMake, Docker, and SQL files restate because they cannot import TypeScript. */
-import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import {
@@ -17,7 +15,6 @@ import {
   sqlOnlyExtensions,
 } from "../binaries/artifact/runtime-layout.ts";
 import { linkRecordsDirectory } from "../binaries/linux/links.ts";
-import { linkEnvironmentFile, parseLinkEnvironment } from "../binaries/windows/links.ts";
 import { root } from "../binaries/paths.ts";
 import { sources } from "../binaries/sources/sources.ts";
 
@@ -48,62 +45,12 @@ it("the make recipes build every selected contrib module", async () => {
 });
 
 it("the Windows recipe builds every extension source", async () => {
-  const script = await read("binaries/windows/build-extensions.cmd");
-  const cmake = await read("binaries/windows/extensions/CMakeLists.txt");
-  const built = new Set([
-    ...captures(script, /call :nmake_extension (\w+)/g),
-    ...captures(script, /windows-sources\\(\w+)/g),
-    ...captures(cmake, /^add_library\((\w+) MODULE/gm),
-    // binaries/windows/sql.ts installs these from the same set, so no script restates them; the layout
-    // check and smoke.sql prove that they install.
-    ...sqlOnlyExtensions,
-  ]);
-  expect([...built].sort()).toEqual(sourceIds);
-});
-
-it("the toolchain evidence names the Visual Studio installation that the Windows recipe compiles with", async () => {
-  const script = await read("binaries/windows/build.cmd");
-  // A selection of its own could compile with another installation than the one the evidence describes.
-  expect(script).not.toMatch(/vswhere/i);
-  expect(script).toContain('set "VS_ROOT=%PORTABLE_PG_VISUAL_STUDIO%"');
-  expect(script).toContain('call "%VS_ROOT%\\VC\\Auxiliary\\Build\\vcvars64.bat"');
-  expect(script).toContain('> "%WORK_ROOT%\\windows-msvc-toolset.txt" echo %VCToolsVersion%');
-});
-
-it("every Windows link writes the map and environment that the Windows link check reads", async () => {
-  const script = await read("binaries/windows/build.cmd");
-  const vcvars = script.indexOf("vcvars64.bat");
-  // After vcvars64.bat, which sets these variables, and before the first link.
-  const lines = [
-    'set "_LINK_=/MAP /VERBOSE:LIB"',
-    'node "%PROJECT_ROOT%\\binaries\\windows\\link-recipe.ts" environment',
-  ];
-  for (const line of lines) {
-    expect(script).toContain(line);
-    expect(script.indexOf(line)).toBeGreaterThan(vcvars);
-    expect(script.indexOf(line)).toBeLessThan(script.indexOf("mesonbuild.mesonmain setup"));
-  }
-});
-
-it("captures the inherited library paths as data", async () => {
-  const work = await mkdtemp(join(tmpdir(), "postgres link & environment-"));
-  try {
-    execFileSync(process.execPath, [join(root, "binaries/windows/link-recipe.ts"), "environment"], {
-      env: {
-        ...process.env,
-        PORTABLE_PG_WORK: work,
-        LIB: work,
-        VCToolsInstallDir: work,
-        WindowsSDKVersion: "10",
-      },
-    });
-    expect(
-      parseLinkEnvironment(await readFile(join(work, linkEnvironmentFile), "utf8")).libraryPath,
-    )
-      .toEqual([work]);
-  } finally {
-    await rm(work, { recursive: true, force: true });
-  }
+  const script = await read("binaries/windows/build.sh");
+  const loop = captures(script, /^for extension in ([\w ]+); do$/gm);
+  expect(loop).toHaveLength(1);
+  expect(script).toContain('-S "$src/timescaledb"');
+  expect(script).toContain("-DAPACHE_ONLY=ON");
+  expect([...loop[0]!.split(" "), "timescaledb", ...sqlOnlyExtensions].sort()).toEqual(sourceIds);
 });
 
 it("the Linux image links through the tracing linker whose records Linux packaging checks", async () => {
@@ -122,24 +69,11 @@ it("the Linux image links through the tracing linker whose records Linux packagi
   );
 });
 
-it("Windows scripts never put a variable directly before a redirection", async () => {
-  // cmd.exe takes a single digit before ">" as the handle to redirect, so "--parallel %BUILD_JOBS%>"
-  // with BUILD_JOBS=4 passes "--parallel" without a value and leaves the log empty.
-  for (const file of ["binaries/windows/build.cmd", "binaries/windows/build-extensions.cmd"]) {
-    const lines = (await read(file)).split(/\r?\n/);
-    expect(lines.filter(line => /%[\w~]+%[0-9]?>/.test(line)), file).toEqual([]);
-  }
-});
-
-it("OpenSSL's parallel Windows compilers can share their program database", async () => {
-  const script = await read("binaries/windows/build.cmd");
-  const compile = script.indexOf("jom /nologo /J %BUILD_JOBS% lib%%L-3-x64.dll");
-  expect(compile, "OpenSSL compiles with jom at the build's job count").toBeGreaterThan(-1);
-  // Without /FS a compiler fails with C1041 only when another one is writing ossl_static.pdb at the same
-  // moment, so a build that happens to succeed does not show that the flag is missing.
-  const flag = script.indexOf('set "CL=%CL% /FS"');
-  expect(flag, "the compilers receive /FS").toBeGreaterThan(-1);
-  expect(flag).toBeLessThan(compile);
+it("the Windows compiler traces links and strips debug sections for both driver languages", async () => {
+  const script = await read("binaries/windows/build.sh");
+  expect(script).toContain("for driver in clang clang++; do");
+  expect(script).toContain("--ld-path=");
+  expect(script).toContain("--strip-debug");
 });
 
 it("the README's pg_cron settings are the ones the native proofs run with", async () => {
@@ -180,8 +114,7 @@ it("build scripts take the LLVM major and the job count from the TypeScript driv
       "binaries/linux/image/Dockerfile",
       "binaries/linux/image/traced-ld.sh",
       "binaries/linux/abi.ts",
-      "binaries/windows/build.cmd",
-      "binaries/windows/build-extensions.cmd",
+      "binaries/windows/build.sh",
     ]
   ) {
     const text = await read(file);

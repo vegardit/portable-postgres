@@ -202,7 +202,7 @@ export async function prepareRelease(
       ...archives.includes("windows-x64")
         ? toolchainNotices("windows-x64").flatMap(notice => [
           "",
-          "The Windows archive contains Microsoft runtime code that the linker copies into every program. "
+          "The Windows archive includes MinGW and LLVM runtime code. "
           + `Read \`${notice}\` in the archive before you redistribute it.`,
         ])
         : [],

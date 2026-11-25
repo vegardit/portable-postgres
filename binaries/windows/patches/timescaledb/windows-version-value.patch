@@ -1,0 +1,28 @@
+Adapt the timescaledb Windows build to Clang and the MinGW-w64 UCRT headers.
+
+--- a/src/version.c
++++ b/src/version.c
+@@ -103,7 +103,8 @@ ts_version_get_os_info(VersionOSInfo *info)
+ {
+ 	DWORD bufsize;
+ 	void *buffer;
+-	VS_FIXEDFILEINFO *vinfo = NULL;
++	void *version_value = NULL;
++	const VS_FIXEDFILEINFO *vinfo;
+ 	UINT vinfo_len = 0;
+ 
+ 	memset(info, 0, sizeof(VersionOSInfo));
+@@ -122,11 +123,12 @@ ts_version_get_os_info(VersionOSInfo *info)
+ 		goto error;
+ 	}
+ 
+-	if (!VerQueryValueA(buffer, TEXT("\\"), &vinfo, &vinfo_len))
++	if (!VerQueryValueA(buffer, TEXT("\\"), &version_value, &vinfo_len))
+ 	{
+ 		goto error;
+ 	}
+ 
++	vinfo = version_value;
+ 	snprintf(info->sysname, VERSION_INFO_LEN - 1, "Windows");
+ 	snprintf(info->version, VERSION_INFO_LEN - 1, "%u", HIWORD(vinfo->dwProductVersionMS));
+ 	snprintf(info->release, VERSION_INFO_LEN - 1, "%u", LOWORD(vinfo->dwProductVersionMS));

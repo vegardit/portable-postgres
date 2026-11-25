@@ -72,32 +72,18 @@ it("compiled build export imports without launching a build", () => {
   expect(output.trim()).toBe("built-export-ok");
 });
 
-it("compiled build drivers and the pin updater use the repository's recipes, notices and pins", async () => {
+it("compiled build drivers and the pin updater use the repository's recipes, notices and pins", () => {
   // tsc emits only modules and the JSON they import, so a path next to the compiled module finds
   // neither the build scripts nor the notices, and would write updated pins into dist.
-  // The parent owns the notice directory so a failing child cannot leave its files behind.
-  const noticeDirectory = await createDirectory("notice");
   const script = `
     const { existsSync } = await import("node:fs");
     const { isAbsolute, join, relative, sep } = await import("node:path");
     const { linuxRecipe } = await import("./dist/binaries/linux/build.js");
     const { windowsRecipe } = await import("./dist/binaries/windows/build.js");
-    const { msvcRuntimeNotice } = await import("./dist/binaries/windows/visual-studio.js");
     const { pinFiles } = await import("./dist/binaries/sources/update.js");
-    // An admitted edition, so that line 18 gets the reviewed notice and writes no candidate text here.
-    const line = version => [
-      { component: "Visual Studio product line", version, evidence: "" },
-      {
-        component: "Visual Studio edition",
-        version: "Microsoft.VisualStudio.Product.Community",
-        evidence: "",
-      },
-    ];
     const paths = [
       ...linuxRecipe,
       ...windowsRecipe,
-      await msvcRuntimeNotice(line("18"), "."),
-      await msvcRuntimeNotice(line("2022"), process.argv[1]),
       pinFiles.sources,
       pinFiles.revision,
     ];
@@ -112,13 +98,11 @@ it("compiled build drivers and the pin updater use the repository's recipes, not
     "--input-type=module",
     "-e",
     script,
-    noticeDirectory,
   ], {
     encoding: "utf8",
     timeout: 10_000,
   });
   expect(JSON.parse(output)).toEqual([]);
-  await expect(readdir(noticeDirectory)).resolves.toEqual(["msvc-runtime.txt"]);
 });
 
 it("compiled tooling finds the repository root, not its own output directory", () => {

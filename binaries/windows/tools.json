@@ -6,21 +6,5 @@
     "sha256": "8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135",
     "usage": "build-only; never copy this installation into native runtime artifacts",
     "provenance": "Official upstream v2.5.25 release asset; hash recorded after a direct TLS download. GitHub provided no asset digest."
-  },
-  {
-    "id": "nasm",
-    "version": "3.02",
-    "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/win64/nasm-3.02-win64.zip",
-    "sha256": "161d0bfaff53c2f9e9f3e69fd0672323ebabafd1268976a5cec11be92a19aee7",
-    "usage": "build-only assembler for OpenSSL",
-    "provenance": "Official Windows x64 archive, verified against the Scoop Main nasm manifest."
-  },
-  {
-    "id": "jom",
-    "version": "1.1.7",
-    "url": "https://download.qt.io/official_releases/jom/jom_1_1_7.zip",
-    "sha256": "4c8af345586a9a08fbfd2f613fcac748226d91a75627aa3581b297dd513046fe",
-    "usage": "build-only parallel replacement for NMake in the OpenSSL build",
-    "provenance": "Official Qt release archive, verified against the publisher's jom_1_1_7.zip.sha256 file."
   }
 ]

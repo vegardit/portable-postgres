@@ -47,9 +47,8 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 - `pnpm binaries:assemble:linux`: assemble a fresh Linux runtime from the last development installation.
 - `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
 - `pnpm binaries:test:linux:clean <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
-- `pnpm binaries:build:windows`: build and package the Windows candidate with MSVC.
-  The Ninja, CMake and OpenSSL steps use up to `BUILD_JOBS` parallel compile jobs (4 by default).
-  pgvector compiles serially with NMake.
+- `pnpm binaries:build:windows`: build and package the Windows candidate with Clang, LLD and MinGW-w64.
+  Set `BUILD_JOBS` to adjust parallel compilation (4 jobs by default).
 - `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
 - `pnpm binaries:prune:windows`: preview Windows work directories, their sizes and retention status.
   Add `--remove <name> [name ...]` to remove selected directories from the preview.
@@ -134,10 +133,10 @@ The clean Ubuntu 22.04 consumer runs PostgreSQL without build tools or network a
 
 ### Windows x64
 
-Windows builds need Visual Studio C++ tools, CMake, Python, 7-Zip, and Git's Perl.
-OpenSSL also needs native Strawberry Perl at `C:\Strawberry\perl\bin\perl.exe`,
-or at the executable path set in `OPENSSL_BUILD_PERL`.
-The build fetches the pinned NASM assembler and the pinned jom make tool for OpenSSL.
+Windows builds need CMake, Python, 7-Zip and native Windows Perl.
+Set `PG_BUILD_PERL` to its executable if it is outside `PATH`.
+The driver downloads the exact MSYS2 base, CLANG64 packages and parser generators, verifies their SHA-256,
+and extracts them into the fresh build directory.
 Create the isolated Meson environment before the first Windows build.
 A fresh build stops when its Meson differs from the pin in `binaries/windows/requirements.txt`;
 the `pip install` line below then installs the pinned version.
@@ -153,24 +152,16 @@ At the end of a Windows build or reassembly, cleanup can remove work directories
 successfully packaged builds, including their SDKs, sources, object files and build logs.
 Save any logs you need before starting a replacement build.
 Automatic cleanup requires a recorded packaged candidate and keeps its work directory, directories
-still in use, failed builds and legacy work directories.
+still in use and incomplete builds.
+Pruning leaves unrecognized directories alone, even when explicitly selected.
 When another checkout reassembles the same SDK, cleanup keeps its build tree until that reader exits.
 Use `pnpm binaries:prune:windows` to preview what remains.
 
-The Windows build selects Visual Studio Community, Professional or Enterprise with the C++ tools,
-and any other installation with them, such as Build Tools alone, only when none of these is installed.
-It never selects a preview or Insiders installation.
-The scripts use that installation's x64 toolchain and bundled Ninja.
-The ICU CMake recipe reads upstream's source lists and runs its data generator against the full data archive.
-Only its common, internationalization and data DLLs enter the runtime.
-The linker must support recording its input paths with `/LINKREPROFULLPATHRSP`
-(Visual Studio 2022 17.11 or later).
-Packaging checks the link map of every image and fails when one links static code from a Microsoft library
-other than `msvcrt.lib`, `vcruntime.lib`, and the reviewed `vector_algorithms.obj`
-and `xonce2.obj` members of `msvcprt.lib`, for example from the Windows SDK;
-[native artifact format 1](docs/native-artifact.md) describes the check.
-They keep parser generators and other build-only tools outside the runtime archive.
-Native proofs retain private diagnostic directories and shut down their owned instance.
+The Windows build uses PGXS for native extensions and CMake for Apache-only TimescaleDB.
+The compiler driver records the inputs to each program and DLL link under the SHA-256 of its output.
+Packaging and reassembly check those records, the two pinned shared runtime DLLs, and the host imports.
+The ICU data DLL contains the full locale data and has no entry point or executable section.
+See [native artifact format 1](docs/native-artifact.md) for the review requirements.
 
 ### macOS arm64
 
@@ -247,7 +238,7 @@ Then check whether the updated source still needs the patch, as "Source patches"
 [native artifact format 1](docs/native-artifact.md) describes, and update or remove it.
 The workflow creates the pull request with a GitHub App, so that its checks run without a manual approval.
 Configure the App's ID as the `PR_UPDATER_APP_ID` variable and its private key as the `PR_UPDATER_APP_PRIVATE_KEY` secret.
-The Windows build tools in `binaries/windows/tools.json` are not covered and are updated by hand.
+The Windows package pins in `binaries/windows/clang64.json` and `binaries/windows/tools.json` are not covered and are updated by hand.
 
 ## Reviewing licences and host requirements
 
@@ -261,11 +252,10 @@ Without the file, the build produces a candidate whose review is pending.
 2. Run `pnpm binaries:review <target>` to write `review-draft.json` next to the build output.
    The draft assigns every shipped file to a component, including one component per toolchain part
    linked into native binaries (`compiler-rt`, `glibc-startup` and `llvm-cxx-runtime` on Linux,
-   `msvc-runtime` on Windows, none on macOS),
+   `mingw-runtime` on Windows, none on macOS),
    and records the hash of every licence notice and the toolchain line.
    It starts from the tracked review and lists the parts it reopens.
    When it reopens nothing, it also lists anything the release gate would still reject.
-   It always lists a Visual Studio line or edition that releases do not admit, which no review can resolve.
    Reopened components keep their previous licences as a starting point but no evidence,
    because a source's declared licence does not establish the licence of built files.
    A component that is still pending but unchanged keeps its evidence and is listed as not verified yet.
@@ -291,8 +281,6 @@ Without the file, the build produces a candidate whose review is pending.
    The preview includes edits to previously verified coverage, licences and host requirements.
    A removed component's entry shows up to ten paths that other components still list and counts any others.
    It refuses and names any part that still lacks licences, evidence, or host library details.
-   For `msvc-runtime`, it requires a reviewed Visual Studio product line and the digest of the release notice.
-   A Build Tools candidate carries a different notice even on a reviewed line.
    It compares the edited draft with the review committed at `HEAD` to recover evidence for reopened components
    whose licences you kept.
    Until you commit the approved review, another approval can list the same changes.
@@ -328,7 +316,6 @@ look for newly bundled third-party code with its own licence, and skim the relea
 The job summary shows up to 20 notice signature changes per component.
 It lists additions first as `licence text added`, with up to three example paths each,
 then removals as `licence text gone`.
-If the previous review has no signature list, the summary gives the number of signatures to review.
 To see every change, compare each component's `noticeSignatures` in the uploaded draft
 with the same component in the target's tracked review.
 Read the added text in the upstream source, decide whether it ships and under which licence,
@@ -344,15 +331,12 @@ The toolchain components carry fixed licences.
 It requires `Apache-2.0 WITH LLVM-exception` and retains their upstream licence texts.
 ICU's data library contains no executable code and needs no linked-runtime component.
 `glibc-startup` carries `LGPL-2.1-or-later WITH GCC-exception-2.0`.
-`msvc-runtime` carries `LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code`.
-Its draft also lists the project's notice `notices/msvc-runtime.txt` for the linked Microsoft code,
-whose text the review approves together with the images.
-Review the Windows target from a build on the `windows-2025` runner, which uses Visual Studio 2026 Enterprise.
-Local Windows builds with another Visual Studio line, such as 2022, or with Build Tools alone produce candidates only:
-`pnpm binaries:review` names the release gap for them and reopens `msvc-runtime`, whose notice differs, and release validation refuses them.
-Such a candidate ships `binaries/windows/notices/msvc-runtime-candidate.txt` instead of the reviewed notice,
-with the line and product that Visual Studio reports filled in; that text says not to redistribute it.
-A new Visual Studio product line needs a review of its licence terms and a repository change that admits it.
+`mingw-runtime` covers MinGW startup code, LLVM runtime code, libc++ and winpthreads.
+Its review binds the hash of the package pins, the linked object inventory and the retained notices.
+Each native source review binds the pins and the linked objects in its own images.
+Changing one extension's linked objects reopens that extension and the runtime review.
+See [native artifact format 1](docs/native-artifact.md#notices-and-license-gate) for the required licences.
+For the initial Windows review, record the tested Windows version and CPU requirements.
 
 ## Releasing
 

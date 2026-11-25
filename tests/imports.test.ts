@@ -5,12 +5,19 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Checks PE import reading and the Windows host-library gate with synthetic images. */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+/** Checks Windows PE imports and linker evidence with synthetic images. */
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { mingwLinkEvidence } from "../binaries/windows/mingw.ts";
 import { inspectWindowsRuntime, readPeImports } from "../binaries/windows/imports.ts";
+
+vi.mock(import("node:fs/promises"), async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, writeFile: vi.fn<typeof actual.writeFile>(actual.writeFile) };
+});
 
 /** Builds a minimal PE32+ image with one section holding an import table and a delay-import table. */
 function peImage(imports: string[], delayImports: string[] = []): Buffer {
@@ -64,14 +71,16 @@ it("accepts bundled and reviewed host libraries and rejects any other import", a
     await writeFile(join(installation, "bin/libpq.dll"), peImage(["KERNEL32.dll"]));
     await writeFile(
       join(installation, "bin/psql.exe"),
-      peImage(["LIBPQ.dll", "VCRUNTIME140.dll"], ["WS2_32.dll"]),
+      peImage(["LIBPQ.dll", "API-MS-WIN-CRT-RUNTIME-L1-1-0.dll"], ["WS2_32.dll"]),
     );
     await writeFile(join(installation, "lib/notes.txt"), "not an image");
     await expect(inspectWindowsRuntime(installation)).resolves.toEqual([
+      "api-ms-win-crt-runtime-l1-1-0.dll",
       "kernel32.dll",
-      "vcruntime140.dll",
       "ws2_32.dll",
     ]);
+    await writeFile(join(installation, "lib/vector.dll"), peImage([], ["FOREIGN-RUNTIME.dll"]));
+    await expect(inspectWindowsRuntime(installation)).rejects.toThrow("foreign-runtime.dll");
     await writeFile(join(installation, "lib/vector.dll"), peImage(["libssl-3-x64.dll"]));
     await expect(inspectWindowsRuntime(installation)).rejects.toThrow(
       "vector.dll needs an unreviewed runtime library: libssl-3-x64.dll",
@@ -98,5 +107,65 @@ it("only DLLs next to the programs count as bundled, because Windows looks for i
     );
   } finally {
     await rm(installation, { recursive: true, force: true });
+  }
+});
+
+it("binds the linked toolchain members to the finished image and rechecks the receipt on assembly", async () => {
+  const work = await mkdtemp(join(tmpdir(), "portable-postgres-mingw-"));
+  try {
+    const installation = join(work, "runtime");
+    await mkdir(join(installation, "bin"), { recursive: true });
+    await mkdir(join(work, "link-records"));
+    const image = peImage(["KERNEL32.dll"]);
+    await writeFile(join(installation, "bin/test.exe"), image);
+    const hash = createHash("sha256").update(image).digest("hex");
+    const path = join(work, "link-records", hash + ".json");
+    await expect(mingwLinkEvidence(installation, work, true)).rejects.toThrow(hash);
+    const record = { image: "test.exe", selected: ["lib/crt2.o"], external: ["outside/startup.o"] };
+    await writeFile(path, JSON.stringify(record));
+    await expect(mingwLinkEvidence(installation, work, true)).rejects.toThrow("outside/startup.o");
+    record.external = [];
+    await writeFile(path, JSON.stringify({ ...record, selected: ["lib/libgcc.a"] }));
+    await expect(mingwLinkEvidence(installation, work, true)).rejects.toThrow("libgcc.a");
+    await writeFile(path, JSON.stringify(record));
+    const write = vi.mocked(writeFile).getMockImplementation()!;
+    vi.mocked(writeFile).mockImplementationOnce(async (destination, _data, options) => {
+      await write(destination, "incomplete", options);
+      throw new Error("interrupted receipt");
+    });
+    await expect(mingwLinkEvidence(installation, work, true)).rejects.toThrow(
+      "interrupted receipt",
+    );
+    await expect(readFile(join(work, "windows-linked-inputs.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    const vector = peImage(["libpq.dll"]);
+    const vectorHash = createHash("sha256").update(vector).digest("hex");
+    await mkdir(join(installation, "lib"));
+    await writeFile(join(installation, "lib/vector.dll"), vector);
+    const vectorRecord = { ...record, image: "vector.dll" };
+    await writeFile(join(work, "link-records", vectorHash + ".json"), JSON.stringify(vectorRecord));
+    const fresh = await mingwLinkEvidence(installation, work, true);
+    await expect(mingwLinkEvidence(installation, work, false)).resolves.toEqual(fresh);
+    const next = join(work, "next");
+    await mkdir(join(next, "link-records"), { recursive: true });
+    await copyFile(path, join(next, "link-records", hash + ".json"));
+    await writeFile(join(next, "link-records", vectorHash + ".json"),
+      JSON.stringify({ ...vectorRecord, selected: ["lib/crtbegin.o"] }));
+    const rebuilt = await mingwLinkEvidence(installation, next, true);
+    const changed = rebuilt.filter(entry =>
+      fresh.find(prior => prior.component === entry.component)?.version !== entry.version
+    );
+    expect(changed.map(entry => entry.component)).toEqual([
+      "CLANG64 packages and linked objects",
+      "CLANG64 packages and linked objects: pgvector",
+    ]);
+    expect(fresh).toContainEqual(
+      expect.objectContaining({ component: "CLANG64 packages and linked objects: postgresql" }),
+    );
+    await writeFile(path, JSON.stringify({ ...record, selected: ["lib/crtbegin.o"] }));
+    await expect(mingwLinkEvidence(installation, work, false)).rejects.toThrow("changed since");
+  } finally {
+    await rm(work, { recursive: true, force: true });
   }
 });

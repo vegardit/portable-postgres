@@ -12,15 +12,14 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   type ArtifactTarget,
   type HostEvidence,
-  releaseVisualStudioEditions,
   validateArtifact,
-  visualStudioEditionEvidence,
 } from "../binaries/artifact/artifact.ts";
 import {
   approveReview,
   type Draft,
   draftReview,
   mergeReview,
+  parseReview,
   readTrackedReview,
   releaseReviewGap,
   type Review,
@@ -28,9 +27,7 @@ import {
 } from "../binaries/artifact/review.ts";
 import { noticeSignatureExamples } from "../binaries/artifact/notice-scan.ts";
 import { writeJson } from "../binaries/files.ts";
-import { fileSha256 } from "../binaries/hash.ts";
 import { sources } from "../binaries/sources/sources.ts";
-import { msvcRuntimeNotice } from "../binaries/windows/visual-studio.ts";
 import {
   complete,
   createCandidate,
@@ -50,7 +47,7 @@ const hostEvidence: Record<ArtifactTarget, HostEvidence[]> = {
   "windows-x64": remeasured(
     fixtureEvidence("windows-x64"),
     "windows-x64",
-    "kernel32.dll, vcruntime140.dll",
+    "kernel32.dll",
   ),
   "linux-x64-glibc": fixtureEvidence("linux-x64-glibc"),
   "macos-arm64": fixtureEvidence("macos-arm64"),
@@ -58,6 +55,64 @@ const hostEvidence: Record<ArtifactTarget, HostEvidence[]> = {
 
 /** Builds and validates two complete candidates, which takes longer than the default limit on a busy host. */
 const twoCandidates = 30_000;
+
+async function windowsDraft(
+  installation: string,
+  evidence = hostEvidence["windows-x64"],
+): Promise<Draft> {
+  await createCandidate(installation, "windows-x64", { hostEvidence: evidence });
+  return draftReview(installation, "windows-x64");
+}
+
+it("requires the licences of all bundled MinGW runtime contributions", async () => {
+  const installation = await directory();
+  const review = complete((await windowsDraft(installation)).review);
+  const runtime = review.licenseInventory.components.find(part => part.id === "mingw-runtime")!;
+  const fullLicences = runtime.licenses;
+  runtime.licenses = ["Apache-2.0 WITH LLVM-exception"];
+  await expect(releaseReviewGap(installation, "windows-x64", review)).resolves.toContain(
+    "must carry MIT",
+  );
+  runtime.licenses = fullLicences;
+  await expect(releaseReviewGap(installation, "windows-x64", review)).resolves.toBeUndefined();
+  const postgres = review.licenseInventory.components.find(part => part.id === "postgresql")!;
+  postgres.licenses.push("ZPL-2.1");
+  await expect(reviewCandidate(installation, "windows-x64", review)).resolves.toMatchObject({
+    changes: ["release gate: unresolved or unapproved license: ZPL-2.1"],
+  });
+  await expect(releaseReviewGap(installation, "windows-x64", review)).resolves.toContain(
+    "unresolved or unapproved license: ZPL-2.1",
+  );
+});
+
+it("reopens only the source whose Windows link inputs changed and the shared runtime review",
+  async () => {
+    const current = await directory();
+    const previous = complete((await windowsDraft(await directory())).review);
+    const updated = hostEvidence["windows-x64"].map(entry =>
+      ["CLANG64 packages and linked objects", "CLANG64 packages and linked objects: pgvector"]
+          .includes(entry.component)
+        ? { ...entry, version: entry.version + "-changed" }
+        : entry
+    );
+    const draft = await windowsDraft(current, updated);
+    const { review } = mergeReview(draft, previous);
+    expect(
+      review.licenseInventory.components.filter(part => part.status === "pending").map(part =>
+        part.id
+      ).sort(),
+    )
+      .toEqual(["mingw-runtime", "pgvector"]);
+    expect(review.licenseInventory.components.find(part => part.id === "pgvector")?.toolchain).toBe(
+      "pgvector-1-changed",
+    );
+    const stale = complete(draft.review);
+    stale.licenseInventory.components.find(part => part.id === "pgvector")!.toolchain =
+      "pgvector-1";
+    await expect(releaseReviewGap(current, "windows-x64", stale)).resolves.toContain(
+      "toolchain changed since review: pgvector",
+    );
+  }, twoCandidates);
 
 async function draftAndRelease(target: ArtifactTarget): Promise<Review> {
   const candidate = await directory();
@@ -107,23 +162,25 @@ async function releaseCandidate(
 }
 
 it(
-  "Windows draft credits PE images to the MSVC runtime and lists required host libraries",
+  "Windows draft credits PE images to the MinGW runtime and lists required host libraries",
   async () => {
     const draft = await draftAndRelease("windows-x64");
     const toolchain = draft.licenseInventory.components.find(component =>
-      component.id === "msvc-runtime"
+      component.id === "mingw-runtime"
     )!;
     expect(toolchain.files).toContain("bin/postgres.exe");
     expect(toolchain.files).toContain("lib/vector.dll");
+    expect(toolchain.files).toEqual(
+      expect.arrayContaining(["bin/libc++.dll", "bin/libwinpthread-1.dll"]),
+    );
     // Besides the images, the runtime component holds only the project's notice for the linked code.
     expect(toolchain.files.filter(path => path.endsWith(".sql") || path.startsWith("notices/")))
-      .toEqual(["notices/msvc-runtime.txt"]);
-    expect(toolchain.notices).toEqual(["notices/msvc-runtime.txt"]);
+      .toEqual(["notices/mingw-runtime.txt"]);
+    expect(toolchain.notices).toEqual(["notices/mingw-runtime.txt"]);
     expect(
       draft.licenseInventory.components.find(component => component.id === "postgresql")!.files,
-    ).not.toContain("notices/msvc-runtime.txt");
+    ).not.toContain("notices/mingw-runtime.txt");
     expect(draft.hostRequirements.libraries.map(library => library.name)).toEqual([
-      "vcruntime140.dll",
       "ucrtbase.dll",
       "kernel32.dll",
     ]);
@@ -216,7 +273,7 @@ it(
     const changedEvidence = remeasured(
       hostEvidence[target],
       target,
-      "kernel32.dll, vcruntime140.dll, advapi32.dll",
+      "kernel32.dll, advapi32.dll",
     );
     const files = { "notices/pgvector.txt": "a changed licence text" };
     const changed = await directory();
@@ -239,7 +296,6 @@ it(
     expect(review.hostRequirements.libraries.map(library => library.license)).toEqual([
       "LicenseRef-Microsoft-Windows",
       "LicenseRef-Microsoft-Windows",
-      "LicenseRef-Microsoft-Windows",
       "",
     ]);
 
@@ -260,7 +316,7 @@ it(
 );
 
 it(
-  "a new Visual Studio line and a changed runtime notice reopen the runtime review, and the line blocks releases",
+  "a new CLANG64 link inventory and notice reopen the runtime review",
   async () => {
     const target = "windows-x64";
     const first = await directory();
@@ -269,25 +325,23 @@ it(
 
     const lineEvidence = toolchainParts[target][0]!.evidence;
     const newLine = hostEvidence[target].map(entry =>
-      entry.component === lineEvidence ? { ...entry, version: "19" } : entry
+      entry.component === lineEvidence ? { ...entry, version: "fixture-2" } : entry
     );
-    const files = { "notices/msvc-runtime.txt": "a reworded notice" };
+    const files = { "notices/mingw-runtime.txt": "a reworded notice" };
     const changed = await directory();
     await createCandidate(changed, target, { hostEvidence: newLine, files });
     const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
     expect(changes).toEqual([
-      "msvc-runtime: licence notice changed: notices/msvc-runtime.txt",
-      "msvc-runtime: toolchain changed from 18 to 19",
+      "mingw-runtime: licence notice changed: notices/mingw-runtime.txt",
+      "mingw-runtime: toolchain changed from fixture-1 to fixture-2",
     ]);
 
-    // Completing the review is not enough: the new line's licence terms were never reviewed.
+    // The reviewed inventory must match the new linked objects and the updated notice.
     const release = await releaseCandidate(complete(review), target, {
       hostEvidence: newLine,
       files,
     });
-    await expect(validateArtifact(release, target)).rejects.toThrow(
-      "Visual Studio product line 19 has no reviewed licence terms",
-    );
+    await expect(validateArtifact(release, target)).resolves.toMatchObject({ target });
   },
   2 * twoCandidates,
 );
@@ -448,6 +502,7 @@ it(
 it("a toolchain component covers only the images that the current build ships", () => {
   const component = (id: string, files: string[]) => ({
     id,
+    ...id === "postgresql" ? { noticeSignatures: [] } : {},
     licenses: ["MIT"],
     status: "verified" as const,
     evidence: ["Owned contract-test fixture"],
@@ -469,6 +524,7 @@ it("a toolchain component covers only the images that the current build ships", 
       hostRequirements: { status: "pending", ...host },
     },
     payloadSha256: new Map(),
+    noticeExamples: new Map(),
   };
   const tracked: Review = {
     licenseInventory: {
@@ -508,7 +564,7 @@ it(
     const evidence = remeasured(
       hostEvidence[target],
       target,
-      "kernel32.dll, vcruntime140.dll, advapi32.dll",
+      "kernel32.dll, advapi32.dll",
     );
     const changed = await directory();
     await createCandidate(changed, target, { hostEvidence: evidence });
@@ -527,7 +583,7 @@ it(
     const evidence = remeasured(
       hostEvidence[target],
       target,
-      "kernel32.dll, vcruntime140.dll, advapi32.dll",
+      "kernel32.dll, advapi32.dll",
     );
     const first = await directory();
     await createCandidate(first, target, { hostEvidence: evidence });
@@ -573,7 +629,7 @@ it(
     // A later build imports it directly while another new import reopens the review.
     const second = await directory();
     await createCandidate(second, target, {
-      hostEvidence: imports("kernel32.dll, vcruntime140.dll, mswsock.dll, advapi32.dll"),
+      hostEvidence: imports("kernel32.dll, mswsock.dll, advapi32.dll"),
     });
     const reopened = mergeReview(await draftReview(second, target), tracked).review;
 
@@ -633,42 +689,6 @@ it(
     await expect(releaseReviewGap(candidate, target, review)).resolves.toMatch(/unresolved/);
   },
   twoCandidates,
-);
-
-it(
-  "the review lists a Visual Studio edition that releases do not admit, whatever else it reopens",
-  async () => {
-    const target = "windows-x64";
-    const first = await directory();
-    await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
-    const tracked = complete((await draftReview(first, target)).review);
-
-    // Build Tools of the reviewed line: the toolchain line is unchanged, so no component reopens for it.
-    const buildTools = hostEvidence[target].map(entry =>
-      entry.component === visualStudioEditionEvidence
-        ? { ...entry, version: "Microsoft.VisualStudio.Product.BuildTools" }
-        : entry
-    );
-    const edition = "release gate: Visual Studio edition Microsoft.VisualStudio.Product.BuildTools"
-      + " is not admitted for releases; build with " + releaseVisualStudioEditions.join(", ");
-    const files = { "notices/pgvector.txt": "a changed licence text" };
-    const changed = await directory();
-    await createCandidate(changed, target, { hostEvidence: buildTools, files });
-    await expect(reviewCandidate(changed, target, tracked)).resolves.toMatchObject({
-      changes: ["pgvector: licence notice changed: notices/pgvector.txt", edition],
-    });
-    await expect(reviewCandidate(changed, target, undefined)).resolves.toMatchObject({
-      changes: ["no tracked review yet: every component needs a review", edition],
-    });
-
-    // When nothing reopens, the release gate names the same gap, which the review lists once.
-    const same = await directory();
-    await createCandidate(same, target, { hostEvidence: buildTools });
-    await expect(reviewCandidate(same, target, tracked)).resolves.toMatchObject({
-      changes: [edition],
-    });
-  },
-  3 * twoCandidates,
 );
 
 it(
@@ -821,13 +841,10 @@ it("new or vanished licence text in a source tree reopens that source's review a
     licenses: ["MIT", "Vixie-Cron", "BSD-4.3TAHOE"],
   });
 
-  // A review from before the scan existed has no signatures, so the whole set is still to be reviewed.
-  const legacy = structuredClone(tracked);
-  delete legacy.licenseInventory.components.find(component => component.id === "postgresql")!
+  delete tracked.licenseInventory.components.find(component => component.id === "postgresql")!
     .noticeSignatures;
-  expect(mergeReview(await draftReview(first, target), legacy).changes).toEqual([
-    "postgresql: notice signatures of the source tree not reviewed yet (1)",
-  ]);
+  expect(() => parseReview(JSON.stringify(tracked), "review.json"))
+    .toThrow("missing reviewed notice signatures for source: postgresql");
 });
 
 /** A review whose parts are all filled in but not approved yet, as a reviewer hands it over. */
@@ -851,23 +868,6 @@ it(
     const first = await directory();
     await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
     const filled = pendingAgain(complete((await draftReview(first, target)).review));
-    const ineligible = structuredClone(filled);
-    const runtime = ineligible.licenseInventory.components.find(part =>
-      part.id === "msvc-runtime"
-    )!;
-    runtime.toolchain = "2022";
-    const approveRuntime = () => approveReview(ineligible, filled, { date: "2026-11-22" });
-    expect.soft(approveRuntime).toThrow(/msvc-runtime.*product line/);
-    runtime.toolchain = "18";
-    const buildTools = hostEvidence[target].map(entry =>
-      entry.component === visualStudioEditionEvidence
-        ? { ...entry, version: "Microsoft.VisualStudio.Product.BuildTools" }
-        : entry
-    );
-    runtime.noticeSha256["notices/msvc-runtime.txt"] = await fileSha256(
-      await msvcRuntimeNotice(buildTools, await directory()),
-    );
-    expect.soft(approveRuntime).toThrow(/msvc-runtime.*notice/);
     expect.soft(() => approveReview(filled, filled, { date: "2026-11-22", note: "First review." }))
       .toThrow(/--note/);
     const { review, approved } = approveReview(filled, filled, { date: "2026-11-22" });
@@ -883,7 +883,7 @@ it(
     expect(approved).toContain("pgvector: MIT");
     expect(approved.slice(-2)).toEqual([
       "licence inventory: as a whole",
-      "host requirements: 3 libraries",
+      "host requirements: 2 libraries",
     ]);
     // An approved review has nothing left to approve.
     expect(approveReview(review, review, { date: "2026-11-23" })).toEqual({ review, approved: [] });
@@ -902,10 +902,10 @@ it(
     expect.soft(approveReview(edited, review, { date: "2026-11-23" }).approved).toEqual([
       "postgresql: " + postgres.licenses.join(", ") + ", accepting files added: lib/vector.dll",
       "pgvector: MIT",
-      "host requirements: 4 libraries, accepting libraries added: mswsock.dll",
+      "host requirements: 3 libraries, accepting libraries added: mswsock.dll",
     ]);
     expect(approveReview(review, edited, { date: "2026-11-23" }).approved)
-      .toContain("host requirements: 3 libraries, accepting libraries removed: mswsock.dll");
+      .toContain("host requirements: 2 libraries, accepting libraries removed: mswsock.dll");
 
     const release = await releaseCandidate(review, target, { hostEvidence: hostEvidence[target] });
     await expect(validateArtifact(release, target)).resolves.toMatchObject({ target });
@@ -1014,7 +1014,7 @@ it(
     const changedEvidence = remeasured(
       hostEvidence[target],
       target,
-      "kernel32.dll, vcruntime140.dll, advapi32.dll",
+      "kernel32.dll, advapi32.dll",
     );
     const changed = await directory();
     await createCandidate(changed, target, { hostEvidence: changedEvidence });

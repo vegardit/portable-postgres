@@ -31,6 +31,7 @@ it("approves the checked build tree or a locally edited draft against its commit
           id: "pgvector",
           files: ["notice"],
           notices: ["notice"],
+          noticeSignatures: [],
           noticeSha256: { notice: "1".repeat(64) },
           licenses: ["MIT"],
           evidence: ["Reviewed grant."],

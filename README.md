@@ -26,7 +26,7 @@ Extract the archive and run PostgreSQL directly on your machine.
 | Platform          | Status | Host requirement                                            |
 | ----------------- | ------ | ----------------------------------------------------------- |
 | Linux x64 (glibc) | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
-| Windows x64       | Built  | Microsoft Visual C++ Redistributable and the Universal CRT. |
+| Windows x64       | Built  | Windows Universal CRT (included with Windows 10 and later). |
 | macOS arm64       | Built  | macOS 15 or newer on Apple silicon.                         |
 
 Linux distributions based on musl, such as Alpine, are not supported.
@@ -257,10 +257,3 @@ These include the following conditions.
   Every release attaches `portable-postgres-<version>-sources.tar.gz` for this: this repository at the release commit, with the source archives that its archives were built from.
 
 pg_cron includes software developed by the University of California, Berkeley (`notices/pg_cron-include-bitstring.h.txt`).
-
-### Microsoft code in the Windows archives
-
-The released Windows archives are built with Microsoft Visual Studio 2026.
-As in every program built with it, the linker adds a small amount of Microsoft runtime code to each Windows program and library.
-If you redistribute a released Windows archive, the conditions in its [notices/msvc-runtime.txt](binaries/windows/notices/msvc-runtime.txt) apply to that code.
-An archive that you build yourself with another Visual Studio version contains another `notices/msvc-runtime.txt`, which applies instead.

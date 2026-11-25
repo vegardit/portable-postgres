@@ -1,0 +1,13 @@
+Adapt the postgresql Windows build to Clang and the MinGW-w64 UCRT headers.
+
+--- a/src/include/c.h
++++ b/src/include/c.h
+@@ -1346,7 +1346,7 @@ extern int	fdatasync(int fildes);
+  * If you change this, see also PG_PERL_TRY in plperl.h.
+  */
+ #ifdef WIN32
+-#ifdef __MINGW64__
++#if defined(__MINGW64__) && !defined(_UCRT)
+ typedef intptr_t sigjmp_buf[5];
+ #define sigsetjmp(x,y) __builtin_setjmp(x)
+ #define siglongjmp __builtin_longjmp

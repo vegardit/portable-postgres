@@ -158,35 +158,35 @@ it("keeps a relocated build read-only and protects its SDK while a new build rep
   await expect(readdir(external)).resolves.toEqual([]);
 });
 
-it("previews legacy runs and removes only explicitly selected real work directories", async () => {
+it("only prunes selected work with an ownership marker and keeps caller data", async () => {
   const { work, output, fresh } = await fixture();
   const current = await fresh();
-  const legacy = "windows-build-Aa1234";
-  const incomplete = "windows-build-Bb1234";
-  const unknown = "windows-build-Cc1234";
-  for (const name of [legacy, incomplete]) {
-    await mkdir(join(work, name, "windows-sources"), { recursive: true });
-    await writeFile(join(work, name, "windows-postgresql.tar"), "temporary tar");
-  }
-  await writeFile(join(work, legacy, "windows-link-evidence.json"), "{}");
-  await mkdir(join(work, unknown));
+  const incomplete = "windows-build-Aa1234";
+  const unknown = "windows-build-Bb1234";
+  await mkdir(join(work, incomplete));
+  await writeFile(join(work, incomplete, ".portable-postgres-build"), "building\n");
+  // Familiar build files in an unmarked directory do not establish who owns it.
+  await mkdir(join(work, unknown, "windows-sources"), { recursive: true });
+  await writeFile(join(work, unknown, "windows-postgresql.tar"), "caller data");
   const outside = await directory();
   await writeFile(join(outside, "keep"), "caller data");
-  await symlink(outside, join(work, legacy, "linked"), "junction");
+  await symlink(outside, join(work, incomplete, "linked"), "junction");
   await symlink(outside, join(work, "windows-build-Dd1234"), "junction");
   const preview = await previewWork(work, output);
-  expect(preview).toContain(legacy + "  0.00 GiB  legacy (audited)");
   expect(preview).toContain(incomplete + "  0.00 GiB  incomplete");
+  expect(preview).toContain(unknown + "  0.00 GiB  unrecognized");
   await pruneWindowsWork(work, output, "automatic");
-  await expect(pruneWindowsWork(work, output, [legacy, basename(current)])).rejects.toThrow(
+  await expect(pruneWindowsWork(work, output, [incomplete, basename(current)])).rejects.toThrow(
     "recorded",
   );
   await expect(pruneWindowsWork(work, output, [unknown])).rejects.toThrow("unrecognized");
-  await expect(pruneWindowsWork(work, output, ["../" + legacy])).rejects.toThrow("exact");
+  await expect(pruneWindowsWork(work, output, ["../" + incomplete])).rejects.toThrow("exact");
   await expect(pruneWindowsWork(work, output, ["windows-build-Dd1234"])).rejects.toThrow();
-  await pruneWindowsWork(work, output, [legacy]);
-  await expect(readdir(work)).resolves.not.toContain(legacy);
-  await expect(readdir(work)).resolves.toContain(incomplete);
+  await pruneWindowsWork(work, output, [incomplete]);
+  await expect(readdir(work)).resolves.not.toContain(incomplete);
+  await expect(readFile(join(work, unknown, "windows-postgresql.tar"), "utf8")).resolves.toBe(
+    "caller data",
+  );
   await expect(readFile(join(outside, "keep"), "utf8")).resolves.toBe("caller data");
 });
 

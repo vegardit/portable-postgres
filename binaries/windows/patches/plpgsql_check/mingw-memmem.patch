@@ -1,0 +1,13 @@
+Adapt the plpgsql_check Windows build to Clang and the MinGW-w64 UCRT headers.
+
+--- a/src/parser.c
++++ b/src/parser.c
+@@ -49,7 +49,7 @@ static const char *tagstr = "@plpgsql_check_options:";
+ #define		PRAGMA_TOKEN_NUMBER			130
+ #define		PRAGMA_TOKEN_STRING			131
+ 
+-#ifdef _MSC_VER
++#ifdef _WIN32
+ 
+ static void *
+ memmem(const void *haystack, size_t haystack_len,

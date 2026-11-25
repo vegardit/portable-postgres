@@ -8,6 +8,7 @@
     "api-ms-win-crt-locale-l1-1-0.dll",
     "api-ms-win-crt-math-l1-1-0.dll",
     "api-ms-win-crt-multibyte-l1-1-0.dll",
+    "api-ms-win-crt-private-l1-1-0.dll",
     "api-ms-win-crt-runtime-l1-1-0.dll",
     "api-ms-win-crt-stdio-l1-1-0.dll",
     "api-ms-win-crt-string-l1-1-0.dll",
@@ -15,12 +16,9 @@
     "api-ms-win-crt-utility-l1-1-0.dll",
     "crypt32.dll",
     "kernel32.dll",
-    "msvcp140.dll",
     "secur32.dll",
     "shell32.dll",
     "user32.dll",
-    "vcruntime140.dll",
-    "vcruntime140_1.dll",
     "version.dll",
     "ws2_32.dll"
   ]

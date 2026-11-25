@@ -1,0 +1,22 @@
+Adapt the timescaledb Windows build to Clang and the MinGW-w64 UCRT headers.
+
+--- a/src/build-defs.cmake
++++ b/src/build-defs.cmake
+@@ -22,7 +22,4 @@ if(APPLE)
+   set(CMAKE_MODULE_LINKER_FLAGS
+       "${CMAKE_MODULE_LINKER_FLAGS} -multiply_defined suppress -Wl,-undefined,dynamic_lookup -bundle_loader ${PG_BINDIR}/postgres"
+   )
+-elseif(WIN32)
+-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /MANIFEST:NO")
+-  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /MANIFEST:NO")
+ endif()
+@@ -49,8 +46,6 @@ if(WIN32 OR (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD"))
+ endif()
+ 
+ if(WIN32)
+-  set(CMAKE_MODULE_LINKER_FLAGS
+-      "${CMAKE_MODULE_LINKER_FLAGS} ${PG_LIBDIR}/postgres.lib ws2_32.lib Version.lib"
+-  )
++  link_libraries("${PG_LIBDIR}/libpostgres.a" ws2_32 version)
+   set(CMAKE_C_FLAGS "-D_CRT_SECURE_NO_WARNINGS")
+   include_directories(SYSTEM ${PG_INCLUDEDIR_SERVER}/port/win32)

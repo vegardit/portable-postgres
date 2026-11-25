@@ -7,31 +7,30 @@
 
 /** Builds isolated Windows candidates; reassembly never reuses a mismatched source identity. */
 import { closeSync, existsSync, openSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
-import { release, tmpdir } from "node:os";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { release } from "node:os";
 import { applyPatchFile } from "../patch.ts";
 import { fetchSources, sources } from "../sources/sources.ts";
 import windowsTools from "./tools.json" with { type: "json" };
-import { hostMeasurementEvidence, visualStudioReleaseGap } from "../artifact/artifact.ts";
+import clang64 from "./clang64.json" with { type: "json" };
+import { compileMingw, mingwLinkEvidence } from "./mingw.ts";
+import { mingwNotice } from "../artifact/runtime-layout.ts";
+import { hostMeasurementEvidence } from "../artifact/artifact.ts";
 import { sourceNoticesFile, writeSourceNoticeScan } from "../artifact/notice-scan.ts";
 import { verifyNoticeAnchors } from "../artifact/notices.ts";
 import { reviewFiles } from "../artifact/review.ts";
 import { inspectWindowsRuntime } from "./imports.ts";
-import { auditWindowsLinks, linkEnvironmentFile, parseLinkEnvironment } from "./links.ts";
-import { requireApacheOnlyTimescaleDB } from "../timescaledb.ts";
 import { installWindowsSql } from "./sql.ts";
 import { withWindowsBuild } from "./work.ts";
-import { msvcRuntimeNotice, selectVisualStudio, visualStudioEvidence } from "./visual-studio.ts";
 import {
   type NativeBuild,
   packageCandidate,
   recipeIdentity,
   recordBuild,
-  recordedToolchain,
 } from "../package.ts";
 import { outputRoot, root, workRoot } from "../paths.ts";
-import { buildJobs, capture, run } from "../process.ts";
+import { capture, run } from "../process.ts";
 
 // From the repository, because the compiled copy of this module in dist has none of these files.
 const recipeRoot = join(root, "binaries/windows");
@@ -43,7 +42,10 @@ const recipeRoot = join(root, "binaries/windows");
  * docs/native-artifact.md ("Source patches") explains why each one exists and when it goes.
  */
 export const windowsPatches: ReadonlyArray<{ source: string; file: string }> = [
-  "postgresql/18-radius-in6addr-any.patch",
+  "postgresql/ucrt-setjmp.patch",
+  "plpgsql_check/mingw-memmem.patch",
+  "timescaledb/mingw-link.patch",
+  "timescaledb/windows-version-value.patch",
 ].sort().map(path => ({ source: path.split("/")[0]!, file: join(recipeRoot, "patches", path) }));
 
 /**
@@ -53,13 +55,13 @@ export const windowsPatches: ReadonlyArray<{ source: string; file: string }> = [
  */
 export const windowsRecipe: readonly string[] = [
   ...[
-    "build.cmd",
-    "build-extensions.cmd",
-    "link-recipe.ts",
-    "links.ts",
-    "extensions/CMakeLists.txt",
-    "icu/CMakeLists.txt",
-    "icu/meson.ini",
+    "build.ts",
+    "build.sh",
+    "mingw.ts",
+    "notices/mingw-supplement.txt",
+    "clang64.json",
+    "trace-ld.c",
+    "trace-link.py",
     "sql.ts",
     "requirements.txt",
     "tools.json",
@@ -72,7 +74,7 @@ export const windowsRecipe: readonly string[] = [
   ...windowsPatches.map(patch => patch.file),
 ];
 
-/** The isolated environment whose Meson build.cmd runs, as CONTRIBUTING.md creates it. */
+/** The isolated environment whose Meson build.sh runs, as CONTRIBUTING.md creates it. */
 const toolchainPython = join(workRoot, "windows-toolchain/Scripts/python.exe");
 const installRequirements = "& binaries/work/windows-toolchain/Scripts/python.exe -m pip install"
   + " --require-hashes --only-binary=:all: -r binaries/windows/requirements.txt";
@@ -113,7 +115,7 @@ export async function build(command: string = "build"): Promise<void> {
     );
     // Extraction must read the exact files that fetching verified.
     const archives = await fetchSources(downloads);
-    const tools = await fetchSources(downloads, windowsTools);
+    const tools = await fetchSources(downloads, [...windowsTools, ...clang64]);
     inputs = { archives, tools };
   }
   await withWindowsBuild(workRoot, output, command, recipe,
@@ -169,95 +171,37 @@ async function compileAndPackage(
       "-o" + join(buildWork, "windows-tools/winflexbison"),
       "-y",
     ]);
-    const visualStudio = selectVisualStudio();
-    await run("7z", [
-      "e",
-      tools.get("nasm")!,
-      "-o" + join(buildWork, "windows-tools/nasm"),
-      "*/nasm.exe",
-      "-y",
-    ]);
-    await run("7z", [
-      "e",
-      tools.get("jom")!,
-      "-o" + join(buildWork, "windows-tools/jom"),
-      "jom.exe",
-      "-y",
-    ]);
-    // Relative to the repository root, where run() starts every tool: cmd.exe would split an absolute
-    // path at a character such as "&", which a checkout directory may contain.
-    await run("cmd.exe", ["/d", "/c", relative(root, join(recipeRoot, "build.cmd"))], {
-      env: {
-        ...process.env,
-        PORTABLE_PG_WORK: buildWork,
-        PORTABLE_PG_PREFIX: current.developmentInstallation,
-        PORTABLE_PG_VISUAL_STUDIO: visualStudio,
-        BUILD_JOBS: buildJobs(),
-      },
-    });
-    await requireApacheOnlyTimescaleDB(
-      join(buildWork, "windows-timescaledb"),
-      join(buildWork, "windows-sources", "timescaledb"),
-    );
-    const toolset = (await readFile(join(buildWork, "windows-msvc-toolset.txt"), "utf8")).trim();
-    const { sdkVersion } = parseLinkEnvironment(
-      await readFile(join(buildWork, linkEnvironmentFile), "utf8"),
-    );
-    current.toolchainEvidence = visualStudioEvidence(visualStudio, toolset, sdkVersion);
+    await compileMingw(buildWork, tools, toolchainPython);
     await installWindowsSql(join(buildWork, "windows-sources"), current.developmentInstallation);
     await recordBuild(output, current);
   } else {
     // Notice pins can change while the source archives and compiled SDK stay the same.
     await verifyNoticeAnchors(join(current.buildWork, "windows-sources"));
   }
-  const toolchain = recordedToolchain(current);
-  const gap = visualStudioReleaseGap(toolchain);
-  if (gap !== undefined) {
-    console.warn("This build can only produce a candidate, not a release: " + gap);
-  }
-  // A candidate notice is written per assembly, so that two assemblies of one build never share a file.
-  const notices = await mkdtemp(join(tmpdir(), "portable-postgres-notices-"));
-  try {
-    const candidate = await packageCandidate({
-      target: "windows-x64",
-      output,
-      reviewFile: reviewFiles["windows-x64"],
-      sourceRoot: join(current.buildWork, "windows-sources"),
-      build: current,
-      toolchainNotices: [await msvcRuntimeNotice(toolchain, notices)],
-      hostEvidence: async installation => {
-        // The candidate's images, on every assembly: a reassembly reuses a development installation
-        // that may have changed since its build.
-        const links = await auditWindowsLinks(installation, current.buildWork,
-          inputs ? "build" : "assemble");
-        const linked = [...links.staticMicrosoftCode]
-          .map(([library, { size }]) =>
-            `${basename(library)} (${size} ${size === 1 ? "member" : "members"})`
-          );
-        console.log(
-          `Static Microsoft code linked into ${links.images} PE images: ${linked.join(", ")}`,
-        );
-        return [
-          ...toolchain,
-          {
-            component: "Windows kernel",
-            version: release(),
-            evidence:
-              "os.release on the build host; supported minima require clean-consumer evidence",
-          },
-          {
-            component: hostMeasurementEvidence["windows-x64"],
-            version: (await inspectWindowsRuntime(installation)).join(", "),
-            evidence:
-              "DLL names in the import and delay-import tables of every packaged PE file that the bundle does not supply",
-          },
-        ];
+  const candidate = await packageCandidate({
+    target: "windows-x64",
+    output,
+    reviewFile: reviewFiles["windows-x64"],
+    sourceRoot: join(current.buildWork, "windows-sources"),
+    build: current,
+    toolchainNotices: [join(current.buildWork, "toolchain-notices", mingwNotice)],
+    // Reassembly checks the actual candidate in case its saved SDK was modified.
+    hostEvidence: async installation => [
+      ...await mingwLinkEvidence(installation, current.buildWork, inputs !== undefined),
+      {
+        component: "Windows kernel",
+        version: release(),
+        evidence: "os.release on the build host; supported minima require clean-consumer evidence",
       },
-    });
-    console.log("Assembled Windows runtime candidate: " + candidate);
-  } finally {
-    await rm(notices, { recursive: true, force: true });
-  }
+      {
+        component: hostMeasurementEvidence["windows-x64"],
+        version: (await inspectWindowsRuntime(installation)).join(", "),
+        evidence:
+          "DLL names in the import and delay-import tables of every packaged PE file that the bundle does not supply",
+      },
+    ],
+  });
+  console.log("Assembled Windows runtime candidate: " + candidate);
 }
 
 if (import.meta.main) await build(process.argv[2]);

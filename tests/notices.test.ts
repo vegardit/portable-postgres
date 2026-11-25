@@ -44,21 +44,22 @@ it("ships both Regents notices from PostgreSQL under runtime-safe names", async 
   }
 });
 
-it("each toolchain notice has its text next to the target's recipe and ships under its archive path", async () => {
-  for (const [target, recipe] of [
-    ["windows-x64", "windows"],
-    ["linux-x64-glibc", "linux"],
+it("copies build-supplied toolchain notices under the required archive paths", async () => {
+  const tree = await sourceTree(await directory());
+  for (const [target, notice] of [
+    ["windows-x64", "mingw-runtime.txt"],
+    ["linux-x64-glibc", "llvm-cxx-runtime.txt"],
   ] as const) {
-    for (const notice of toolchainNotices(target)) {
-      const text = join(root, "binaries", recipe, notice);
-      const installation = await directory();
-      await copySourceNotices(await sourceTree(await directory()), installation, [text]);
-      await expect(readFile(join(installation, notice), "utf8")).resolves.toBe(
-        await readFile(text, "utf8"),
-      );
-    }
+    const path = join(await directory(), notice);
+    const noticeText = target === "linux-x64-glibc"
+      ? await readFile(join(root, "binaries/linux/notices", notice), "utf8")
+      : "generated CLANG64 notice fixture";
+    await writeFile(path, noticeText);
+    expect(toolchainNotices(target)).toEqual(["notices/" + notice]);
+    const candidate = await directory();
+    await copySourceNotices(tree, candidate, [path]);
+    await expect(readFile(join(candidate, "notices", notice), "utf8")).resolves.toBe(noticeText);
   }
-  expect(toolchainNotices("linux-x64-glibc")).toContain("notices/llvm-cxx-runtime.txt");
 });
 
 it("ships every project notice with its pinned bytes, and refuses a text edited after pinning", async () => {

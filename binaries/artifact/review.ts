@@ -6,39 +6,40 @@
  */
 
 /** Drafts licence reviews from candidates, merges them into builds, and records explicit reviewer approval. */
-import { hash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import * as z from "zod";
 import { readOptionalText } from "../files.ts";
 import { root } from "../paths.ts";
+import { sources } from "../sources/sources.ts";
 import {
   type ArtifactManifest,
   type ArtifactOptions,
   type ArtifactTarget,
   describeArtifact,
   firstIssue,
-  hasReviewedVisualStudioLine,
   type HostRequirements,
   isNativeImage,
   type LicenseInventory,
   licenseInventorySchema,
   macOSParserEvidence,
   measuredHostRequirements,
-  msvcRuntimeNoticePath,
   payloadHashes,
   releaseLicenseGap,
   reviewedHostRequirementsSchema,
-  reviewedMsvcNoticeFile,
+  sourceReviewGap,
   toolchainComponents,
   toolchainNotices,
   toolchainImages,
   validateArtifact,
-  visualStudioReleaseGap,
   writeDescribedManifest,
 } from "./artifact.ts";
-import { librarySource } from "./runtime-layout.ts";
+import {
+  librarySource,
+  mingwRuntimeDlls,
+  mingwSourcePrefix,
+  sqlOnlyExtensions,
+} from "./runtime-layout.ts";
 
 /**
  * The tracked per-target review: the licence inventory and host requirements for one payload file list.
@@ -51,6 +52,7 @@ const reviewSchema = z.object({
   hostRequirements: reviewedHostRequirementsSchema,
 });
 export type Review = z.infer<typeof reviewSchema>;
+const pinnedSourceIds: ReadonlySet<string> = new Set(sources.map(source => source.id));
 type ReviewedHostRequirements = Review["hostRequirements"];
 
 type Component = LicenseInventory["components"][number];
@@ -58,15 +60,12 @@ type Component = LicenseInventory["components"][number];
 /**
  * A drafted review and the SHA-256 of every regular payload file of the candidate it describes. Any shipped
  * file can be a notice, so merging needs the hashes of files that no drafted component cites.
- * `toolchainGap` says why releases refuse the toolchain that built the candidate, such as Visual Studio
- * Build Tools; no review can resolve it, and a review that matches still leaves it in place.
  */
 export type Draft = {
   review: Review;
   payloadSha256: ReadonlyMap<string, string>;
   /** Example files of each source's notice signatures, which tell a reviewer where new licence text is. */
-  noticeExamples?: ReadonlyMap<string, Readonly<Record<string, readonly string[]>>>;
-  toolchainGap?: string;
+  noticeExamples: ReadonlyMap<string, Readonly<Record<string, readonly string[]>>>;
 };
 
 /** Each target's tracked review lives next to its build recipe. */
@@ -89,11 +88,12 @@ export function parseReview(text: string, path: string): Review {
   // The merge keeps a library without the measured flag as one that a reviewer added, and it rewrites this
   // file from what it read, so a file of another shape must stop here.
   const result = reviewSchema.safeParse(review);
-  if (!result.success) {
+  const problem = result.success
+    ? sourceReviewGap(result.data.licenseInventory, pinnedSourceIds)
+    : firstIssue(result.error);
+  if (problem !== undefined) {
     throw new Error(
-      `Review file must contain licenseInventory and hostRequirements; ${
-        firstIssue(result.error)
-      }: ${path}`,
+      `Review file must contain licenseInventory and hostRequirements; ${problem}: ${path}`,
     );
   }
   // The file's own object, not the parsed copy, so that keys this version does not know stay in the review.
@@ -165,12 +165,16 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
   const components: LicenseInventory["components"] = manifest.sources.map(source => {
     // PostgreSQL's source also builds the selected contrib modules, so one source can have several.
     const extensions = manifest.extensions.filter(candidate => candidate.sourceId === source.id);
-    const examples = source.noticeSignatures === undefined ? undefined : Object.fromEntries(
+    const examples = Object.fromEntries(
       source.noticeSignatures.map(({ signature, files }) => [signature, files]),
     );
-    if (examples !== undefined) noticeExamples.set(source.id, examples);
+    noticeExamples.set(source.id, examples);
+    const compiler = target === "windows-x64" && !sqlOnlyExtensions.has(source.id)
+      ? manifest.hostEvidence.find(entry => entry.component === mingwSourcePrefix + source.id)
+      : undefined;
     return {
       id: source.id,
+      ...compiler ? { toolchain: compiler.version } : {},
       licenses: [],
       status: "pending",
       files: [
@@ -186,13 +190,14 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       notices: [...source.notices],
       noticeSha256: noticeSha256(source.notices),
       // The licence text that the source tree carries, which the review covers along with the notices.
-      ...examples === undefined ? {} : { noticeSignatures: Object.keys(examples) },
+      noticeSignatures: Object.keys(examples),
       evidence: [],
     };
   });
   const assigned = new Set([
     ...components.flatMap(component => component.files),
     ...toolchainNotices(target),
+    ...mingwRuntimeDlls,
   ]);
   // PostgreSQL's own build installs everything that no extension or notice accounts for.
   const postgresql = components.find(component => component.id === "postgresql")!;
@@ -234,9 +239,6 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
     evidence: "",
     measured: true,
   }));
-  const toolchainGap = target === "windows-x64"
-    ? visualStudioReleaseGap(manifest.hostEvidence)
-    : undefined;
   return {
     review: {
       licenseInventory: { status: "pending", components },
@@ -244,13 +246,12 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
     },
     payloadSha256: hashes,
     noticeExamples,
-    ...toolchainGap === undefined ? {} : { toolchainGap },
   };
 }
 
 /**
  * Drafts the review of a candidate from the target's tracked review, if it has one, and lists what blocks
- * a release: the parts that the merge reopens, a toolchain that releases refuse, and, when the merge
+ * a release: the parts that the merge reopens, and, when the merge
  * reopens nothing, what the release gate would still reject.
  */
 export async function reviewCandidate(
@@ -264,12 +265,9 @@ export async function reviewCandidate(
     : { review: draft.review, changes: ["no tracked review yet: every component needs a review"] };
   if (changes.length === 0) {
     // The merge only compares with the tracked review; the release gate also checks its completeness.
-    // It reports only its first gap, which may be the toolchain gap listed below.
     const gap = await releaseReviewGap(installation, target, review);
-    if (gap !== undefined && gap !== draft.toolchainGap) changes.push("release gate: " + gap);
+    if (gap !== undefined) changes.push("release gate: " + gap);
   }
-  // The reviewed toolchain line can match while the edition is refused, so no reopened part names it.
-  if (draft.toolchainGap !== undefined) changes.push("release gate: " + draft.toolchainGap);
   return { review, changes };
 }
 
@@ -300,8 +298,6 @@ const listedSignatures = 20;
 type ComponentDifference = {
   signaturesAdded: string[];
   signaturesGone: string[];
-  /** A side without a signature list, which a difference of two lists cannot express. */
-  signatureGap?: string;
   noticesChanged: string[];
   filesAdded: string[];
   filesRemoved: string[];
@@ -309,17 +305,11 @@ type ComponentDifference = {
 };
 
 function componentDifference(previous: Component, current: Component): ComponentDifference {
-  const scanned = current.noticeSignatures;
-  const reviewed = previous.noticeSignatures;
-  const signatureGap = scanned === undefined
-    ? reviewed === undefined ? undefined : "this build has no notice scan of the source tree"
-    : reviewed === undefined
-      ? `notice signatures of the source tree not reviewed yet (${scanned.length})`
-      : undefined;
+  const scanned = current.noticeSignatures ?? [];
+  const reviewed = previous.noticeSignatures ?? [];
   return {
-    signaturesAdded: scanned && reviewed ? difference(scanned, reviewed) : [],
-    signaturesGone: scanned && reviewed ? difference(reviewed, scanned) : [],
-    ...signatureGap === undefined ? {} : { signatureGap },
+    signaturesAdded: difference(scanned, reviewed),
+    signaturesGone: difference(reviewed, scanned),
     noticesChanged: [...new Set([...previous.notices, ...current.notices])].filter(notice =>
       previous.noticeSha256[notice] !== current.noticeSha256[notice]
       || previous.notices.includes(notice) !== current.notices.includes(notice)
@@ -354,7 +344,6 @@ function componentChanges(
     ...change.signaturesGone.map(signature => "licence text gone: " + shorten(signature)),
   ];
   return [
-    ...change.signatureGap === undefined ? [] : [change.signatureGap],
     ...signatures.length <= listedSignatures ? signatures : [
       ...signatures.slice(0, listedSignatures),
       `${signatures.length - listedSignatures} more notice signature changes`,
@@ -380,7 +369,6 @@ function pathSummary(label: string, files: readonly string[]): string[] {
 function acceptedChanges(previous: Component, current: Component): string[] {
   const change = componentDifference(previous, current);
   return [
-    ...change.signatureGap === undefined ? [] : [change.signatureGap],
     ...change.signaturesAdded.length > 0
       ? [`${change.signaturesAdded.length} notice signatures added`]
       : [],
@@ -420,7 +408,7 @@ export function mergeReview(
 ): { review: Review; changes: string[] } {
   const changes: string[] = [];
   const reopen = (reviewed: Component, current: Component): Component => {
-    const reasons = componentChanges(reviewed, current, noticeExamples?.get(current.id));
+    const reasons = componentChanges(reviewed, current, noticeExamples.get(current.id));
     if (reasons.length === 0) {
       // A review in progress keeps its evidence, which still describes the same values.
       if (reviewed.status !== "verified") changes.push(reviewed.id + ": not verified yet");
@@ -463,7 +451,7 @@ export function mergeReview(
   for (const reviewed of previous.licenseInventory.components) {
     if (components.some(current => current.id === reviewed.id)) continue;
     const files = reviewed.files.filter(file => shipped.has(file));
-    if (files.length === 0) {
+    if (files.length === 0 || toolchainIds.has(reviewed.id)) {
       changes.push(reviewed.id + ": no longer shipped");
       continue;
     }
@@ -601,25 +589,6 @@ export function approveReview(
     const component = withExtraFields(earlier, draft,
       licenseInventorySchema.shape.components.element.shape);
     const licenses = component.licenses.join(", ");
-    if (component.id === "msvc-runtime") {
-      if (!hasReviewedVisualStudioLine(component.toolchain ?? "")) {
-        problems.push(
-          "msvc-runtime: unreviewed Visual Studio product line "
-            + (component.toolchain ?? "(missing)"),
-        );
-        return component;
-      }
-      // Build Tools on an admitted line ships a candidate-only notice under the same archive path.
-      if (!component.notices.includes(msvcRuntimeNoticePath)
-        || component.noticeSha256[msvcRuntimeNoticePath]
-          !== hash("sha256", readFileSync(reviewedMsvcNoticeFile)))
-      {
-        problems.push(
-          "msvc-runtime: the draft must carry the reviewed Visual Studio release notice",
-        );
-        return component;
-      }
-    }
     if (component.licenses.length === 0) {
       problems.push(component.id + ": no licences yet");
       return component;

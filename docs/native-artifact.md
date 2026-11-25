@@ -99,8 +99,8 @@ It does not prove the compiled PostgreSQL version, ABI compatibility, extension 
 Those require builder provenance and native execution against the exact artifact.
 
 `hostEvidence` entries contain `component`, `version`, and `evidence` strings.
-For example, a VCRUNTIME version observed on a developer workstation belongs here.
-It must not become a minimum supported VCRUNTIME version without compatibility evidence.
+For example, record the Windows version used to run the native SQL tests.
+Establish the minimum supported version separately through compatibility testing.
 
 A non-null `hostRequirements` contains `status: "verified"`, OS and CPU descriptions,
 and a library list with `name`, `requirement`, `license`, and `evidence`.
@@ -113,9 +113,8 @@ The Linux x64 build targets Ubuntu 22.04 and glibc 2.35.
 The build records the highest required glibc symbol version across all packaged ELF files and rejects versions above 2.35.
 The validated PostgreSQL 18.7 Linux archive requires symbols through `GLIBC_2.34`.
 The workflow runs the resulting archive in a separate Ubuntu 22.04 container to check native startup, authentication, and SQL.
-Windows requires explicit `vcruntime140.dll` and `ucrtbase.dll` prerequisites.
-These libraries are host requirements, separate from files bundled in the archive.
-Release validation requires a library entry for each of them and for every DLL that the packaged files import
+Windows requires `ucrtbase.dll`.
+Release validation requires an entry for each prerequisite and for every DLL that the packaged files import
 (the `PE host library imports` evidence), unless the archive supplies that DLL in `bin/`.
 Release validation also rejects obsolete `measured: true` entries.
 Reviewers can retain indirect dependencies as manually added entries.
@@ -142,8 +141,7 @@ The runtime keeps their versioned library names and loader aliases.
 Windows places `icuuc<major>.dll`, `icuin<major>.dll` and `icudt<major>.dll` in `bin/`.
 Linux and macOS place the corresponding `libicuuc`, `libicui18n` and `libicudata` libraries in `lib/`.
 Their files belong to the `icu` licence component.
-The Windows code libraries also import `msvcp140.dll` and `vcruntime140_1.dll`.
-The host review must cover these imports.
+The Windows code libraries use the bundled `libc++.dll`.
 ICU's build tools, headers and make fragments stay outside the runtime.
 
 Linux statically links LLVM's C++ runtimes into ICU's code libraries.
@@ -255,19 +253,9 @@ The patches and the code that applies them are part of the Windows recipe identi
 A patch changes one file. Each hunk's old lines must occur exactly once in the extracted file and its new lines not at all,
 so the build fails when a source update changed the patched lines or already contains the change.
 
-| Patch                                    | Change                                                                      | Remove when                    |
-| ---------------------------------------- | --------------------------------------------------------------------------- | ------------------------------ |
-| `postgresql/18-radius-in6addr-any.patch` | Deletes the RADIUS client's assignment `localaddr.sin6_addr = in6addr_any;` | The PostgreSQL pin moves to 19 |
-
-The `memset` before that assignment has already zeroed the address, so behaviour is unchanged.
-PostgreSQL 19 has no RADIUS support (upstream commit `a1643d40b3`), so the patch would no longer apply.
-The patch keeps Windows SDK code out of `postgres.exe`:
-its reference to `in6addr_any` made the linker copy `ws2_32.lib(indef.obj)`, a member of a Windows SDK static library.
-In the inventoried builds, that was the only static Windows SDK code in the archive.
-A patch that applies does not prove its absence, because another reference to the same symbol would link it again;
-the Windows link check under "Notices and license gate" fails the packaging then.
-Import stubs from the Windows SDK import libraries are not static library code,
-and code that the compiler inlines from Windows SDK headers is a documented residual risk.
+The Windows patches select UCRT setjmp in PostgreSQL, enable the existing memmem fallback in plpgsql_check,
+and teach the TimescaleDB Windows build to use the MinGW import library and Windows version-query types.
+Retire each patch when its upstream release includes the corresponding fix.
 
 ## Notices and license gate
 
@@ -345,7 +333,8 @@ The build stores the scan in its work directory.
 After changing the scanner, rebuild each target before reassembling it.
 Before creating a candidate or auditing its native images, packaging checks that the saved scan
 has an entry for every pinned source and that its signatures and example paths contain nonblank text.
-Each source entry of the manifest records `noticeSignatures` as an array.
+Candidate validation requires a `noticeSignatures` array on every source entry.
+An empty array records a completed scan that found no signatures.
 Each entry has a `signature` string and a `files` array with up to three example paths from the source tree.
 A signature is unique within its source, and capitalization is significant.
 Manifest validation also enforces the three-path limit on supplied candidates.
@@ -355,8 +344,7 @@ A signature that comes or goes reopens the component.
 The summary shows up to 20 changes per component, additions first, with up to three example paths per addition.
 For the full change, compare the component's `noticeSignatures` in the uploaded `review-draft-<target>`
 with its list in the target's tracked review.
-Release validation requires a scan and an explicit matching signature list for every source,
-including an empty list when the scan found none.
+Release validation checks that each source's reviewed signature list matches its scan.
 Newly bundled code can reuse an existing notice or carry no detected notice.
 Reviewers must also check which files a directory's licence covers.
 
@@ -375,7 +363,7 @@ Each component contains:
 - `notices`: retained notice paths.
 - `noticeSha256`: the SHA-256 of each notice as the review read it.
 - `noticeSignatures`: for a source component, the notice signatures of the source tree that the review covered.
-- `toolchain`: the reviewed line for linked toolchain components, or the parser generator identity for PostgreSQL on macOS.
+- `toolchain`: the reviewed line for linked toolchain components, the compiler and linked-object inventory for native sources on Windows, or the parser generator identity for PostgreSQL on macOS.
 - `evidence`: references explaining the exact review and contribution.
   When approval carries forward earlier evidence for a reopened component, it adds a dated line naming the changes.
   A changed licence set needs new evidence from the reviewer.
@@ -387,12 +375,12 @@ Each code-bearing image must also be covered by its linked toolchain components.
 The LLVM C++ runtime component covers ICU's code libraries.
 The generated ICU data library needs no linked-runtime coverage.
 
-| Target  | Component          | Linked code                                                          | Toolchain line in `hostEvidence` |
-| ------- | ------------------ | -------------------------------------------------------------------- | -------------------------------- |
-| Linux   | `compiler-rt`      | Clang's runtime builtins and startup objects                         | `Clang major version`            |
-| Linux   | `glibc-startup`    | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                          |
-| Linux   | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `Clang major version`            |
-| Windows | `msvc-runtime`     | MSVC startup code and the reviewed C++ support members               | `Visual Studio product line`     |
+| Target  | Component          | Linked code                                                          | Toolchain line in `hostEvidence`      |
+| ------- | ------------------ | -------------------------------------------------------------------- | ------------------------------------- |
+| Linux   | `compiler-rt`      | Clang's runtime builtins and startup objects                         | `Clang major version`                 |
+| Linux   | `glibc-startup`    | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                               |
+| Linux   | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `Clang major version`                 |
+| Windows | `mingw-runtime`    | MinGW-w64 startup, LLVM runtime code and bundled runtime DLLs        | `CLANG64 packages and linked objects` |
 
 The macOS linker maps must cover every image and have a complete list of object files.
 The audit resolves each input against the original link directory and build root, including after a checkout move.
@@ -402,9 +390,6 @@ Its `toolchain` matches the `PostgreSQL parser generators` host evidence,
 which identifies Xcode and the Bison and Flex used by configure.
 A missing or changed identity requires a new PostgreSQL component review.
 
-The Windows build also records the `Visual Studio edition`, its `Visual Studio channel`, the `MSVC toolset`,
-and the `Windows SDK` version.
-It records them for the installation it compiles with, and reassembly reuses them.
 The Linux build records its toolchain lines in the build container when it compiles, and reassembly reuses them as well,
 so a reassembly on another host cannot describe another compiler or glibc.
 These lines change rarely, unlike toolset updates, and the toolchain's licence terms follow them.
@@ -413,32 +398,31 @@ which records the link's input files and archive members under the output's buil
 Packaging, including a reassembly, fails when an image in the candidate has no such record, wherever the image lies,
 and when a record shows GCC's runtime or any other glibc code,
 so the `glibc-startup` review keeps matching what is linked into each image.
-Each Windows image link writes a `/MAP` file and records its resolved library inputs beside its output.
-The build collects explicit inputs from `/LINKREPROFULLPATHRSP` and library search paths from
-`/VERBOSE:LIB`, including libraries requested by directives inside object files.
-The build matches each library in the map to its recorded path and checks that path against the build tree
-and the `LIB` directories from `vcvars64.bat`.
-An unknown or ambiguous origin stops packaging.
-It reads each Microsoft library to tell its import records apart from code or data that the linker copies,
-so a member's `.dll` name does not count.
-Static members may come from `msvcrt.lib` and `vcruntime.lib` in the Visual Studio toolset folder.
-ICU also uses the reviewed `vector_algorithms.obj` and `xonce2.obj` members of `msvcprt.lib`.
-The `msvc-runtime` notice covers this code.
-Every other static Microsoft member fails, naming the image, library and member.
-This refuses the static and the debug CRT (`libcmt.lib`, `msvcrtd.lib`) and any static Windows SDK code.
-Each successful link records the hashes of its image and map.
-The build verifies both hashes and checks the map's module name, timestamp and symbol table
-before saving the classified members in its private work directory.
-Every assembly checks every candidate PE image against one link output with matching bytes.
-Reassembly checks the map hash and reuses the saved classifications, even after the original SDK is removed.
-If reassembly reports missing evidence while the fresh build is running, retry after it finishes.
-If the build finished without saving the evidence, run a fresh build.
-A toolchain component lists only native images and its own notice.
-Windows archives ship the project's notice for the linked Microsoft code at `notices/msvc-runtime.txt`.
-A candidate built with a Visual Studio line or product that release validation refuses, such as Visual Studio 2022
-or Build Tools alone, ships a candidate text there instead,
-which names the line and product and says not to redistribute the binaries.
-The `msvc-runtime` component must list it in `files` and `notices`, so a changed notice text reopens its review.
+For Windows, LLD reports the resolved input files and the members it loads from each archive.
+A link record is identified by the SHA-256 of the linked image.
+Each assembly verifies those records and the pinned bytes of the two shared runtime DLLs.
+The ICU data DLL is checked separately for executable sections and an entry point.
+The `mingw-runtime` review binds the package list and per-image member inventory,
+and retains the toolchain notices in `notices/mingw-runtime.txt`.
+The complete receipt is published atomically after the fresh build checks every image.
+Each native source has a `CLANG64 packages and linked objects: <source ID>` entry for its own images.
+
+The current Windows pins require the following licences on `mingw-runtime`.
+
+- LLVM builtins and libc++ use `Apache-2.0 WITH LLVM-exception`.
+  The Ryu code in libc++'s floating-point `to_chars` also carries `BSL-1.0`.
+- The winpthreads DLL carries `MIT` and `BSD-3-Clause`.
+- MinGW startup and UCRT helpers include public-domain code (`LicenseRef-Public-Domain`).
+  The linked `signgam` and scanf formatter carry `ZPL-2.1`.
+- The linked `getopt` carries `ISC` and `BSD-2-Clause`.
+  `LicenseRef-MinGW-gdtoa` identifies the Lucent and David Gay conversion notices in the shipped runtime notice.
+  `LicenseRef-MinGW-printf` identifies Keith Marshall's grant for the printf formatter in the same notice.
+
+When the pins or linked members change, compare the new inventory with the corresponding upstream sources.
+Update the required licences and notices for any changed contributions before approving the review.
+See the [pinned MinGW sources](https://github.com/mingw-w64/mingw-w64/tree/e3d18511f)
+and the [pinned libc++ Ryu code](https://github.com/llvm/llvm-project/blob/llvmorg-23.1.5/libcxx/src/include/ryu/ryu.h).
+
 Each source's component must list all its retained notices in `notices`.
 Each extension's source component must list its control file, SQL files, and native libraries in `files`;
 for the contrib modules that is the `postgresql` component.
@@ -459,32 +443,12 @@ Release validation rejects GPL/AGPL contributions, including GCC's own runtime u
 `GPL-3.0-or-later WITH GCC-exception-3.1`, unresolved components, and licenses outside the explicit permitted set.
 The Linux `compiler-rt` component must carry `Apache-2.0 WITH LLVM-exception`.
 Other components can also use this licence.
-Two licences are permitted only on one toolchain component of one target, and that component must carry them:
-
-| Target  | Component       | Licence                                                  |
-| ------- | --------------- | -------------------------------------------------------- |
-| Linux   | `glibc-startup` | `LGPL-2.1-or-later WITH GCC-exception-2.0`               |
-| Windows | `msvc-runtime`  | `LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code` |
-
-glibc's startup sources add that exception to the LGPL, which permits linking them into any program and
-distributing the result; SPDX lists glibc's wording as a reference text for the exception.
-
-The Visual Studio identifier is the only proprietary licence admitted for bundled code.
-It covers startup and support code from `msvcrt.lib` and `vcruntime.lib`,
-and the two reviewed `msvcprt.lib` members used by ICU.
-Microsoft's Distributable List names runtime files, not this linked code.
-The project applies the conditions of the Distributable Code section to it, and `notices/msvc-runtime.txt` passes them on.
-The identifier belongs to Visual Studio 2026, which reports the product line `18`.
-Release validation refuses a Windows build from any other product line until its terms are reviewed.
-It also refuses any Visual Studio product other than Community, Professional or Enterprise, such as Build Tools alone,
-because only these editions share the reviewed Distributable Code section.
-Such builds still produce candidates, and the build warns about them.
-The recorded edition shows what was installed, not which licence its user holds.
-The build never selects a preview or Insiders installation of Visual Studio.
+The Linux `glibc-startup` component must carry `LGPL-2.1-or-later WITH GCC-exception-2.0`.
+The glibc startup sources include the linking exception, which permits linking them into a program and distributing the result.
 
 Some reviewed source code is under licences outside the permitted set.
-Each is admitted only for the source component that contains it, and that component must carry it,
-because the code ships in every build of the source:
+Each listed source component must carry the licences for the code it ships in every build.
+Toolchain components have the separate requirements above.
 
 | Component    | Licence                     | Code                                                                      |
 | ------------ | --------------------------- | ------------------------------------------------------------------------- |
@@ -504,7 +468,7 @@ These licences are not host licences either.
 Other additions require a deliberate repository policy change and review.
 
 Host-library licensing is separate from bundled-file coverage.
-The host allowlist includes the reviewed LGPL glibc, Windows/Visual C++ runtime and Apple macOS terms.
+The host allowlist includes the reviewed LGPL glibc, Windows and Apple macOS terms.
 This does not permit bundling LGPL libraries or infer redistribution rights from their presence on a host.
 
 Filename exclusions reject obvious TimescaleDB Community libraries and forbidden helper profiles.
@@ -517,6 +481,7 @@ The validator checks its consistency and completeness; it cannot replace the und
 `binaries/artifact/artifact.ts` provides side-effect-free imports and explicit filesystem operations:
 
 - `writeArtifactManifest(installation, options)` creates metadata in a newly assembled staging candidate.
+  Supply `options.noticeSignatures` with a scan entry for every pinned source.
   It refuses to overwrite existing metadata and validates the candidate layout after writing.
   License review defaults to pending and host requirements default to `null`.
 - `validateArtifact(installation, expectedTarget, options?)` validates metadata, paths, target architecture,

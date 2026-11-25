@@ -41,7 +41,6 @@ import {
   recordBuild,
   recordedToolchain,
 } from "../binaries/package.ts";
-import { root } from "../binaries/paths.ts";
 import {
   complete,
   createCandidate,
@@ -79,8 +78,8 @@ it("reassembly refuses a development installation from a different build recipe"
     recipe: await recipeIdentity([script]),
     // Reassembly describes the compiler as the build used it, not as it is installed now.
     toolchainEvidence: [{
-      component: "Visual Studio product line",
-      version: "18",
+      component: "CLANG64 packages and linked objects",
+      version: "fixture-1",
       evidence: "fixture",
     }],
   };
@@ -113,9 +112,7 @@ it("resolves the build and candidate from the record's current checkout", async 
     sourceRoot: await sourceTree(join(work, "sources")),
     reviewFile: join(work, "missing-review.json"),
     build: { buildWork: work, developmentInstallation: sdk, recipe: "recipe" },
-    toolchainNotices: toolchainNotices(target).map(notice =>
-      join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
-    ),
+    toolchainNotices: toolchainNotices(target).map(notice => join(sdk, notice)),
     hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
   });
   // A bind mount exposes the same files under a different root on the host.
@@ -224,9 +221,7 @@ it("packaging writes the notices into the candidate and leaves the development i
     sourceRoot,
     reviewFile: join(work, "missing-review.json"),
     build: { developmentInstallation, buildWork: work, recipe: "recipe" },
-    toolchainNotices: toolchainNotices(target).map(notice =>
-      join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
-    ),
+    toolchainNotices: toolchainNotices(target).map(notice => join(developmentInstallation, notice)),
     hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
   });
 
@@ -277,7 +272,7 @@ it(
         reviewFile,
         build: { developmentInstallation, buildWork: work, recipe: "recipe" },
         toolchainNotices: toolchainNotices(target).map(notice =>
-          join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
+          join(developmentInstallation, notice)
         ),
         hostEvidence: () => Promise.resolve(hostEvidence),
       });
@@ -301,7 +296,7 @@ it(
 
     // Another host measurement leaves the host requirements unresolved and the licences verified.
     const measurement = target === "windows-x64"
-      ? "vcruntime140.dll, ucrtbase.dll, advapi32.dll"
+      ? "ucrtbase.dll, advapi32.dll"
       : "GLIBC_2.34";
     const remeasuredHost = await packaged(remeasured(fixtureEvidence(target), target, measurement));
     expect(remeasuredHost.manifest.hostRequirements).toBeNull();
@@ -348,7 +343,7 @@ async function reassemblyFixture(output: string, installation?: string) {
       reviewFile: join(older, "missing-review.json"),
       build,
       toolchainNotices: toolchainNotices(target).map(notice =>
-        join(root, "binaries", target === "windows-x64" ? "windows" : "linux", notice)
+        join(developmentInstallation, notice)
       ),
       hostEvidence: () => Promise.resolve(fixtureEvidence(target)),
     });

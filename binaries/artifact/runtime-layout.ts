@@ -146,11 +146,31 @@ export const requiredModules: readonly string[] = [...coreModules, ...encodingMo
 const encodingModule = /^(?:[a-z0-9_]+_and_[a-z0-9_]+|euc2004_sjis2004)$/;
 /** Extension sources that install only SQL and control files, without a native library. */
 export const sqlOnlyExtensions: ReadonlySet<string> = new Set(["pg_partman", "pgtap", "pgmq"]);
+
+/** The images owned by an installed extension, including TimescaleDB's version-specific loader target. */
+export function extensionLibraries(
+  source: string,
+  name: string,
+  version: string,
+  target: ArtifactTarget,
+): string[] {
+  if (sqlOnlyExtensions.has(source)) return [];
+  const suffix = moduleSuffix(target);
+  const libraries = ["lib/" + name + suffix];
+  if (source === "timescaledb") libraries.push("lib/timescaledb-" + version + suffix);
+  return libraries;
+}
 /** Every extension that a runtime ships besides PL/pgSQL, as source ID and name, in manifest order. */
 export const bundledExtensions: ReadonlyArray<readonly [string, string]> = [
   ...Object.entries(extensionNames),
   ...contribExtensions.map(name => ["postgresql", name] as const),
 ];
+
+/** Library paths supplied by the two pinned, shared CLANG64 runtime packages. */
+export const mingwRuntimeDlls = ["bin/libc++.dll", "bin/libwinpthread-1.dll"] as const;
+export const mingwEvidence = "CLANG64 packages and linked objects";
+export const mingwSourcePrefix = mingwEvidence + ": ";
+export const mingwNotice = "mingw-runtime.txt";
 
 export const unaccentRules = "share/tsearch_data/unaccent.rules";
 
@@ -197,6 +217,9 @@ export function compressionLibraries(target: ArtifactTarget): Record<"zlib" | "l
 
 /** Identifies runtime dependencies built separately from PostgreSQL and its extensions. */
 export function librarySource(path: string, target: ArtifactTarget): string | undefined {
+  if (target === "windows-x64" && mingwRuntimeDlls.some(dll => dll === path)) {
+    return "mingw-runtime";
+  }
   for (const [source, library] of Object.entries(compressionLibraries(target))) {
     if (path === library) return source;
   }

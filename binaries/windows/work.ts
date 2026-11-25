@@ -33,7 +33,6 @@ type WorkState =
   | "recorded"
   | "active"
   | "packaged"
-  | "legacy (audited)"
   | "incomplete"
   | "redirected"
   | "unrecognized"
@@ -111,7 +110,7 @@ export async function withWindowsBuild(
     await using sharedUses = new AsyncDisposableStack();
     if (command === "assemble") await protectAssemblyInputs(active.build, sharedUses);
     await run(active.build);
-    // Reassembly can finish a build whose first packaging attempt failed. Legacy trees stay opt-in.
+    // Reassembly can finish a build whose first packaging attempt failed.
     if (active.managed) {
       const state = join(active.build.buildWork, stateFile);
       const entries = await readdir(active.build.buildWork, { withFileTypes: true });
@@ -183,15 +182,8 @@ async function workState(
     if (state === "packaged\n") return "packaged";
     return state === "building\n" ? "incomplete" : "unrecognized";
   }
-  // Old recipes have no completion marker. A sealed link audit alone does not prove packaging succeeded.
-  if (!entries.some(entry => entry.name === "windows-postgresql.tar" && entry.isFile())
-    || !entries.some(entry => entry.name === "windows-sources" && entry.isDirectory()))
-  {
-    return "unrecognized";
-  }
-  return entries.some(entry => entry.name === "windows-link-evidence.json" && entry.isFile())
-    ? "legacy (audited)"
-    : "incomplete";
+  // Only a marker written by this builder establishes ownership for pruning.
+  return "unrecognized";
 }
 
 /** Counts regular files for the preview without following links outside the tree. */
@@ -280,7 +272,7 @@ async function selectWork(work: string, output: string, mode: PruneMode): Promis
     }
     if (mode === "automatic" && state !== "packaged") continue;
     if (mode !== "preview"
-      && !(state === "packaged" || state === "legacy (audited)" || state === "incomplete"
+      && !(state === "packaged" || state === "incomplete"
         || state === "retired"))
     {
       throw new Error("Refusing to remove " + state + " directory: " + path);
@@ -313,11 +305,6 @@ export async function pruneWindowsWork(
   }
   if (mode === "preview") {
     const directories = await selectWork(work, output, mode);
-    if (directories.some(({ state }) => state === "legacy (audited)" || state === "incomplete")) {
-      console.log(
-        "Before pruning work created by older tools, let their builds and reassemblies finish.",
-      );
-    }
     for (const { name, path, state, inUse } of directories) {
       try {
         const size = inUse

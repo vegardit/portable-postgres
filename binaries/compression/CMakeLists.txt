@@ -15,6 +15,11 @@ set(LZ4_BUILD_CLI OFF CACHE BOOL "")
 set(LZ4_SHARED_MULTITHREAD OFF CACHE BOOL "")
 add_subdirectory("${SOURCE_ROOT}/lz4/build/cmake" lz4)
 
+if(MINGW)
+  # Retain the Windows loader name used by the native artifact format.
+  set_target_properties(lz4_shared PROPERTIES PREFIX "")
+endif()
+
 if(UNIX)
   # Ship one regular file under each loader name. Only the SDK needs the unversioned linker alias.
   foreach(library IN ITEMS zlib lz4_shared)

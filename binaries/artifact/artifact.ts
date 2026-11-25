@@ -19,7 +19,6 @@ import {
 import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileSha256 } from "../hash.ts";
-import { root as projectRoot } from "../paths.ts";
 import { sources } from "../sources/sources.ts";
 import {
   compareOrdinal,
@@ -44,6 +43,7 @@ import {
   clientLibraryPath,
   corePrograms,
   bundledExtensions,
+  extensionLibraries,
   includesRuntimePath,
   isMacOSClientLibrary,
   isIcuLibrary,
@@ -51,6 +51,10 @@ import {
   compressionLibraries,
   opensslLibraries,
   isIcuDataLibrary,
+  mingwEvidence,
+  mingwSourcePrefix,
+  mingwNotice,
+  mingwRuntimeDlls,
   moduleSuffix,
   requiredModules,
   requiredIcuLibraries,
@@ -61,9 +65,12 @@ import {
 export const artifactManifestName = "native-artifact.json";
 export type { ArtifactTarget } from "./runtime-layout.ts";
 
-export const msvcRuntimeNoticePath = "notices/msvc-runtime.txt";
-/** The reviewed text lives in the build recipe even when the tools run from dist/. */
-export const reviewedMsvcNoticeFile = join(projectRoot, "binaries/windows", msvcRuntimeNoticePath);
+/**
+ * glibc's startup sources add the GCC linking exception to the LGPL; SPDX lists glibc's wording of it as a
+ * reference text. This is not GCC's own runtime, whose GPL licence stays forbidden.
+ */
+const glibcStartupLicense = "LGPL-2.1-or-later WITH GCC-exception-2.0";
+const compilerRtLicense = "Apache-2.0 WITH LLVM-exception";
 
 /**
  * Toolchain code linked into native images besides the source's own code. Each part has its own review,
@@ -72,23 +79,37 @@ export const reviewedMsvcNoticeFile = join(projectRoot, "binaries/windows", msvc
  */
 export const toolchainComponents: Record<
   ArtifactTarget,
-  ReadonlyArray<{ id: string; evidence: string; notice?: string }>
+  ReadonlyArray<{ id: string; evidence: string; licenses: readonly string[]; notice?: string }>
 > = {
   "linux-x64-glibc": [
-    { id: "compiler-rt", evidence: "Clang major version" },
+    { id: "compiler-rt", evidence: "Clang major version", licenses: [compilerRtLicense] },
     // Scrt1.o, crti.o, crtn.o and members of libc_nonshared.a are linked statically into every ELF image.
-    { id: "glibc-startup", evidence: "glibc" },
+    { id: "glibc-startup", evidence: "glibc", licenses: [glibcStartupLicense] },
     {
       id: "llvm-cxx-runtime",
       evidence: "Clang major version",
+      licenses: [compilerRtLicense],
       notice: "notices/llvm-cxx-runtime.txt",
     },
   ],
   "windows-x64": [
     {
-      id: "msvc-runtime",
-      evidence: "Visual Studio product line",
-      notice: msvcRuntimeNoticePath,
+      id: "mingw-runtime",
+      evidence: mingwEvidence,
+      // docs/native-artifact.md maps the pinned DLLs and linked members to these grants.
+      licenses: [
+        compilerRtLicense,
+        "MIT",
+        "BSD-3-Clause",
+        "BSL-1.0",
+        "LicenseRef-Public-Domain",
+        "ZPL-2.1",
+        "ISC",
+        "BSD-2-Clause",
+        "LicenseRef-MinGW-gdtoa",
+        "LicenseRef-MinGW-printf",
+      ],
+      notice: "notices/" + mingwNotice,
     },
   ],
   // Apple's linker copies no toolchain code: the images link compiler-rt and the C runtime dynamically
@@ -124,93 +145,10 @@ export function toolchainImages(
     : codeImages;
 }
 
-/**
- * glibc's startup sources add the GCC linking exception to the LGPL; SPDX lists glibc's wording of it as a
- * reference text. This is not GCC's own runtime, whose GPL licence stays forbidden.
- */
-const glibcStartupLicense = "LGPL-2.1-or-later WITH GCC-exception-2.0";
-const compilerRtLicense = "Apache-2.0 WITH LLVM-exception";
-
-/** The host evidence naming the Visual Studio product that compiled a Windows build. */
-export const visualStudioEditionEvidence = "Visual Studio edition";
-
-/**
- * The Visual Studio products whose licence terms a release review covers; they share one Distributable
- * Code section. Build Tools have none: they only supplement a licence to one of these products, which a
- * build machine cannot show. Other products still build candidates, but no release.
- */
-export const releaseVisualStudioEditions: readonly string[] = [
-  "Microsoft.VisualStudio.Product.Enterprise",
-  "Microsoft.VisualStudio.Product.Professional",
-  "Microsoft.VisualStudio.Product.Community",
-];
-
-/**
- * Visual Studio product lines whose licence terms were reviewed, and the identifier for the static code from
- * Visual Studio toolset libraries that their linker copies into every image; today these are startup objects
- * of msvcrt.lib, members of vcruntime.lib, and the reviewed msvcprt.lib helpers used by ICU.
- * Microsoft's Distributable List names runtime files, not this
- * linked code; the project applies the conditions of the Distributable Code section to it, and the shipped
- * notice passes them on, as CPython's does. Both Windows notices name these lines:
- * `notices/msvc-runtime.txt` describes them, and `notices/msvc-runtime-candidate.txt` calls them the release
- * line, so admitting another line means reviewing both texts.
- */
-const visualStudioLicenses: ReadonlyMap<string, string> = new Map([
-  ["18", "LicenseRef-Microsoft-VisualStudio-2026-Linked-CRT-Code"],
-]);
-
-/** Whether the licence terms of a Visual Studio product line, as Visual Studio reports it, were reviewed. */
-export function hasReviewedVisualStudioLine(line: string): boolean {
-  return visualStudioLicenses.has(line);
-}
-
-/**
- * Returns why release validation refuses the Visual Studio that a Windows build recorded, or `undefined`
- * when the terms of its product line and edition were reviewed. Builds use it to warn early.
- */
-export function visualStudioReleaseGap(hostEvidence: readonly HostEvidence[]): string | undefined {
-  const lineEvidence = toolchainEvidence("msvc-runtime");
-  const line = hostEvidence.find(entry => entry.component === lineEvidence)?.version;
-  if (line === undefined) return "missing toolchain evidence: " + lineEvidence;
-  // A new line needs its own review: the terms follow the line, and the identifier names it.
-  if (!hasReviewedVisualStudioLine(line)) {
-    return "Visual Studio product line " + line + " has no reviewed licence terms";
-  }
-  const edition = hostEvidence.find(entry => entry.component === visualStudioEditionEvidence)
-    ?.version;
-  if (edition === undefined) return "missing toolchain evidence: " + visualStudioEditionEvidence;
-  if (!releaseVisualStudioEditions.includes(edition)) {
-    return "Visual Studio edition " + edition + " is not admitted for releases; build with "
-      + releaseVisualStudioEditions.join(", ");
-  }
-  return undefined;
-}
-
-/**
- * The licence each toolchain component must carry. The glibc startup and MSVC licences are admitted
- * only for their respective components. The LLVM licence is also permitted for other reviewed code.
- */
-function toolchainLicenses(manifest: ArtifactManifest): Map<string, string> {
-  const licenses = new Map<string, string>();
-  for (const part of toolchainComponents[manifest.target]) {
-    if (part.id === "compiler-rt" || part.id === "llvm-cxx-runtime") {
-      licenses.set(part.id, compilerRtLicense);
-    }
-    if (part.id === "glibc-startup") licenses.set(part.id, glibcStartupLicense);
-    if (part.id === "msvc-runtime") {
-      const gap = visualStudioReleaseGap(manifest.hostEvidence);
-      requireCondition(gap === undefined, gap ?? "");
-      const line = manifest.hostEvidence.find(entry => entry.component === part.evidence)!.version;
-      licenses.set(part.id, visualStudioLicenses.get(line)!);
-    }
-  }
-  return licenses;
-}
-
 /** Host libraries that every release review must name for its target. */
 export const requiredHostLibraries: Record<ArtifactTarget, readonly string[]> = {
   "linux-x64-glibc": ["glibc"],
-  "windows-x64": ["vcruntime140.dll", "ucrtbase.dll"],
+  "windows-x64": ["ucrtbase.dll"],
   "macos-arm64": ["/usr/lib/libSystem.B.dylib"],
 };
 
@@ -240,11 +178,8 @@ export type ArtifactOptions = {
   hostEvidence: HostEvidence[];
   hostRequirements?: HostRequirements | null;
   licenseInventory?: LicenseInventory;
-  /**
-   * Each source's notice signatures from the build's scan, with example files (`noticeSignatureExamples`).
-   * A candidate may lack them; release validation requires them for every source.
-   */
-  noticeSignatures?: Readonly<Record<string, NoticeSignatureExample[]>>;
+  /** Every pinned source's scan, with an empty array for a source that yielded no signatures. */
+  noticeSignatures: Readonly<Record<string, NoticeSignatureExample[]>>;
 };
 
 const executableNames = ["postgres", "initdb", "pg_ctl", "psql"] as const;
@@ -267,14 +202,12 @@ const permittedHostLicenses = new Set([
   "LGPL-2.1-only",
   "LGPL-2.1-or-later",
   "LicenseRef-Microsoft-Windows",
-  "LicenseRef-Microsoft-Visual-Cpp-Runtime",
   "LicenseRef-Apple-macOS",
 ]);
 
 /**
- * Licences that one source component may carry and must carry, because reviewed code under them ships in every
- * build of that source. They are admitted nowhere else, not even as host licences; the owner decided each one
- * (docs/native-artifact.md, "Notices and license gate"). The `LicenseRef-` texts ship as retained notices.
+ * Licences required for code shipped by each source. Toolchain components have their own required licences,
+ * and host libraries have a separate allowlist. The `LicenseRef-` texts ship as retained notices.
  */
 export const sourceComponentLicenses: ReadonlyMap<string, readonly string[]> = new Map([
   ["postgresql", [
@@ -555,7 +488,6 @@ async function extensionLayout(
   target: ArtifactTarget,
   inputs: SourcePin[],
 ): Promise<Extension[]> {
-  const suffix = moduleSuffix(target);
   const paths = await readdir(join(installation, "share/extension"));
   const extensions: Extension[] = [];
   const installedExtensions: ReadonlyArray<readonly [string, string]> = [
@@ -573,10 +505,7 @@ async function extensionLayout(
       hasInstallPath(sql, name, version),
       "no SQL installation path to " + name + " " + version,
     );
-    const libraries = sqlOnlyExtensions.has(sourceId)
-      ? []
-      : ["lib/" + name + suffix];
-    if (sourceId === "timescaledb") libraries.push("lib/timescaledb-" + source.version + suffix);
+    const libraries = extensionLibraries(sourceId, name, source.version, target);
     for (const path of libraries) {
       const info = await lstat(join(installation, path)).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -663,7 +592,7 @@ const sourceSchema = z.object({
     files: z.array(text).max(maxNoticeExamples, "expected at most three example paths"),
   })).check(
     unique(entry => entry.signature, entry => "duplicate notice signature: " + entry.signature),
-  ).exactOptional(),
+  ),
 });
 type SourcePin = Omit<z.infer<typeof sourceSchema>, "notice" | "notices" | "noticeSignatures">;
 
@@ -784,6 +713,19 @@ export const licenseInventorySchema = z.object({
 });
 export type LicenseInventory = z.infer<typeof licenseInventorySchema>;
 
+/** Source components carry their scan results even when empty. Other components can omit this field. */
+export function sourceReviewGap(
+  inventory: LicenseInventory,
+  sourceIds: ReadonlySet<string>,
+): string | undefined {
+  const missing = inventory.components.find(part =>
+    part.noticeSignatures === undefined && sourceIds.has(part.id)
+  );
+  return missing === undefined
+    ? undefined
+    : "missing reviewed notice signatures for source: " + missing.id;
+}
+
 /**
  * The manifest's shape and the rules that its content alone decides; checks against an installation follow
  * in `inspectArtifact`. Plain objects let a manifest carry keys that this version does not know, and callers
@@ -826,6 +768,8 @@ function validateShape(value: unknown): asserts value is ArtifactManifest {
   requireCondition(result.success, result.success ? "" : firstIssue(result.error));
   const { extensions } = result.data;
   const ids = new Set(result.data.sources.map(source => source.id));
+  const gap = sourceReviewGap(result.data.licenseInventory, ids);
+  if (gap !== undefined) throw new Error(errorPrefix + gap);
   // PostgreSQL links ICU, OpenSSL, zlib and LZ4 in every build, and pgcrypto calls OpenSSL and zlib.
   // A manifest cannot opt out of their runtime and licence checks by leaving out a pin.
   for (const id of ["postgresql", "icu", "openssl", "zlib", "lz4"]) {
@@ -861,7 +805,7 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
     "release license inventory is unresolved",
   );
   requireCondition(manifest.hostRequirements !== null, "minimum host requirements are unresolved");
-  const requiredToolchainLicenses = toolchainLicenses(manifest);
+  const toolchainParts = toolchainComponents[manifest.target];
   const covered = new Set<string>();
   const inventory = new Set(manifest.files.map(file => file.path));
   const hashes = payloadHashes(manifest);
@@ -874,13 +818,15 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
         && component.evidence.length > 0,
       "unresolved license component: " + component.id,
     );
+    const toolchain = toolchainParts.find(part => part.id === component.id);
     for (const license of component.licenses) {
       requireCondition(
         !/(^|[^A-Z])A?GPL(?:[-\s.(]|$)/i.test(license),
         "forbidden GPL/AGPL license: " + license,
       );
       requireCondition(
-        permittedLicenses.has(license) || requiredToolchainLicenses.get(component.id) === license
+        permittedLicenses.has(license)
+          || toolchain?.licenses.includes(license)
           || sourceComponentLicenses.get(component.id)?.includes(license) === true,
         "unresolved or unapproved license: " + license,
       );
@@ -915,15 +861,21 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   if (manifest.target === "macos-arm64") {
     requireReviewedToolchain("postgresql", macOSParserEvidence);
   }
-  for (const part of toolchainComponents[manifest.target]) {
+  if (manifest.target === "windows-x64") {
+    for (const source of manifest.sources) {
+      if (!sqlOnlyExtensions.has(source.id)) {
+        requireReviewedToolchain(source.id, mingwSourcePrefix + source.id);
+      }
+    }
+  }
+  for (const part of toolchainParts) {
     const toolchain = components.get(part.id);
     requireCondition(toolchain, "unreviewed toolchain component: " + part.id);
     requireReviewedToolchain(part.id, part.evidence);
-    const license = requiredToolchainLicenses.get(part.id);
-    requireCondition(
-      license === undefined || toolchain.licenses.includes(license),
-      "toolchain component " + part.id + " must carry " + license,
-    );
+    for (const license of part.licenses) {
+      requireCondition(toolchain.licenses.includes(license),
+        "toolchain component " + part.id + " must carry " + license);
+    }
     // Its licence describes only the linked code and the project's notice for it.
     for (const file of toolchain.files) {
       requireCondition(
@@ -951,12 +903,12 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
   // of which built the image; the source that built it must still be credited with it. Extensions build
   // the libraries in their layout, which are checked with their other files below, and PostgreSQL's own
   // build makes every other image except the separately built runtime libraries.
-  const extensionLibraries = new Set(manifest.extensions.flatMap(extension => extension.libraries));
+  const extensionImages = new Set(manifest.extensions.flatMap(extension => extension.libraries));
   const postgresql = new Set(components.get("postgresql")?.files);
   for (const image of images) {
     const owner = librarySource(image, manifest.target) ?? "postgresql";
     requireCondition(
-      extensionLibraries.has(image) || (owner === "postgresql"
+      extensionImages.has(image) || (owner === "postgresql"
         ? postgresql.has(image)
         : components.get(owner)?.files.includes(image)),
       "missing license coverage for " + owner + ": " + image,
@@ -982,13 +934,9 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
         "source component " + source.id + " must carry " + license,
       );
     }
-    // The review must have covered the licence text that the source tree carries now. Without a scan, a
-    // build could not show that no new licence text arrived, so it cannot be released either.
-    requireCondition(source.noticeSignatures, "missing notice scan for source: " + source.id);
     const scanned = source.noticeSignatures.map(entry => entry.signature).sort(compareOrdinal);
     requireCondition(
-      component.noticeSignatures !== undefined
-        && isDeepStrictEqual([...component.noticeSignatures].sort(compareOrdinal), scanned),
+      isDeepStrictEqual(component.noticeSignatures?.toSorted(compareOrdinal), scanned),
       "reviewed notice signatures differ from the source tree: " + source.id,
     );
   }
@@ -1071,7 +1019,8 @@ export function measuredHostRequirements(
       : name === "/usr/lib/libSystem.B.dylib" && macOS
         ? "macOS " + macOS.version + " or newer"
         : "";
-  return [...new Set([...requiredHostLibraries[manifest.target], ...observed])].map(name => ({
+  const required = requiredHostLibraries[manifest.target];
+  return [...new Set([...required, ...observed])].map(name => ({
     name,
     requirement: requirement(name),
   }));
@@ -1102,12 +1051,14 @@ export async function describeArtifact(
   );
   const suffix = options.target === "windows-x64" ? ".exe" : "";
   const sourceInputs = sources.map(({ upstream: _upstream, ...source }) => {
-    const noticeSignatures = options.noticeSignatures?.[source.id];
+    const noticeSignatures = options.noticeSignatures[source.id];
+    requireCondition(noticeSignatures !== undefined,
+      "missing notice scan for source: " + source.id);
     return {
       ...source,
       notice: "notices/" + source.id + ".txt",
       notices: sourceNotices(source),
-      ...noticeSignatures === undefined ? {} : { noticeSignatures },
+      noticeSignatures,
     };
   });
   const manifest: ArtifactManifest = {
@@ -1310,6 +1261,11 @@ async function inspectArtifact(
         entry?.kind === "file" && entry.sha256 === notice.sha256,
         "project notice differs from its pin: " + path,
       );
+    }
+  }
+  if (expectedTarget === "windows-x64") {
+    for (const dll of mingwRuntimeDlls) {
+      requireCondition(entries.get(dll)?.kind === "file", "missing MinGW runtime DLL: " + dll);
     }
   }
   for (const notice of toolchainNotices(expectedTarget)) {

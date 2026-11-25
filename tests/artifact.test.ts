@@ -38,8 +38,10 @@ import {
   requiredIcuLibraries,
 } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
+import { noticeSignatureExamples } from "../binaries/artifact/notice-scan.ts";
 import {
   createCandidate,
+  fixtureNoticeScan,
   hostMeasurements,
   hostRequirementsFixture,
   machOFixture,
@@ -61,8 +63,9 @@ const releaseTargets: ArtifactTarget[] = process.platform === "win32"
 const toolchainCases = releaseTargets.flatMap(target =>
   toolchainParts[target].map(part => ({ target, ...part }))
 );
-const msvcLicense = toolchainLicenses["msvc-runtime"]!;
-const msvcNotice = "notices/msvc-runtime.txt";
+const scopedMingwLicense = "ZPL-2.1";
+const mingwNotice = "notices/mingw-runtime.txt";
+const noticeSignatures = noticeSignatureExamples(fixtureNoticeScan());
 const { directory, cleanup } = temporaryDirectories("artifact");
 afterEach(cleanup);
 
@@ -257,6 +260,7 @@ it.each(releaseTargets)("%s requires the complete ICU runtime and its source own
       target,
       packagingRevision: 2,
       hostEvidence: manifest.hostEvidence,
+      noticeSignatures,
     })).rejects.toThrow(
       "missing ICU runtime library: " + path,
     );
@@ -293,6 +297,7 @@ it.each(releaseTargets.filter(target => target !== "macos-arm64"))(
         target,
         packagingRevision: 2,
         hostEvidence: manifest.hostEvidence,
+        noticeSignatures,
       }),
     )
       .rejects.toThrow("ICU data library contains executable code: " + path);
@@ -346,6 +351,7 @@ it.each([
         target: "windows-x64",
         packagingRevision: 1,
         hostEvidence: [],
+        noticeSignatures,
       }),
     )
       .rejects.toThrow(/excluded/);
@@ -538,7 +544,7 @@ it.each(toolchainCases)(
 );
 
 it("the glibc startup licence is admitted only for its Linux toolchain component", async () => {
-  const startupLicense = toolchainLicenses["glibc-startup"]!;
+  const startupLicense = toolchainLicenses["glibc-startup"]![0]!;
   const { root, manifest } = await fixture();
   manifest.hostRequirements = hostRequirementsFixture();
   manifest.licenseInventory = reviewedFixture(manifest);
@@ -572,7 +578,7 @@ it.skipIf(process.platform === "win32")(
     manifest.hostRequirements = hostRequirementsFixture("linux-x64-glibc");
     manifest.licenseInventory = reviewedFixture(manifest);
     manifest.licenseInventory.components.find(component => component.id === "compiler-rt")!
-      .licenses = [toolchainLicenses["glibc-startup"]!];
+      .licenses = [toolchainLicenses["glibc-startup"]![0]!];
     await rewrite(root, manifest);
     await expect(validateArtifact(root, "linux-x64-glibc")).rejects.toThrow(
       "unresolved or unapproved license",
@@ -591,81 +597,30 @@ it.skipIf(process.platform === "win32")(
       .licenses = ["MIT"];
     await rewrite(root, manifest);
     await expect(validateArtifact(root, "linux-x64-glibc")).rejects.toThrow(
-      "toolchain component glibc-startup must carry " + toolchainLicenses["glibc-startup"],
+      "toolchain component glibc-startup must carry " + toolchainLicenses["glibc-startup"]![0]!,
     );
-    // The Visual Studio identifier describes no Linux code.
+    // The MinGW-specific licence has no approved use in this Linux fixture.
     manifest.licenseInventory = reviewedFixture(manifest);
     manifest.licenseInventory.components.find(component => component.id === "postgresql")!
-      .licenses = [msvcLicense];
+      .licenses = [scopedMingwLicense];
     await rewrite(root, manifest);
     await expect(validateArtifact(root, "linux-x64-glibc")).rejects.toThrow(
-      "unresolved or unapproved license: " + msvcLicense,
+      "unresolved or unapproved license: " + scopedMingwLicense,
     );
   },
 );
 
-it("the Visual Studio identifier is required on the Windows runtime component and admitted nowhere else", async () => {
-  const { root, manifest } = await fixture();
-  manifest.hostRequirements = hostRequirementsFixture();
-  manifest.licenseInventory = reviewedFixture(manifest);
-  await rewrite(root, manifest);
-  await expect(validateArtifact(root, "windows-x64")).resolves.toMatchObject({ formatVersion: 1 });
-
-  // A permitted licence on the runtime component passes every other rule, so only this one notices it.
-  const runtime = manifest.licenseInventory.components.find(component =>
-    component.id === "msvc-runtime"
-  )!;
-  runtime.licenses = ["MIT"];
-  await rewrite(root, manifest);
-  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "toolchain component msvc-runtime must carry " + msvcLicense,
-  );
-
-  manifest.licenseInventory = reviewedFixture(manifest);
-  manifest.licenseInventory.components.find(component => component.id === "postgresql")!
-    .licenses = [msvcLicense];
-  await rewrite(root, manifest);
-  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "unresolved or unapproved license: " + msvcLicense,
-  );
-});
-
-it.each([
-  [
-    "an unreviewed product line",
-    "Visual Studio product line",
-    "19",
-    "Visual Studio product line 19 has no reviewed licence terms",
-  ],
-  [
-    "Build Tools alone",
-    "Visual Studio edition",
-    "Microsoft.VisualStudio.Product.BuildTools",
-    "Visual Studio edition Microsoft.VisualStudio.Product.BuildTools is not admitted for releases",
-  ],
-  [
-    "an unknown product",
-    "Visual Studio edition",
-    "Microsoft.VisualStudio.Product.Unknown",
-    "Visual Studio edition Microsoft.VisualStudio.Product.Unknown is not admitted for releases",
-  ],
-  [
-    "no edition evidence",
-    "Visual Studio edition",
-    undefined,
-    "missing toolchain evidence: Visual Studio edition",
-  ],
-])(
-  "release validation refuses a Windows build with %s",
-  async (_name, component, version, message) => {
+it.each(["CLANG64 packages and linked objects", "CLANG64 packages and linked objects: pgvector"])(
+  "requires Windows link evidence for %s",
+  async component => {
     const { root, manifest } = await fixture();
     manifest.hostRequirements = hostRequirementsFixture();
     manifest.licenseInventory = reviewedFixture(manifest);
-    manifest.hostEvidence = manifest.hostEvidence.flatMap(entry =>
-      entry.component === component ? version === undefined ? [] : [{ ...entry, version }] : [entry]
-    );
+    manifest.hostEvidence = manifest.hostEvidence.filter(entry => entry.component !== component);
     await rewrite(root, manifest);
-    await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(message);
+    await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
+      "missing toolchain evidence: " + component,
+    );
   },
 );
 
@@ -673,22 +628,22 @@ it("release validation binds the Windows runtime review to the project's notice 
   const { root, manifest } = await fixture();
   manifest.hostRequirements = hostRequirementsFixture();
   const runtime = () =>
-    manifest.licenseInventory.components.find(component => component.id === "msvc-runtime")!;
+    manifest.licenseInventory.components.find(component => component.id === "mingw-runtime")!;
 
   manifest.licenseInventory = reviewedFixture(manifest);
-  runtime().noticeSha256[msvcNotice] = "0".repeat(64);
+  runtime().noticeSha256[mingwNotice] = "0".repeat(64);
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "license notice changed since review: msvc-runtime: " + msvcNotice,
+    "license notice changed since review: mingw-runtime: " + mingwNotice,
   );
 
   manifest.licenseInventory = reviewedFixture(manifest);
-  runtime().files = runtime().files.filter(file => file !== msvcNotice);
+  runtime().files = runtime().files.filter(file => file !== mingwNotice);
   runtime().notices = [];
   runtime().noticeSha256 = {};
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "missing toolchain notice for msvc-runtime: " + msvcNotice,
+    "missing toolchain notice for mingw-runtime: " + mingwNotice,
   );
 
   // The runtime licence describes only the linked code and its notice, not another source's files.
@@ -696,19 +651,27 @@ it("release validation binds the Windows runtime review to the project's notice 
   runtime().files.push("notices/pgvector.txt");
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "toolchain component msvc-runtime covers a file that is not a native image: notices/pgvector.txt",
+    "toolchain component mingw-runtime covers a file that is not a native image: notices/pgvector.txt",
   );
 });
 
 it("candidate validation requires the toolchain notice that a Windows archive ships", async () => {
   const { root, manifest } = await fixture();
-  await rm(join(root, msvcNotice));
-  manifest.files = manifest.files.filter(file => file.path !== msvcNotice);
+  await rm(join(root, mingwNotice));
+  manifest.files = manifest.files.filter(file => file.path !== mingwNotice);
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow(
-    "missing toolchain notice: " + msvcNotice,
+    "missing toolchain notice: " + mingwNotice,
   );
 });
+
+it.each(["bin/libc++.dll", "bin/libwinpthread-1.dll"])(
+  "a Windows candidate must include %s",
+  async dll => {
+    await expect(createCandidate(await directory(), "windows-x64", { remove: [dll] }))
+      .rejects.toThrow("missing MinGW runtime DLL: " + dll);
+  },
+);
 
 it.each(releaseTargets.map(target => ({
   target,
@@ -736,7 +699,7 @@ it("release validation requires a reviewed entry for every host library the buil
   manifest.hostEvidence = remeasured(
     manifest.hostEvidence,
     "windows-x64",
-    "secur32.dll, vcruntime140.dll",
+    "secur32.dll, ucrtbase.dll",
   );
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
@@ -758,14 +721,14 @@ it("release validation refuses a second entry for a host library under another c
   manifest.licenseInventory = reviewedFixture(manifest);
   // The gate matches names case-insensitively, so it would check only the first and publish both.
   manifest.hostRequirements.libraries.push({
-    name: "VCRUNTIME140.DLL",
+    name: "UCRTBASE.DLL",
     requirement: "a contradicting requirement",
     license: "LicenseRef-Microsoft-Windows",
     evidence: "fixture",
   });
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "duplicate host library: VCRUNTIME140.DLL",
+    "duplicate host library: UCRTBASE.DLL",
   );
 });
 
@@ -917,7 +880,7 @@ it("candidate validation requires a boolean measured flag on a host library", as
   Object.assign(manifest.hostRequirements.libraries[0]!, { measured: "true" });
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow(
-    "invalid measured flag: vcruntime140.dll",
+    "invalid measured flag: ucrtbase.dll",
   );
 });
 
@@ -966,6 +929,7 @@ it("requires core programs in a regenerated Windows artifact", async () => {
     target: "windows-x64",
     packagingRevision: 1,
     hostEvidence: [],
+    noticeSignatures,
   })).rejects.toThrow("nonexecutable program: bin/ecpg.exe");
 });
 
@@ -981,6 +945,7 @@ it.each(releaseTargets)(
       target,
       packagingRevision: 1,
       hostEvidence: [],
+      noticeSignatures,
     })).rejects.toThrow("missing library: " + module);
   },
 );
@@ -995,6 +960,7 @@ it("does not accept a directory as an extension SQL file", async () => {
     target: "windows-x64",
     packagingRevision: 1,
     hostEvidence: [],
+    noticeSignatures,
   })).rejects.toThrow("unexpected runtime directory: " + sql);
 });
 
@@ -1010,6 +976,7 @@ it.skipIf(process.platform !== "win32")(
       target: "linux-x64-glibc",
       packagingRevision: 1,
       hostEvidence: [],
+      noticeSignatures,
     })).rejects.toThrow("requires a POSIX host");
   },
 );
@@ -1029,6 +996,7 @@ it.skipIf(process.platform === "win32")(
         target: "linux-x64-glibc",
         packagingRevision: 1,
         hostEvidence: [],
+        noticeSignatures,
       }),
     )
       .rejects.toThrow("unsafe path");
@@ -1039,6 +1007,7 @@ it.skipIf(process.platform === "win32")(
         target: "linux-x64-glibc",
         packagingRevision: 1,
         hostEvidence: [],
+        noticeSignatures,
       }),
     )
       .rejects.toThrow("writable directory");
@@ -1097,7 +1066,12 @@ it.each([
   await mkdir(join(root, "share/timezone"), { recursive: true });
   await writeFile(join(root, "share/timezone/Helper"), image());
   await expect(
-    writeArtifactManifest(root, { target: "windows-x64", packagingRevision: 1, hostEvidence: [] }),
+    writeArtifactManifest(root, {
+      target: "windows-x64",
+      packagingRevision: 1,
+      hostEvidence: [],
+      noticeSignatures,
+    }),
   ).rejects.toThrow("expected a Windows x64 PE image: share/timezone/Helper");
 });
 
@@ -1141,7 +1115,16 @@ it("a source component's scoped licences are required on it and admitted nowhere
   );
 });
 
-it("a release needs each source tree's notice scan and a review that covers all of it", async () => {
+it("refuses to write candidate metadata with an incomplete source notice scan", async () => {
+  const root = await directory();
+  const signatures = noticeSignatureExamples(fixtureNoticeScan());
+  delete signatures["pgvector"];
+  await expect(createCandidate(root, "windows-x64", { noticeSignatures: signatures }))
+    .rejects.toThrow("missing notice scan for source: pgvector");
+  await expect(stat(join(root, artifactManifestName))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("every candidate needs each source's scan and a release needs a matching review", async () => {
   const { root, manifest } = await fixture();
   manifest.hostRequirements = hostRequirementsFixture();
   manifest.licenseInventory = reviewedFixture(manifest);
@@ -1176,7 +1159,7 @@ it("a release needs each source tree's notice scan and a review that covers all 
   examples.pop();
 
   // Text that the review has not seen, such as one that a source update brought.
-  source("postgresql").noticeSignatures!.push({
+  source("postgresql").noticeSignatures.push({
     signature: "Copyright (c) YYYY Newcomer",
     files: ["src/new.c"],
   });
@@ -1190,11 +1173,11 @@ it("a release needs each source tree's notice scan and a review that covers all 
   await expect(validateArtifact(root, "windows-x64")).resolves.toMatchObject({ formatVersion: 1 });
 
   // Without a scan, nothing shows that no new licence text arrived, even when the review lists none either.
-  delete source("pgvector").noticeSignatures;
+  Reflect.deleteProperty(source("pgvector"), "noticeSignatures");
   component("pgvector").noticeSignatures = [];
   await rewrite(root, manifest);
-  await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "missing notice scan for source: pgvector",
+  await expect(validateArtifact(root, "windows-x64", { mode: "candidate" })).rejects.toThrow(
+    "noticeSignatures",
   );
 
   source("pgvector").noticeSignatures = [];
@@ -1203,7 +1186,7 @@ it("a release needs each source tree's notice scan and a review that covers all 
   delete component("pgvector").noticeSignatures;
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
-    "reviewed notice signatures differ from the source tree: pgvector",
+    "missing reviewed notice signatures for source: pgvector",
   );
 });
 
@@ -1281,6 +1264,7 @@ it.skipIf(process.platform === "win32").each([
         target: "macos-arm64",
         packagingRevision: 1,
         hostEvidence: [],
+        noticeSignatures,
       }),
     ).rejects.toThrow(message + ": " + path);
   }
