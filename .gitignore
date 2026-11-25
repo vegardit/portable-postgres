@@ -10,6 +10,7 @@
 !.eslintignore
 !.git*
 !.oxlint*
+!/.python-version
 !.rumdl.*
 
 # Vim

@@ -8,6 +8,7 @@ Install Node.js 26 or newer; pnpm checks the installed version and does not down
 Use the pinned tools in the package manifest and lockfile.
 The test suite (`pnpm test` or `pnpm check`) and release preparation for Windows ZIP archives require Python 3
 on `PATH` as `python` on Windows or `python3` on Linux and macOS.
+To match the GitHub Actions runners locally, use the exact Python version in `.python-version`.
 The private root package contains shared binary build orchestration in TypeScript.
 The publishable wrapper belongs in `wrappers/node/` and is a separate package.
 Node.js may be required in build environments; native archive consumers must not need it.
