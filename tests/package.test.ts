@@ -21,17 +21,14 @@ import {
 } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { gunzipSync } from "node:zlib";
 import { afterEach, expect, it, vi } from "vitest";
 import {
-  type ArtifactManifest,
-  artifactManifestName,
   type ArtifactTarget,
   type HostEvidence,
-  parseArtifactManifest,
   toolchainNotices,
 } from "../binaries/artifact/artifact.ts";
 import { draftReview } from "../binaries/artifact/review.ts";
+import { archivedManifest } from "../binaries/release.ts";
 import { sourceNoticesFile } from "../binaries/artifact/notice-scan.ts";
 import {
   lastCandidate,
@@ -237,21 +234,6 @@ it("packaging writes the notices into the candidate and leaves the development i
     expect((await stat(join(candidate, "notices/pgvector.txt"))).mode & 0o777).toBe(0o644);
   }
 });
-
-/** The manifest as the archive ships it, read from the archive's own bytes. */
-async function archivedManifest(archive: string): Promise<ArtifactManifest> {
-  const tar = gunzipSync(await readFile(archive));
-  for (let offset = 0; tar[offset];) {
-    const field = (start: number, length: number) =>
-      tar.toString("utf8", offset + start, offset + start + length).split("\0")[0]!;
-    const size = Number.parseInt(field(124, 12), 8);
-    if (field(0, 100) === "./" + artifactManifestName) {
-      return parseArtifactManifest(tar.toString("utf8", offset + 512, offset + 512 + size));
-    }
-    offset += 512 + Math.ceil(size / 512) * 512;
-  }
-  throw new Error("No manifest in " + archive);
-}
 
 it(
   "packaging reopens the parts of the tracked review that no longer match the candidate",

@@ -9,13 +9,14 @@ It does not approve distribution or declare a supported host.
 
 ## Archive and discovery
 
-The archive is a gzip-compressed USTAR archive.
+Windows uses a ZIP archive with the installation files and directories at its root.
+Linux and macOS use a gzip-compressed USTAR archive.
 It holds only regular files, directories and symbolic links in plain USTAR headers, without PAX or GNU metadata,
 because tar readers apply such metadata differently.
 The packer checks its own output against this format,
 so a payload name outside printable ASCII, or too long for the USTAR name and prefix fields, cannot be packed.
 
-Each build job validates its archive after packing: it unpacks the finished archive with GNU tar,
+Each build job validates its archive after packing: it unpacks the finished archive,
 runs the native tests on that tree, and in release mode runs release validation on it before uploading.
 The release job trusts the archives of its own workflow run and does not unpack them again,
 because whoever could change an archive there could also change the manifest and review it would be checked against.

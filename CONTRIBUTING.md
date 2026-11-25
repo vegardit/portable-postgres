@@ -6,6 +6,8 @@ Use pnpm 12 for all Node.js builds, TypeScript 7 for compilation, dprint for for
 and oxlint for TypeScript linting.
 Install Node.js 26 or newer; pnpm checks the installed version and does not download a runtime.
 Use the pinned tools in the package manifest and lockfile.
+The test suite (`pnpm test` or `pnpm check`) and release preparation for Windows ZIP archives require Python 3
+on `PATH` as `python` on Windows or `python3` on Linux and macOS.
 The private root package contains shared binary build orchestration in TypeScript.
 The publishable wrapper belongs in `wrappers/node/` and is a separate package.
 Node.js may be required in build environments; native archive consumers must not need it.
@@ -91,6 +93,7 @@ Candidate metadata follows [native artifact format 1](docs/native-artifact.md).
 Release validation deliberately fails until the artifact's license inventory and host prerequisites are verified.
 
 An archive is named after its release, for example `portable-postgres-18.7-r1-linux-x64-glibc.tar.gz`.
+The Windows archive uses the same naming scheme with a `.zip` extension.
 The name combines the pinned PostgreSQL version with the packaging revision in `binaries/sources/revision.json`.
 The revision counts the releases of one PostgreSQL version.
 Leave it unchanged while the current revision is unreleased.
@@ -344,7 +347,7 @@ Native releases are published only by the [Release workflow](.github/workflows/r
 A release is tagged `native-v<version>`, for example `native-v18.7-r1`, and is never changed after publishing.
 A correction needs the next packaging revision.
 
-The workflow builds every target in release mode, so each build job unpacks its finished archive with GNU tar
+The workflow builds every target in release mode, so each build job unpacks its finished archive
 and runs the native tests and release validation on it before it uploads the archive.
 The release job trusts the archives of its own run and does not unpack them again.
 It checks that every archive belongs to the computed version and to the checkout's source pins and carries a verified review,
@@ -363,7 +366,7 @@ The `dry-run` input, enabled by default, builds every target that has a recipe a
 without creating a tag or release, so a pending review fails it as it would fail a release.
 A dry run stops after the build jobs.
 To rehearse asset preparation from candidate archives, run `pnpm binaries:release` without `--require-all-targets`.
-Each supplied `portable-postgres-*.tar.gz` must belong to the current revision and a supported target,
+Each supplied native ZIP or tarball must belong to the current revision and a supported target,
 even when only one target is supplied.
 A local [act](https://github.com/nektos/act) run covers the same build jobs, release validation included:
 

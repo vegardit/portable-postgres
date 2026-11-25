@@ -48,5 +48,6 @@ export function nativeReleaseTag(): string {
 }
 
 export function nativeArchiveName(target: ArtifactTarget): string {
-  return `portable-postgres-${nativeVersion()}-${target}.tar.gz`;
+  const extension = target === "windows-x64" ? "zip" : "tar.gz";
+  return `portable-postgres-${nativeVersion()}-${target}.${extension}`;
 }

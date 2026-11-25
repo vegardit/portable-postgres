@@ -165,9 +165,13 @@ jobs:
           (cd "$archive_dir" && "${sha256[@]}" "$archive_name" > "$archive_name.sha256")
           mkdir "$archive_dir/installation"
           # -p keeps the archive's modes, so that the tests and the release check see them, not the runner's umask.
-          archive_tar=tar
-          if [[ $RUNNER_OS == macOS ]]; then archive_tar=gtar; fi
-          "$archive_tar" -xpzf "$archive_dir/$archive_name" -C "$archive_dir/installation"
+          if [[ $RUNNER_OS == Windows ]]; then
+            python -m zipfile -e "$archive_dir/$archive_name" "$archive_dir/installation"
+          else
+            archive_tar=tar
+            if [[ $RUNNER_OS == macOS ]]; then archive_tar=gtar; fi
+            "$archive_tar" -xpzf "$archive_dir/$archive_name" -C "$archive_dir/installation"
+          fi
           {
             echo "path=$archive_dir/$archive_name"
             echo "checksum=$archive_dir/$archive_name.sha256"

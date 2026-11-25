@@ -82,7 +82,7 @@ it("release names keep the PostgreSQL version recognizable", () => {
   expect(nativeVersion()).toBe(`${postgresql}-r${packagingRevision}`);
   expect(nativeReleaseTag()).toBe(`native-v${postgresql}-r${packagingRevision}`);
   expect(nativeArchiveName("windows-x64")).toBe(
-    `portable-postgres-${postgresql}-r${packagingRevision}-windows-x64.tar.gz`,
+    `portable-postgres-${postgresql}-r${packagingRevision}-windows-x64.zip`,
   );
 });
 
@@ -291,9 +291,9 @@ it("a failed release preparation removes its output, so that it can be retried",
 
 it("an uncompressed tar under the release name is refused", async () => {
   const assets = await directory();
-  await archive(assets, "windows-x64");
+  const name = nativeArchiveName("linux-x64-glibc");
+  await writeNativeArchive(await directory(), join(assets, name));
   // The format and every consumer expect gzip, although the parser would read a plain tar as well.
-  const name = nativeArchiveName("windows-x64");
   await writeFile(join(assets, name), gunzipSync(await readFile(join(assets, name))));
   await expect(
     prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {

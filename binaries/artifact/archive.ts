@@ -5,17 +5,27 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Packs candidates in-process so every build host writes the same archive headers for the same payload. */
+/** Packs candidates with stable entry order and timestamps in their target's archive format. */
 import { createReadStream } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createGunzip } from "node:zlib";
 import { create } from "tar";
+import { root } from "../paths.ts";
+import { run } from "../process.ts";
 
 const archiveTime = new Date("2000-01-01T00:00:00Z");
 
 /** Packs an owned candidate without owner identity, with one fixed timestamp and a sorted entry order. */
 export async function writeNativeArchive(installation: string, archive: string): Promise<void> {
+  if (archive.endsWith(".zip")) {
+    await run(process.platform === "win32" ? "python" : "python3", [
+      join(root, "binaries/windows/pack-zip.py"),
+      installation,
+      archive,
+    ]);
+    return;
+  }
   const paths = ["."];
   async function visit(directory: string): Promise<void> {
     for (const entry of await readdir(join(installation, directory), { withFileTypes: true })) {

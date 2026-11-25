@@ -10,7 +10,7 @@
  * bundle to publish.
  *
  * It does not extract or validate the archives again. Each build job validates its archive after packing:
- * it unpacks the finished archive with GNU tar, runs the native tests on that tree, and in release mode runs
+ * it unpacks the finished archive, runs the native tests on that tree, and in release mode runs
  * release validation on it before uploading. The release job trusts the archives of its own workflow run,
  * because whoever could change one there could also change the manifest and review that it would be checked
  * against. It checks what the build jobs cannot: that every archive belongs to this version and checkout,
@@ -31,6 +31,7 @@ import { compareTargets } from "./artifact/compare.ts";
 import { fileSha256 } from "./hash.ts";
 import { artifactTargets } from "./artifact/runtime-layout.ts";
 import { root, workRoot } from "./paths.ts";
+import { capture } from "./process.ts";
 import { sourceBundleName, writeSourceBundle } from "./source-bundle.ts";
 import { fetchSources, sources } from "./sources/sources.ts";
 import {
@@ -41,7 +42,15 @@ import {
 } from "./sources/version.ts";
 
 /** Reads the manifest from inside the archive, so the published metadata is the one the archive carries. */
-async function archivedManifest(archive: string): Promise<ArtifactManifest> {
+export async function archivedManifest(archive: string): Promise<ArtifactManifest> {
+  if (archive.endsWith(".zip")) {
+    return parseArtifactManifest(capture(process.platform === "win32" ? "python" : "python3", [
+      "-c",
+      "import sys, zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))",
+      archive,
+      artifactManifestName,
+    ], { maxBuffer: 64 * 1024 * 1024 }));
+  }
   let text: string | undefined;
   await list({
     file: archive,
@@ -84,7 +93,7 @@ export async function prepareRelease(
   // A dry run may omit a target, but a stale or misnamed project archive is a failed handoff.
   const expected = new Set(artifactTargets.map(nativeArchiveName));
   for (const name of present) {
-    if (name.startsWith("portable-postgres-") && name.endsWith(".tar.gz") && !expected.has(name)) {
+    if (/^portable-postgres-.*\.(?:tar\.gz|zip)$/.test(name) && !expected.has(name)) {
       throw new Error("Unexpected native archive: " + name);
     }
   }
@@ -116,8 +125,8 @@ export async function prepareRelease(
       } finally {
         await file.close();
       }
-      // The format and every consumer expect gzip, although the parser would also read a plain tar.
-      if (signature[0] !== 0x1F || signature[1] !== 0x8B) {
+      // The tar parser also accepts uncompressed input; release tarballs must use gzip.
+      if (target !== "windows-x64" && (signature[0] !== 0x1F || signature[1] !== 0x8B)) {
         throw new Error(name + " is not a gzip archive");
       }
       const manifest = await archivedManifest(archive);
