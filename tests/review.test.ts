@@ -49,6 +49,7 @@ const hostEvidence: Record<ArtifactTarget, HostEvidence[]> = {
     "windows-x64",
     "kernel32.dll",
   ),
+  "linux-arm64-glibc": fixtureEvidence("linux-arm64-glibc"),
   "linux-x64-glibc": fixtureEvidence("linux-x64-glibc"),
   "macos-arm64": fixtureEvidence("macos-arm64"),
 };

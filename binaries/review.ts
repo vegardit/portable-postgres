@@ -16,12 +16,8 @@ import { readTrackedReview, reviewCandidate, reviewFiles } from "./artifact/revi
 import { artifactTargets, isArtifactTarget } from "./artifact/runtime-layout.ts";
 import { lastCandidate } from "./package.ts";
 import { outputRoot } from "./paths.ts";
+import { isLinuxTarget, linuxTargets } from "./linux/target.ts";
 
-const outputs = {
-  "linux-x64-glibc": "linux-x64",
-  "windows-x64": "windows-x64",
-  "macos-arm64": "macos-arm64",
-} as const;
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: { output: { type: "string" }, summary: { type: "string" } },
@@ -33,7 +29,7 @@ if (!isArtifactTarget(target)) {
       + " [--output draft.json] [--summary summary.md]",
   );
 }
-const output = join(outputRoot, outputs[target]);
+const output = join(outputRoot, isLinuxTarget(target) ? linuxTargets[target].output : target);
 const candidate = resolve(installation ?? await lastCandidate(output));
 const { review, changes } = await reviewCandidate(
   candidate,

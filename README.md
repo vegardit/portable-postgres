@@ -23,11 +23,12 @@ Extract the archive and run PostgreSQL directly on your machine.
 
 ## <a name="platforms"></a>Platforms
 
-| Platform          | Status | Host requirement                                            |
-| ----------------- | ------ | ----------------------------------------------------------- |
-| Linux x64 (glibc) | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
-| Windows x64       | Built  | Windows Universal CRT (included with Windows 10 and later). |
-| macOS arm64       | Built  | macOS 15 or newer on Apple silicon.                         |
+| Platform            | Status           | Host requirement                                                      |
+| ------------------- | ---------------- | --------------------------------------------------------------------- |
+| Linux x64 (glibc)   | Built            | glibc 2.35 or newer; tested on Ubuntu 22.04.                          |
+| Linux arm64 (glibc) | Candidate recipe | Targets Ubuntu 22.04. Native verification and release review pending. |
+| Windows x64         | Built            | Windows Universal CRT (included with Windows 10 and later).           |
+| macOS arm64         | Built            | macOS 15 or newer on Apple silicon.                                   |
 
 Linux distributions based on musl, such as Alpine, are not supported.
 
@@ -219,12 +220,22 @@ The table compares it with other ways to run PostgreSQL locally, as of November 
 | pg_stat_statements, pg_trgm, pgcrypto, unaccent | ✅ Included                | ✅ Included                                                                           | ✅ Included                                                                                      | ✅ Included                                                                                                                            | ✅ Included                                                                                                                     |
 | **Platforms:**                                  |                            |                                                                                       |                                                                                                  |                                                                                                                                        |                                                                                                                                 |
 | Linux x64 (glibc)                               | ✅                         | ✅                                                                                    | ✅                                                                                               | ✅                                                                                                                                     | ❌                                                                                                                              |
+| Linux arm64 (glibc)                             | Candidate recipe           | ✅                                                                                    | ✅ via WebAssembly                                                                               | ✅ [ARM64 bundle][zonky-arm64]                                                                                                         | ❌                                                                                                                              |
 | Linux x64 (musl)                                | ❌                         | ✅                                                                                    | ✅                                                                                               | ✅                                                                                                                                     | ❌                                                                                                                              |
 | Windows x64                                     | ✅                         | In a Linux VM                                                                         | ✅                                                                                               | ✅                                                                                                                                     | ✅                                                                                                                              |
 | macOS arm64                                     | ✅                         | In a Linux VM                                                                         | ✅                                                                                               | ✅                                                                                                                                     | ✅                                                                                                                              |
 
+For PostgreSQL 18, Zonky builds its Linux bundles from PostgreSQL source and repackages EDB binaries for Windows and macOS.
+See [Zonky's platform selection][zonky-platforms] and [Linux build script][zonky-linux-build].
+The EDB column covers its downloadable installers.
+For Linux, [EDB directs users to distribution packages][edb-downloads].
+
 You can add extensions to the Docker image by building your own image on top of it.
 
+[zonky-platforms]: https://github.com/zonkyio/embedded-postgres-binaries/blob/1505e3c756468d90df061b25b94e3942015fd31e/build.gradle#L76-L110
+[zonky-linux-build]: https://github.com/zonkyio/embedded-postgres-binaries/blob/1505e3c756468d90df061b25b94e3942015fd31e/scripts/build-postgres-debian.sh#L76-L96
+[edb-downloads]: https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
+[zonky-arm64]: https://central.sonatype.com/artifact/io.zonky.test.postgres/embedded-postgres-binaries-linux-arm64v8
 [docker-alpine-codecs]: https://github.com/docker-library/postgres/blob/master/Dockerfile-alpine.template
 [debian-client-codecs]: https://packages.debian.org/sid/postgresql-client-18
 [pglite-dump]: https://github.com/electric-sql/pglite/blob/main/packages/pglite-tools/src/pg_dump.ts

@@ -24,6 +24,7 @@ import {
   requirePinnedMeson,
   windowsRecipe,
 } from "../binaries/windows/build.ts";
+import { linuxTargets, nativeLinuxTarget } from "../binaries/linux/target.ts";
 import baseline from "../binaries/linux/base.json" with { type: "json" };
 import { fixtureEvidence } from "./candidate.ts";
 import { temporaryDirectories } from "./temporary-directories.ts";
@@ -40,12 +41,17 @@ it.each([["Linux", linuxRecipe], ["Windows", windowsRecipe]] as const)(
   },
 );
 
-it.skipIf(process.arch !== "x64" || !["linux", "win32"].includes(process.platform))(
+it.skipIf(
+  !(process.platform === "win32" && process.arch === "x64"
+    || process.platform === "linux" && ["x64", "arm64"].includes(process.arch)),
+)(
   "reassembly checks the notice anchors of a matching saved build before packaging",
   async () => {
     const output = await createDirectory();
     const windows = process.platform === "win32";
-    const targetOutput = join(output, windows ? "windows-x64" : "linux-x64");
+    const target = windows ? "windows-x64" : nativeLinuxTarget();
+    const targetOutput = join(output,
+      target === "windows-x64" ? target : linuxTargets[target].output);
     const pg = join(output, windows ? "windows-sources" : "sources", "postgresql");
     await mkdir(join(pg, "src/backend/snowball"), { recursive: true });
     await writeFile(join(pg, "src/backend/snowball/README"), "0".repeat(40));
@@ -53,7 +59,7 @@ it.skipIf(process.arch !== "x64" || !["linux", "win32"].includes(process.platfor
       recipe: await recipeIdentity(windows ? windowsRecipe : linuxRecipe),
       buildWork: output,
       developmentInstallation: join(output, "sdk"),
-      toolchainEvidence: fixtureEvidence(windows ? "windows-x64" : "linux-x64-glibc"),
+      toolchainEvidence: fixtureEvidence(target),
     });
     const paths = await import("../binaries/paths.ts");
     const outputRoot = vi.spyOn(paths, "outputRoot", "get").mockReturnValue(output);

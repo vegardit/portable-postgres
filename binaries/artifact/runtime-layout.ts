@@ -7,9 +7,15 @@
 
 /** Defines the PostgreSQL runtime payload shared by assembly and artifact validation. */
 import { posix } from "node:path";
+import { isLinuxTarget } from "../linux/target.ts";
 
 /** Every target that the project builds and validates; a release needs an archive for each. */
-export const artifactTargets = ["linux-x64-glibc", "windows-x64", "macos-arm64"] as const;
+export const artifactTargets = [
+  "linux-x64-glibc",
+  "linux-arm64-glibc",
+  "windows-x64",
+  "macos-arm64",
+] as const;
 export type ArtifactTarget = (typeof artifactTargets)[number];
 
 /** Narrows a command-line argument to a target. */
@@ -251,7 +257,7 @@ export function includesRuntimePath(path: string, target: ArtifactTarget): boole
         : (/^(.+)\.so((?:\.\d+)*)$/.exec(name));
     const stem = library?.[1];
     if (!stem) return false;
-    if (target === "linux-x64-glibc" && clientLibrary.test(stem)) return true;
+    if (isLinuxTarget(target) && clientLibrary.test(stem)) return true;
     if (library[2]) return false;
     return coreModule.test(stem) || encodingModule.test(stem)
       || bundledExtensions.some(([id, extension]) =>

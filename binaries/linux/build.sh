@@ -23,7 +23,8 @@ link_records="$work_root/link-records"
 mkdir -p "$link_records"
 export PORTABLE_PG_LINK_RECORDS=$link_records
 runtime_root=$("$CC" --print-resource-dir)/lib/linux
-for runtime_file in clang_rt.crtbegin-x86_64.o clang_rt.crtend-x86_64.o libclang_rt.builtins-x86_64.a; do
+gnu_arch=${PORTABLE_PG_GNU_ARCH:?The native compiler architecture must be supplied}
+for runtime_file in "clang_rt.crtbegin-$gnu_arch.o" "clang_rt.crtend-$gnu_arch.o" "libclang_rt.builtins-$gnu_arch.a"; do
   test -s "$runtime_root/$runtime_file"
 done
 # Without any flags, so that this proves the compiler's own default and not the flags of this script.
@@ -33,13 +34,21 @@ if grep -qE '"-lgcc[^\"]*"|/gcc/[^\"]*/crt(begin|end)' "$work_root/compiler-link
   exit 1
 fi
 
+# Exercise exception handling through the real wrapper. LLVM's libc++.a can also supply the ABI
+# symbols, so a successful link need not extract a member from the separate libc++abi.a.
+printf '%s\n' 'int main(void) { return 0; }' | "$CC" -x c - -o "$work_root/probe-c"
+printf '%s\n' '#include <stdexcept>' 'int main() { try { throw std::runtime_error("probe"); } catch (const std::exception&) { return 0; } }' \
+  | "$CXX" -x c++ - -o "$work_root/probe-cxx"
+"$work_root/probe-c"
+"$work_root/probe-cxx"
+
 cmake -S "$(dirname "$0")/../compression" -B "$work_root/compression-build" \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$install_root" -DSOURCE_ROOT="$source_root"
 cmake --build "$work_root/compression-build" --parallel "$build_jobs"
 cmake --install "$work_root/compression-build"
 
 mkdir -p "$work_root/icu-build"
-bash "$(dirname "$0")/../build-openssl.sh" linux-x86_64 "$source_root/openssl"
+bash "$(dirname "$0")/../build-openssl.sh" "linux-$gnu_arch" "$source_root/openssl"
 cd "$work_root/icu-build"
 "$source_root/icu/source/configure" --prefix="$install_root" --libdir="$install_root/lib" \
   --enable-shared --disable-static --with-data-packaging=library --enable-rpath \

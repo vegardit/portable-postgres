@@ -10,16 +10,20 @@ import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setReadablePermissions } from "../artifact/assemble.ts";
 import { assertNativeTapFiles } from "../native-proof.ts";
+import { isLinuxTarget, linuxTargets } from "./target.ts";
 import baseline from "./base.json" with { type: "json" };
 import { fileSha256 } from "../hash.ts";
 import { outputRoot, root } from "../paths.ts";
 import { capture } from "../process.ts";
 
-const archiveArgument = process.argv[2];
-if (!archiveArgument) {
-  throw new Error("Usage: pnpm binaries:test:linux:clean <trusted-native-archive.tar.gz>");
+const [target, archiveArgument] = process.argv.slice(2);
+if (!isLinuxTarget(target) || !archiveArgument) {
+  throw new Error(
+    "Usage: pnpm binaries:test:linux:clean <linux-target> <trusted-native-archive.tar.gz>",
+  );
 }
 const archive = resolve(archiveArgument);
+const platform = linuxTargets[target].platform;
 const image = baseline.image;
 const archiveSha256 = await fileSha256(archive);
 const output = outputRoot;
@@ -42,7 +46,7 @@ function docker(args: string[]): string {
 const container = docker([
   "create",
   "--platform",
-  "linux/amd64",
+  platform,
   "--network",
   "none",
   "--env",
@@ -69,7 +73,7 @@ let cleanupFailure: Error | undefined;
 try {
   await writeFile(
     join(evidence, "consumer.json"),
-    JSON.stringify({ container, image, archiveSha256 }, null, 2),
+    JSON.stringify({ container, target, platform, image, archiveSha256 }, null, 2),
   );
   docker(["cp", archive, container + ":/tmp/installation.tar.gz"]);
   docker(["cp", fixture, container + ":/proof"]);

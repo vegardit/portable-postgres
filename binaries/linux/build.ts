@@ -32,6 +32,7 @@ import {
 } from "../package.ts";
 import { outputRoot, root, workRoot } from "../paths.ts";
 import { buildJobs, capture, run } from "../process.ts";
+import { linuxTargets, nativeLinuxTarget } from "./target.ts";
 import baseline from "./base.json" with { type: "json" };
 
 // From the repository, because the compiled copy of this module in dist has none of these files.
@@ -42,7 +43,14 @@ const recipeRoot = join(root, "binaries/linux");
  * Reassembly also relies on the fresh build's notice scan and TimescaleDB check.
  */
 export const linuxRecipe: readonly string[] = [
-  ...["build.sh", "image/Dockerfile", "image/traced-ld.sh", "image/clang-cxx.sh", "base.json"].map(
+  ...[
+    "build.sh",
+    "image/Dockerfile",
+    "image/traced-ld.sh",
+    "image/clang-cxx.sh",
+    "base.json",
+    "target.ts",
+  ].map(
     file => join(recipeRoot, file),
   ),
   join(root, "binaries/artifact/notice-scan.ts"),
@@ -83,11 +91,7 @@ export async function build(command: string | undefined): Promise<void> {
       "Usage: pnpm binaries:fetch | pnpm binaries:build:linux | pnpm binaries:assemble:linux",
     );
   }
-  if (command !== "fetch" && (process.platform !== "linux" || process.arch !== "x64")) {
-    throw new Error(
-      "This recipe requires Linux x64. See CONTRIBUTING.md for the Ubuntu build container.",
-    );
-  }
+  const target = command === "fetch" ? undefined : nativeLinuxTarget();
   // Before fetching, so that a stale image stops the build at once.
   if (command === "build") await requireCurrentImage();
   const downloads = join(workRoot, "downloads");
@@ -95,8 +99,9 @@ export async function build(command: string | undefined): Promise<void> {
   const archives = command === "assemble"
     ? new Map<string, string>()
     : await fetchSources(downloads);
-  if (command === "fetch") return;
-  const output = join(outputRoot, "linux-x64");
+  if (target === undefined) return;
+  const profile = linuxTargets[target];
+  const output = join(outputRoot, profile.output);
   const recipe = await recipeIdentity(linuxRecipe);
   let current: NativeBuild;
   if (command === "build") {
@@ -129,6 +134,7 @@ export async function build(command: string | undefined): Promise<void> {
         PORTABLE_PG_WORK: buildWork,
         PORTABLE_PG_PREFIX: current.developmentInstallation,
         BUILD_JOBS: buildJobs(),
+        PORTABLE_PG_GNU_ARCH: profile.gnuArch,
         LLVM_MAJOR: baseline.llvm,
       },
     });
@@ -146,22 +152,22 @@ export async function build(command: string | undefined): Promise<void> {
   const toolchain = recordedToolchain(current);
   const records = join(current.buildWork, linkRecordsDirectory);
   const candidate = await packageCandidate({
-    target: "linux-x64-glibc",
+    target,
     output,
-    reviewFile: reviewFiles["linux-x64-glibc"],
+    reviewFile: reviewFiles[target],
     toolchainNotices: [join(recipeRoot, "notices/llvm-cxx-runtime.txt")],
     sourceRoot: join(current.buildWork, "sources"),
     build: current,
     hostEvidence: async installation => {
       // The candidate's images, on every assembly: a reassembly reuses a development installation
       // that may have changed since its build.
-      await auditLinks(installation, records);
+      await auditLinks(installation, records, target);
       return [
         ...toolchain,
         { component: "Linux kernel", version: release(), evidence: "os.release on the build host" },
         {
-          component: hostMeasurementEvidence["linux-x64-glibc"],
-          version: `GLIBC_${await inspectLinuxRuntime(installation)}`,
+          component: hostMeasurementEvidence[target],
+          version: `GLIBC_${await inspectLinuxRuntime(installation, target)}`,
           evidence:
             "Highest glibc symbol version required by any packaged ELF file, measured with llvm-readelf",
         },

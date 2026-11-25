@@ -9,11 +9,11 @@
 import { execFileSync } from "node:child_process";
 import { open, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { type LinuxTarget, linuxTargets, nativeLinuxTarget } from "./target.ts";
 import baseline from "./base.json" with { type: "json" };
 import { compareVersions } from "../sources/version.ts";
 
 const glibcLibraries = new Set([
-  "ld-linux-x86-64.so.2",
   "libc.so.6",
   "libdl.so.2",
   "libm.so.6",
@@ -51,7 +51,10 @@ export function readelf(image: string, ...options: string[]): string {
   });
 }
 
-export async function inspectLinuxRuntime(installation: string): Promise<string> {
+export async function inspectLinuxRuntime(
+  installation: string,
+  target: LinuxTarget,
+): Promise<string> {
   const bundled = new Set(
     (await readdir(join(installation, "lib"), { withFileTypes: true }))
       .filter(entry => entry.isFile() || entry.isSymbolicLink()).map(entry => entry.name),
@@ -71,7 +74,9 @@ export async function inspectLinuxRuntime(installation: string): Promise<string>
       if (compareVersions(version, maximum) > 0) maximum = version;
     }
     for (const [, library = ""] of info.matchAll(/\(NEEDED\)\s+Shared library: \[([^\]]+)\]/g)) {
-      if (!glibcLibraries.has(library) && !bundled.has(library)) {
+      if (library !== linuxTargets[target].loader && !glibcLibraries.has(library)
+        && !bundled.has(library))
+      {
         throw new Error(`${name} needs an unreviewed runtime library: ${library}`);
       }
       libraries.add(library);
@@ -86,5 +91,5 @@ export async function inspectLinuxRuntime(installation: string): Promise<string>
 if (import.meta.main) {
   const installation = process.argv[2];
   if (!installation) throw new Error("Usage: node binaries/linux/abi.ts <installation>");
-  await inspectLinuxRuntime(installation);
+  await inspectLinuxRuntime(installation, nativeLinuxTarget());
 }

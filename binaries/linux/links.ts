@@ -13,6 +13,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { join, posix, relative, sep } from "node:path";
+import { type LinuxTarget, linuxTargets } from "./target.ts";
 import { elfImages, readelf } from "./abi.ts";
 import { dataOnlyElf } from "../artifact/data-library.ts";
 import { isIcuDataLibrary } from "../artifact/runtime-layout.ts";
@@ -30,11 +31,11 @@ export function readBuildId(image: string): string | undefined {
 // and not crtfastmath.o, which Clang itself adds to a program built with -ffast-math when it finds the file.
 const gccDirectory = "/gcc/";
 const glibcCode =
-  /^(?:\(\/(?:usr\/)?lib\/x86_64-linux-gnu\/[^)]+\.a\)[^ ]+|\/(?:usr\/)?lib\/x86_64-linux-gnu\/[^ ]+\.o)$/;
+  /^(?:\(\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/[^)]+\.a\)[^ ]+|\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/[^ ]+\.o)$/;
 // glibc's startup files and libc_nonshared.a members are the only glibc code that may be copied into an
 // image; the glibc-startup licence review covers exactly this set, for example not a static libc.a.
 const reviewedGlibcCode =
-  /^(?:\/(?:usr\/)?lib\/x86_64-linux-gnu\/(?:S?crt1|crti|crtn)\.o|\(\/(?:usr\/)?lib\/x86_64-linux-gnu\/libc_nonshared\.a\)(?:atexit|at_quick_exit|pthread_atfork|stack_chk_fail_local)\.oS)$/;
+  /^(?:\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/(?:S?crt1|crti|crtn)\.o|\(\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/libc_nonshared\.a\)(?:atexit|at_quick_exit|pthread_atfork|stack_chk_fail_local)\.oS)$/;
 
 /**
  * Removes `.` and `..` segments from the path of a trace line, including the archive of an `(archive)member`
@@ -56,6 +57,7 @@ function tracedFile(line: string): string {
 export async function auditLinks(
   installation: string,
   records: string,
+  target: LinuxTarget,
   buildId: (image: string) => string | undefined = readBuildId,
 ): Promise<void> {
   const unreviewed = new Set<string>();
@@ -69,8 +71,12 @@ export async function auditLinks(
     // Code-bearing images need glibc's crti.o. ICU's raw data library deliberately links with -nostdlib.
     // Errors quote the raw line, so that it can be found in the stored trace.
     const lines = (trace?.split("\n") ?? []).map(line => ({ line, file: tracedFile(line) }));
-    if (!lines.some(({ file }) => file.endsWith("/x86_64-linux-gnu/crti.o"))) {
-      const dataOnly = isIcuDataLibrary(name, "linux-x64-glibc")
+    const systemDirectory = `/${linuxTargets[target].gnuArch}-linux-gnu/`;
+    if (!lines.some(({ file }) =>
+      file === "/lib" + systemDirectory + "crti.o"
+      || file === "/usr/lib" + systemDirectory + "crti.o"
+    )) {
+      const dataOnly = isIcuDataLibrary(name, target)
         && lines.some(({ file }) => file.endsWith(".o"))
         && dataOnlyElf(await readFile(path));
       if (!dataOnly) throw new Error("No linker record for " + name);
@@ -80,7 +86,8 @@ export async function auditLinks(
       throw new Error(`The link of ${name} used a forbidden GCC runtime contribution: ${gcc.line}`);
     }
     for (const { line, file } of lines) {
-      if (glibcCode.test(file) && !reviewedGlibcCode.test(file)) unreviewed.add(line);
+      if (glibcCode.test(file)
+        && !(file.includes(systemDirectory) && reviewedGlibcCode.test(file))) unreviewed.add(line);
     }
   }
   if (unreviewed.size > 0) {

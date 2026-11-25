@@ -53,9 +53,15 @@ jobs:
       matrix:
         # https://github.com/actions/runner-images#available-images
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-26.04
             target: linux-x64-glibc
             output: linux-x64
+            platform: linux/amd64
+            test-command: binaries:test:linux
+          - os: ubuntu-26.04-arm
+            target: linux-arm64-glibc
+            output: linux-arm64
+            platform: linux/arm64
             test-command: binaries:test:linux
           - os: macos-15 # arm64
             target: macos-arm64
@@ -100,7 +106,7 @@ jobs:
         run: |
           image=$(node -p 'require("./binaries/linux/base.json").image')
           llvm=$(node -p 'require("./binaries/linux/base.json").llvm')
-          docker build --platform linux/amd64 --tag portable-postgres-linux-build \
+          docker build --platform "${{ matrix.platform }}" --tag portable-postgres-linux-build \
             --build-arg "UBUNTU_IMAGE=$image" --build-arg "LLVM_MAJOR=$llvm" binaries/linux/image
 
       - name: "Build: Linux native archive"
@@ -114,7 +120,7 @@ jobs:
             volume=$(findmnt -n -o SOURCE -T "$PWD" | sed -nE 's@.*/volumes/(act-[^/]+)/_data\]$@\1@p')
             if [[ -n "$volume" ]]; then workspace="type=volume,source=$volume,target=/workspace"; fi
           fi
-          docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
+          docker run --rm --platform "${{ matrix.platform }}" --user "$(id -u):$(id -g)" \
             --mount "$workspace" --workdir /workspace --env BUILD_JOBS="$(nproc)" \
             portable-postgres-linux-build node binaries/linux/build.ts build
 
@@ -202,7 +208,7 @@ jobs:
           # A restrictive umask, as some developer machines have: the proof copies its scripts into the
           # consumer, where an unprivileged user must still be able to read them.
           umask 077
-          pnpm binaries:test:linux:clean "$ARCHIVE"
+          pnpm binaries:test:linux:clean "${{ matrix.target }}" "$ARCHIVE"
 
       - name: "Test: archive on macOS without build tools"
         if: runner.os == 'macOS'

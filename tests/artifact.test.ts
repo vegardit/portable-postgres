@@ -41,6 +41,7 @@ import { sources } from "../binaries/sources/sources.ts";
 import { noticeSignatureExamples } from "../binaries/artifact/notice-scan.ts";
 import {
   createCandidate,
+  elfFixture,
   fixtureNoticeScan,
   hostMeasurements,
   hostRequirementsFixture,
@@ -58,7 +59,7 @@ const timescaleVersion = sources.find(source => source.id === "timescaledb")!.ve
 /** Linux and macOS fixtures need executable permissions, which only a POSIX host can validate. */
 const releaseTargets: ArtifactTarget[] = process.platform === "win32"
   ? ["windows-x64"]
-  : ["windows-x64", "linux-x64-glibc", "macos-arm64"];
+  : ["windows-x64", "linux-x64-glibc", "linux-arm64-glibc", "macos-arm64"];
 /** Every toolchain component of every target that this host can validate. */
 const toolchainCases = releaseTargets.flatMap(target =>
   toolchainParts[target].map(part => ({ target, ...part }))
@@ -355,6 +356,25 @@ it.each([
       }),
     )
       .rejects.toThrow(/excluded/);
+  },
+);
+
+it.skipIf(process.platform === "win32").each(["linux-x64-glibc", "linux-arm64-glibc"] as const)(
+  "%s rejects an extension built for the other Linux architecture",
+  async target => {
+    const { root, manifest } = await fixture(target);
+    const path = "lib/vector.so";
+    const foreign = elfFixture(target === "linux-x64-glibc" ? 183 : 62);
+    await writeFile(join(root, path), foreign);
+    manifest.files = manifest.files.map(file =>
+      file.kind === "file" && file.path === path
+        ? { ...file, sha256: createHash("sha256").update(foreign).digest("hex") }
+        : file
+    );
+    await rewrite(root, manifest);
+    await expect(validateArtifact(root, target, { mode: "candidate" })).rejects.toThrow(
+      "ELF image: " + path,
+    );
   },
 );
 

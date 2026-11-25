@@ -185,12 +185,12 @@ it("a real release needs every target", async () => {
     prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
       requireAllTargets: true,
     }),
-  ).rejects.toThrow("Missing release archives for linux-x64-glibc, macos-arm64");
+  ).rejects.toThrow("Missing release archives for linux-x64-glibc, linux-arm64-glibc, macos-arm64");
 }, reviewedArchives);
 
 // Linux and macOS candidates need executable permissions, which only a POSIX host can validate.
 it.skipIf(process.platform === "win32")(
-  "a real release needs the macOS archive and succeeds once all three are reviewed",
+  "a real release needs the ARM64 Linux archive and succeeds once all four are reviewed",
   async () => {
     const assets = await directory();
     await archive(assets, "windows-x64", { reviewed: true });
@@ -199,10 +199,16 @@ it.skipIf(process.platform === "win32")(
       prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
         requireAllTargets: true,
       });
-    await expect(prepare()).rejects.toThrow("Missing release archives for macos-arm64");
     await archive(assets, "macos-arm64", { reviewed: true });
+    await expect(prepare()).rejects.toThrow("Missing release archives for linux-arm64-glibc");
+    await archive(assets, "linux-arm64-glibc", { reviewed: true });
     const { assets: prepared } = await prepare();
-    for (const target of ["linux-x64-glibc", "windows-x64", "macos-arm64"] as const) {
+    for (const target of [
+      "linux-x64-glibc",
+      "linux-arm64-glibc",
+      "windows-x64",
+      "macos-arm64",
+    ] as const) {
       expect(prepared).toContain(nativeArchiveName(target));
     }
   },

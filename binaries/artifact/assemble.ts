@@ -18,11 +18,7 @@ import { type ArtifactTarget, includesRuntimePath } from "./runtime-layout.ts";
 export async function assembleRuntime(
   prefix: string,
   destination: string,
-  target: ArtifactTarget = process.platform === "win32"
-    ? "windows-x64"
-    : process.platform === "darwin"
-      ? "macos-arm64"
-      : "linux-x64-glibc",
+  target: ArtifactTarget,
 ): Promise<void> {
   for (const directory of ["bin", "lib", "share"]) {
     await cp(join(prefix, directory), join(destination, directory), {

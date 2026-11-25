@@ -49,7 +49,7 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 - `pnpm binaries:build:linux`: compile and package PostgreSQL inside the Linux build environment below.
 - `pnpm binaries:assemble:linux`: assemble a fresh Linux runtime from the last development installation.
 - `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
-- `pnpm binaries:test:linux:clean <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
+- `pnpm binaries:test:linux:clean <linux-target> <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
 - `pnpm binaries:build:windows`: build and package the Windows candidate with Clang, LLD and MinGW-w64.
   Set `BUILD_JOBS` to adjust parallel compilation (4 jobs by default).
 - `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
@@ -71,7 +71,7 @@ Never delete caller-owned data or act on a process whose ownership is uncertain.
 
 ## Building native archives
 
-The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64, Windows x64 and macOS arm64 archives on GitHub Actions.
+The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64, Linux arm64, Windows x64 and macOS arm64 archives on GitHub Actions.
 It skips changes to Markdown files alone; the [Documentation workflow](.github/workflows/docs.yml) runs `pnpm check` for them.
 Each job records the archive's SHA-256 in its summary.
 On each target the native tests restore gzip and LZ4 dumps and use the bundled `pg_verifybackup`
@@ -102,7 +102,7 @@ After a release, the first change to the archives that keeps the PostgreSQL vers
 such as an extension pin, a build recipe, or a review file, takes the next revision.
 Reset it to 1 when the PostgreSQL pin changes.
 
-### Linux x64
+### Linux x64 and arm64
 
 The workflow builds on Ubuntu 22.04 with Clang and compiler-rt inside a Docker container.
 OpenSSL, zlib, LZ4 and ICU are built before PostgreSQL, using ICU's complete release locale data.
@@ -115,25 +115,27 @@ which records what each link copies into its output.
 Packaging checks the record of every image in the candidate, also when it reassembles a build.
 Rebuild the image after changing the Dockerfile, `traced-ld.sh` or `clang-cxx.sh`.
 A fresh build stops when the image was built from another Dockerfile, `traced-ld.sh`, or `base.json`.
-To build locally on Linux, run the same container from the repository root:
+To build for the native architecture of an x64 or arm64 Linux host, run the container from the repository root:
 
 ```sh
 image=$(node -p 'require("./binaries/linux/base.json").image')
 llvm=$(node -p 'require("./binaries/linux/base.json").llvm')
-docker build --platform linux/amd64 --tag portable-postgres-linux-build \
+docker build --tag portable-postgres-linux-build \
   --build-arg "UBUNTU_IMAGE=$image" --build-arg "LLVM_MAJOR=$llvm" binaries/linux/image
-docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
+docker run --rm --user "$(id -u):$(id -g)" \
   --mount "type=bind,source=$PWD,target=/workspace" --workdir /workspace \
   portable-postgres-linux-build node binaries/linux/build.ts build
 pnpm binaries:test:linux
 ```
 
 The fixed container path lets upstream build tools run even when the host checkout path contains spaces.
-The build records paths relative to the directory containing `binaries/output/linux-x64/last-build.json`,
+The build records paths relative to the directory containing `last-build.json` in `binaries/output/linux-x64/` or `binaries/output/linux-arm64/`,
 so the host and the container can both locate the SDK, installation, and archive.
-Run `pnpm binaries:test:linux:clean <archive>` against a trusted archive.
+Run `pnpm binaries:test:linux:clean <linux-target> <archive>` against a trusted archive.
+Use `linux-x64-glibc` or `linux-arm64-glibc` to select the matching Docker platform.
 This is the same check the workflow runs on the exact archive it produces.
 The clean Ubuntu 22.04 consumer runs PostgreSQL without build tools or network access.
+Its retained `consumer.json` records the Linux target, Docker platform, image and archive SHA-256.
 
 ### Windows x64
 
@@ -246,7 +248,9 @@ The Windows package pins in `binaries/windows/clang64.json` and `binaries/window
 
 ## Reviewing licences and host requirements
 
-Each target has a tracked review file: `binaries/linux/review.json`, `binaries/windows/review.json` and `binaries/macos/review.json`.
+Each target has its own review path.
+Linux x64 uses `binaries/linux/review.json` and Linux arm64 uses `binaries/linux/review-arm64.json`.
+Windows and macOS use `review.json` in their respective target directories.
 It holds the licence inventory and the host requirements that the build writes into the archive manifest.
 The build writes only what still matches the candidate: a part that `pnpm binaries:review` would reopen is pending,
 and host requirements that it would reopen are `null`.
@@ -360,7 +364,7 @@ with the pinned source archives in `binaries/work/downloads/`, where a build fro
 so that whoever passes an archive on can also pass on the source it was built from.
 The bundle leaves out build tools. For prerequisites and setup, see [Building native archives](#building-native-archives).
 Creating the bundle requires a clean tracked working tree.
-A release needs the archives of all three targets, each with a verified review.
+A release needs the archives of all four targets, each with a verified review.
 Only a run from `main` creates a release.
 
 The `dry-run` input, enabled by default, builds every target that has a recipe and runs release validation on it,

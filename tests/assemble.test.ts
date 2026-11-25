@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
 import { assembleRuntime } from "../binaries/artifact/assemble.ts";
 import {
+  artifactTargets,
   contribExtensions,
   includesRuntimePath,
   moduleSuffix,
@@ -94,7 +95,12 @@ it("assembles the same programs and extension payload from either platform's SDK
   }
 });
 
-it.each(["linux-x64-glibc", "windows-x64", "macos-arm64"] as const)(
+it.each(["linux-x64-glibc", "linux-arm64-glibc"] as const)(
+  "%s ships the versioned libpq client library",
+  target => expect(includesRuntimePath("lib/libpq.so.5", target)).toBe(true),
+);
+
+it.each(artifactTargets)(
   "%s keeps versioned extension scripts and controls but not an unversioned install script",
   target => {
     // pgTAP's make install also copies pgtap.sql, which CREATE EXTENSION never reads; the Windows
@@ -113,7 +119,7 @@ it.each(["linux-x64-glibc", "windows-x64", "macos-arm64"] as const)(
   },
 );
 
-it.each(["linux-x64-glibc", "windows-x64", "macos-arm64"] as const)(
+it.each(artifactTargets)(
   "%s keeps the selected contrib modules with their scripts and data, and no other contrib module",
   target => {
     const suffix = moduleSuffix(target);

@@ -30,20 +30,20 @@ it("requires a matching downloaded manifest for every hosted target", async () =
       "--require-all-targets",
       downloads,
     ], { encoding: "utf8" });
-  for (const target of ["linux-x64-glibc", "windows-x64"]) {
+  for (const target of ["linux-x64-glibc", "windows-x64", "macos-arm64"]) {
     const location = join(downloads, "manifest-" + target);
     await mkdir(location);
     await writeFile(join(location, artifactManifestName), JSON.stringify({ ...manifest, target }));
   }
   const missing = compare();
   expect(missing.status).not.toBe(0);
-  expect(missing.stderr).toContain("manifest-macos-arm64");
-  const location = join(downloads, "manifest-macos-arm64");
+  expect(missing.stderr).toContain("manifest-linux-arm64-glibc");
+  const location = join(downloads, "manifest-linux-arm64-glibc");
   await mkdir(location);
   await writeFile(join(location, artifactManifestName), JSON.stringify(manifest));
-  expect(compare().stderr).toContain("expected macos-arm64");
+  expect(compare().stderr).toContain("expected linux-arm64-glibc");
   await writeFile(join(location, artifactManifestName),
-    JSON.stringify({ ...manifest, target: "macos-arm64" }));
+    JSON.stringify({ ...manifest, target: "linux-arm64-glibc" }));
   expect(compare().status).toBe(0);
 });
 

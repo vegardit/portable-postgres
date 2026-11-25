@@ -1,7 +1,7 @@
 # Native artifact format 1
 
 This contract describes the native installation independently of Node.js, npm, and wrapper versions.
-It covers Linux x64 with glibc, Windows x64 and macOS arm64.
+It covers Linux x64 and arm64 with glibc, Windows x64 and macOS arm64.
 
 A candidate can pass layout and integrity checks while its release license review or host prerequisites remain unresolved.
 Candidate validation is preparation evidence.
@@ -41,7 +41,7 @@ notices/
 
 Consumers do not need Node.js or npm to extract or run the installation.
 Build environments may use Node.js and native build tools.
-All three targets contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
+All four targets contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
 The extension payload contains PL/pgSQL and the extensions listed below.
 The packager excludes every other PostgreSQL contrib module with its SQL and data files, upstream test helpers,
 development headers, PGXS, static libraries, and optional SDK documentation.
@@ -75,7 +75,7 @@ and extraction outside its owned staging directory before writing those entries.
 | `format`            | Exact string `portable-postgres-native`.                                                             |
 | `formatVersion`     | Integer `1`; independent of wrapper semantic versioning.                                             |
 | `packagingRevision` | Positive integer selected for a native packaging revision.                                           |
-| `target`            | Exact `linux-x64-glibc`, `windows-x64` or `macos-arm64`.                                             |
+| `target`            | Exact `linux-x64-glibc`, `linux-arm64-glibc`, `windows-x64` or `macos-arm64`.                        |
 | `postgresqlVersion` | Exact PostgreSQL 18 minor release from the recorded source pin.                                      |
 | `executables`       | Relative paths for `postgres`, `initdb`, `pg_ctl`, and `psql`.                                       |
 | `extensions`        | Every selected extension's installation version, control, SQL files, and native libraries.           |
@@ -87,7 +87,8 @@ and extraction outside its owned staging directory before writing those entries.
 | `files`             | Complete sorted payload inventory, file hashes, executable flags, and symlink targets.               |
 
 The executable paths are `bin/<name>` on Linux and macOS and `bin/<name>.exe` on Windows.
-Windows requires x64 PE images and Linux requires x64 ELF images.
+Windows requires x64 PE images.
+Linux requires little-endian 64-bit ELF images for the architecture named by the target.
 macOS requires thin, signed 64-bit arm64 Mach-O images with the macOS build platform.
 For the macOS 15 baseline, the validator accepts `CPU_SUBTYPE_ARM64_ALL` and `CPU_SUBTYPE_ARM64_V8`.
 The validator requires executable images in `bin/`, linked client dylibs in `lib/`, and dylibs or bundles for
@@ -110,9 +111,9 @@ A library's optional boolean `measured` records where its review entry came from
 `true` when a build measured the library as the entry was drafted, absent when a reviewer added it,
 for example for a library that another one loads. An entry keeps that origin in later reviews,
 so `measured` does not say what the current build imports; the build's host measurement in `hostEvidence` does.
-The Linux x64 build targets Ubuntu 22.04 and glibc 2.35.
+Each Linux build targets Ubuntu 22.04 and glibc 2.35.
 The build records the highest required glibc symbol version across all packaged ELF files and rejects versions above 2.35.
-The validated PostgreSQL 18.7 Linux archive requires symbols through `GLIBC_2.34`.
+The validated PostgreSQL 18.7 Linux x64 archive requires symbols through `GLIBC_2.34`.
 The workflow runs the resulting archive in a separate Ubuntu 22.04 container to check native startup, authentication, and SQL.
 Windows requires `ucrtbase.dll`.
 Release validation requires an entry for each prerequisite and for every DLL that the packaged files import

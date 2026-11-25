@@ -46,7 +46,8 @@ async function candidate(path: string, lines: string[] | undefined) {
 
 it("accepts an image whose link copied only reviewed toolchain code", async () => {
   const { installation, records } = await candidate("bin/postgres", trace);
-  await expect(auditLinks(installation, records, buildId)).resolves.toBeUndefined();
+  await expect(auditLinks(installation, records, "linux-x64-glibc", buildId)).resolves
+    .toBeUndefined();
 });
 
 it("checks ICU's data-only library without requiring C startup objects", async () => {
@@ -60,10 +61,11 @@ it("checks ICU's data-only library without requiring C startup objects", async (
   image.writeUInt32LE(1, 64); // PT_LOAD.
   image.writeUInt32LE(4, 68); // Readable data, without PF_X.
   await writeFile(join(installation, path), image);
-  await expect(auditLinks(installation, records, buildId)).resolves.toBeUndefined();
+  await expect(auditLinks(installation, records, "linux-x64-glibc", buildId)).resolves
+    .toBeUndefined();
   image.writeUInt32LE(5, 68);
   await writeFile(join(installation, path), image);
-  await expect(auditLinks(installation, records, buildId)).rejects.toThrow(
+  await expect(auditLinks(installation, records, "linux-x64-glibc", buildId)).rejects.toThrow(
     "No linker record for " + path,
   );
 });
@@ -75,7 +77,7 @@ it.each([
   ["lib/vector.so", trace.filter(line => !line.endsWith("/crti.o"))],
 ])("refuses %s without a full link record", async (path, lines) => {
   const { installation, records } = await candidate(path, lines);
-  await expect(auditLinks(installation, records, buildId)).rejects.toThrow(
+  await expect(auditLinks(installation, records, "linux-x64-glibc", buildId)).rejects.toThrow(
     "No linker record for " + path,
   );
 });
@@ -84,15 +86,16 @@ it("refuses an image without a build ID", async () => {
   const installation = await directory();
   await mkdir(join(installation, "bin"));
   await writeFile(join(installation, "bin/postgres"), elfFixture());
-  await expect(auditLinks(installation, await directory(), () => undefined)).rejects.toThrow(
-    "No linker record for bin/postgres",
-  );
+  await expect(auditLinks(installation, await directory(), "linux-x64-glibc", () => undefined))
+    .rejects.toThrow(
+      "No linker record for bin/postgres",
+    );
 });
 
 it("refuses a link that used GCC's runtime", async () => {
   const libgcc = "/usr/lib/gcc/x86_64-linux-gnu/11/libgcc.a";
   const { installation, records } = await candidate("bin/postgres", [...trace, libgcc]);
-  await expect(auditLinks(installation, records, buildId)).rejects.toThrow(
+  await expect(auditLinks(installation, records, "linux-x64-glibc", buildId)).rejects.toThrow(
     "The link of bin/postgres used a forbidden GCC runtime contribution: " + libgcc,
   );
 });
@@ -101,30 +104,38 @@ it("refuses a link that used any file from GCC's directories", async () => {
   // Clang adds GCC's crtfastmath.o to a program linked with -ffast-math when it finds the file.
   const crtfastmath = "/usr/lib/gcc/x86_64-linux-gnu/11/crtfastmath.o";
   const { installation, records } = await candidate("bin/postgres", [...trace, crtfastmath]);
-  await expect(auditLinks(installation, records, buildId)).rejects.toThrow(
+  await expect(auditLinks(installation, records, "linux-x64-glibc", buildId)).rejects.toThrow(
     "The link of bin/postgres used a forbidden GCC runtime contribution: " + crtfastmath,
   );
 });
 
-it("refuses glibc code that the glibc-startup review does not cover", async () => {
-  const member = "(/usr/lib/x86_64-linux-gnu/libc.a)printf.o";
-  const { installation, records } = await candidate("bin/postgres", [...trace, member]);
-  await expect(auditLinks(installation, records, buildId)).rejects.toThrow(
-    "A link copied glibc code that the glibc-startup review does not cover:\n" + member,
-  );
-});
+it.each([["linux-x64-glibc", "x86_64"], ["linux-arm64-glibc", "aarch64"]] as const)(
+  "%s refuses glibc code that the startup review does not cover",
+  async (target, arch) => {
+    const member = `(/usr/lib/${arch}-linux-gnu/libc.a)printf.o`;
+    const { installation, records } = await candidate("bin/postgres", [
+      ...trace.map(line => line.replaceAll("x86_64", arch)),
+      member,
+    ]);
+    await expect(auditLinks(installation, records, target, buildId)).rejects.toThrow(
+      "A link copied glibc code that the glibc-startup review does not cover:\n" + member,
+    );
+  },
+);
 
 // ld names each input by the search directory it was found in, and Clang searches GCC's directories as
 // /usr/lib/gcc/x86_64-linux-gnu/11/../../.., so one file can appear under a spelling that passes through them.
 it("judges a trace path by the file it names, not by its spelling", async () => {
   const startup = "/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o";
   const accepted = await candidate("bin/postgres", [...trace, startup]);
-  await expect(auditLinks(accepted.installation, accepted.records, buildId)).resolves
+  await expect(auditLinks(accepted.installation, accepted.records, "linux-x64-glibc", buildId))
+    .resolves
     .toBeUndefined();
 
   const member = "(/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/libc.a)printf.o";
   const refused = await candidate("bin/postgres", [...trace, member]);
-  await expect(auditLinks(refused.installation, refused.records, buildId)).rejects.toThrow(
-    "A link copied glibc code that the glibc-startup review does not cover:\n" + member,
-  );
+  await expect(auditLinks(refused.installation, refused.records, "linux-x64-glibc", buildId))
+    .rejects.toThrow(
+      "A link copied glibc code that the glibc-startup review does not cover:\n" + member,
+    );
 });

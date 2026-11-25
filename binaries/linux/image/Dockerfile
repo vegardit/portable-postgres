@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
 
-# Builds Linux x64 PostgreSQL against Ubuntu 22.04's glibc using LLVM compiler-rt.
+# Builds native x64 and arm64 Linux PostgreSQL against Ubuntu 22.04's glibc using LLVM compiler-rt.
 ARG UBUNTU_IMAGE=scratch
 # The Node major floats like the CI host's Node. Here Node only orchestrates, hashes and packs, so a
 # release can change the archive's compression bytes but never the compiled payload.

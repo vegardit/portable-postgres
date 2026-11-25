@@ -11,9 +11,11 @@ import { validateArtifact } from "../artifact/artifact.ts";
 import { runShellProof } from "../native-proof.ts";
 import { lastCandidate } from "../package.ts";
 import { outputRoot } from "../paths.ts";
+import { linuxTargets, nativeLinuxTarget } from "./target.ts";
 
+const target = nativeLinuxTarget();
 const installation = resolve(
-  process.argv[2] ?? await lastCandidate(join(outputRoot, "linux-x64")),
+  process.argv[2] ?? await lastCandidate(join(outputRoot, linuxTargets[target].output)),
 );
-await validateArtifact(installation, "linux-x64-glibc", { mode: "candidate" });
+await validateArtifact(installation, target, { mode: "candidate" });
 await runShellProof(installation);

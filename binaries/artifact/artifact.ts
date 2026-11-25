@@ -36,6 +36,7 @@ import {
 } from "./macho.ts";
 import { additionalNoticeName } from "./notices.ts";
 import { dataOnlyElf, dataOnlyPe } from "./data-library.ts";
+import { isLinuxTarget, linuxTargets } from "../linux/target.ts";
 import * as z from "zod";
 import {
   type ArtifactTarget,
@@ -72,6 +73,18 @@ export type { ArtifactTarget } from "./runtime-layout.ts";
 const glibcStartupLicense = "LGPL-2.1-or-later WITH GCC-exception-2.0";
 const compilerRtLicense = "Apache-2.0 WITH LLVM-exception";
 
+const linuxToolchain = [
+  { id: "compiler-rt", evidence: "Clang major version", licenses: [compilerRtLicense] },
+  // Scrt1.o, crti.o, crtn.o and members of libc_nonshared.a are linked statically into every ELF image.
+  { id: "glibc-startup", evidence: "glibc", licenses: [glibcStartupLicense] },
+  {
+    id: "llvm-cxx-runtime",
+    evidence: "Clang major version",
+    licenses: [compilerRtLicense],
+    notice: "notices/llvm-cxx-runtime.txt",
+  },
+];
+
 /**
  * Toolchain code linked into native images besides the source's own code. Each part has its own review,
  * covering the images to which it contributes. Reviews bind the host evidence naming the toolchain line.
@@ -81,17 +94,8 @@ export const toolchainComponents: Record<
   ArtifactTarget,
   ReadonlyArray<{ id: string; evidence: string; licenses: readonly string[]; notice?: string }>
 > = {
-  "linux-x64-glibc": [
-    { id: "compiler-rt", evidence: "Clang major version", licenses: [compilerRtLicense] },
-    // Scrt1.o, crti.o, crtn.o and members of libc_nonshared.a are linked statically into every ELF image.
-    { id: "glibc-startup", evidence: "glibc", licenses: [glibcStartupLicense] },
-    {
-      id: "llvm-cxx-runtime",
-      evidence: "Clang major version",
-      licenses: [compilerRtLicense],
-      notice: "notices/llvm-cxx-runtime.txt",
-    },
-  ],
+  "linux-x64-glibc": linuxToolchain,
+  "linux-arm64-glibc": linuxToolchain,
   "windows-x64": [
     {
       id: "mingw-runtime",
@@ -148,6 +152,7 @@ export function toolchainImages(
 /** Host libraries that every release review must name for its target. */
 export const requiredHostLibraries: Record<ArtifactTarget, readonly string[]> = {
   "linux-x64-glibc": ["glibc"],
+  "linux-arm64-glibc": ["glibc"],
   "windows-x64": ["ucrtbase.dll"],
   "macos-arm64": ["/usr/lib/libSystem.B.dylib"],
 };
@@ -159,6 +164,7 @@ export const requiredHostLibraries: Record<ArtifactTarget, readonly string[]> = 
  */
 export const hostMeasurementEvidence: Record<ArtifactTarget, string> = {
   "linux-x64-glibc": "ELF glibc symbol requirements",
+  "linux-arm64-glibc": "ELF glibc symbol requirements",
   "windows-x64": "PE host library imports",
   "macos-arm64": "Mach-O host library imports",
 };
@@ -329,8 +335,9 @@ function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): 
   } else {
     requireCondition(
       binary.length >= 20 && binary.subarray(0, 4).equals(Buffer.from([127, 69, 76, 70]))
-        && binary[4] === 2 && binary[5] === 1 && binary.readUInt16LE(18) === 62,
-      "expected a Linux x64 ELF image: " + path,
+        && binary[4] === 2 && binary[5] === 1
+        && binary.readUInt16LE(18) === linuxTargets[target].machine,
+      `expected a ${target} ELF image: ${path}`,
     );
   }
 }
@@ -1006,10 +1013,10 @@ export function measuredHostRequirements(
   const measurement = manifest.hostEvidence.find(entry =>
     entry.component === hostMeasurementEvidence[manifest.target]
   );
-  const observed = manifest.target === "linux-x64-glibc"
+  const observed = isLinuxTarget(manifest.target)
     ? []
     : measurement?.version.split(", ") ?? [];
-  const glibc = manifest.target === "linux-x64-glibc" ? measurement : undefined;
+  const glibc = isLinuxTarget(manifest.target) ? measurement : undefined;
   const macOS = manifest.target === "macos-arm64"
     ? manifest.hostEvidence.find(entry => entry.component === macOSMinimumEvidence)
     : undefined;

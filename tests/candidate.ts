@@ -77,10 +77,10 @@ export async function sourceTree(sourceRoot: string): Promise<string> {
   return sourceRoot;
 }
 
-export function elfFixture(): Buffer {
+export function elfFixture(machine = 62): Buffer {
   const bytes = Buffer.alloc(64);
   bytes.set([127, 69, 76, 70, 2, 1]);
-  bytes.writeUInt16LE(62, 18);
+  bytes.writeUInt16LE(machine, 18);
   return bytes;
 }
 
@@ -139,7 +139,9 @@ function fixtureImages(
       data: machOFixture({ fileType: 6 }),
     };
   }
-  const image = target === "windows-x64" ? peFixture() : elfFixture();
+  const image = target === "windows-x64"
+    ? peFixture()
+    : elfFixture(target === "linux-arm64-glibc" ? 183 : 62);
   const data = Buffer.alloc(target === "windows-x64" ? 512 : 120);
   image.copy(data);
   if (target === "windows-x64") {
@@ -156,6 +158,16 @@ function fixtureImages(
   return { executable: image, client: image, module: image, data };
 }
 
+const linuxFixtureParts = [
+  { id: "compiler-rt", evidence: "Clang major version" },
+  { id: "glibc-startup", evidence: "glibc" },
+  {
+    id: "llvm-cxx-runtime",
+    evidence: "Clang major version",
+    notice: "notices/llvm-cxx-runtime.txt",
+  },
+];
+
 /**
  * The toolchain components every native image needs, the host evidence each review is bound to, and the
  * project's notice that a component ships. Stated literally so that a renamed entry in the build fails
@@ -170,15 +182,8 @@ export const toolchainParts: Record<
     evidence: "CLANG64 packages and linked objects",
     notice: "notices/mingw-runtime.txt",
   }],
-  "linux-x64-glibc": [
-    { id: "compiler-rt", evidence: "Clang major version" },
-    { id: "glibc-startup", evidence: "glibc" },
-    {
-      id: "llvm-cxx-runtime",
-      evidence: "Clang major version",
-      notice: "notices/llvm-cxx-runtime.txt",
-    },
-  ],
+  "linux-x64-glibc": linuxFixtureParts,
+  "linux-arm64-glibc": linuxFixtureParts,
   "macos-arm64": [],
 };
 
@@ -209,6 +214,12 @@ const fixtureLines: Record<string, string> = {
   "llvm-cxx-runtime": "fixture-1",
 };
 
+const linuxFixtureMeasurement = {
+  component: "ELF glibc symbol requirements",
+  version: "GLIBC_2.35",
+  evidence: "Contract test",
+};
+
 /**
  * What each build measures about its host needs, with the result that the fixture reviews accept. Stated
  * literally for the same reason as the toolchain evidence.
@@ -219,11 +230,8 @@ export const hostMeasurements: Record<ArtifactTarget, HostEvidence> = {
     version: "ucrtbase.dll",
     evidence: "Contract test",
   },
-  "linux-x64-glibc": {
-    component: "ELF glibc symbol requirements",
-    version: "GLIBC_2.35",
-    evidence: "Contract test",
-  },
+  "linux-x64-glibc": linuxFixtureMeasurement,
+  "linux-arm64-glibc": linuxFixtureMeasurement,
   "macos-arm64": {
     component: "Mach-O host library imports",
     version: "/usr/lib/libSystem.B.dylib",
@@ -545,11 +553,11 @@ export function nativeImages(manifest: ArtifactManifest): string[] {
 export function hostRequirementsFixture(
   target: ArtifactTarget = "windows-x64",
 ): NonNullable<ArtifactManifest["hostRequirements"]> {
-  if (target === "linux-x64-glibc") {
+  if (target === "linux-x64-glibc" || target === "linux-arm64-glibc") {
     return {
       status: "verified",
       os: "Contract-test fixture",
-      cpu: "x64 fixture",
+      cpu: target === "linux-arm64-glibc" ? "arm64 fixture" : "x64 fixture",
       libraries: [{
         name: "glibc",
         requirement: "GLIBC_2.35 or newer",

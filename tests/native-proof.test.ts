@@ -7,9 +7,9 @@
 
 /** Guards the shared server settings and the TAP results of native and clean-consumer proofs. */
 import { spawnSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { temporaryDirectories } from "./temporary-directories.ts";
 import {
   isPortFailure,
@@ -23,6 +23,45 @@ import { root } from "../binaries/paths.ts";
 const proofScripts = ["binaries/linux/smoke.sh", "binaries/windows/test.ts"];
 const { directory, cleanup } = temporaryDirectories("consumer-tap");
 afterEach(cleanup);
+
+it.each([["linux-x64-glibc", "linux/amd64"], ["linux-arm64-glibc", "linux/arm64"]])(
+  "%s retains the Docker platform even when the consumer fails",
+  async (target, platform) => {
+    const output = await directory();
+    const archive = join(output, "fixture.tar.gz");
+    await writeFile(archive, "fixture");
+    const argv = process.argv;
+    vi.resetModules();
+    try {
+      process.argv = [process.execPath, "test-clean.ts", target, archive];
+      vi.spyOn(await import("../binaries/paths.ts"), "outputRoot", "get").mockReturnValue(output);
+      const docker = vi.spyOn(await import("../binaries/process.ts"), "capture")
+        .mockImplementation((_, args) => {
+          if (args[0] === "create") return "fixture-container";
+          if (args[0] === "inspect") return "1";
+          if (args[0] === "logs") {
+            return "Native proof evidence: /tmp/portable-postgres-proof.fixture/logs";
+          }
+          return "";
+        });
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await expect(import("../binaries/linux/test-clean.ts")).rejects.toThrow(
+        "exited unsuccessfully",
+      );
+      const proof = (await readdir(output)).find(name => name.startsWith("consumer-proof-"))!;
+      const record = JSON.parse(await readFile(join(output, proof, "consumer.json"), "utf8"));
+      expect(record).toMatchObject({ target, platform });
+      const args = docker.mock.calls[0]![1];
+      expect(args[0]).toBe("create");
+      expect(args.slice(1, 3)).toEqual(["--platform", record.platform]);
+    } finally {
+      process.argv = argv;
+      vi.restoreAllMocks();
+      vi.resetModules();
+    }
+  },
+);
 
 it("checks the TAP files from the clean consumer after its tools are restored", async () => {
   const proof = await directory();
