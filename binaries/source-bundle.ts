@@ -8,7 +8,7 @@
 /**
  * Packs the source bundle of a release: the recipes, the project's patches, and the pinned source archives that its
  * archives are built from, in one asset.
- * Some bundled code may be sold only with its buildable source (pg_cron's cron code, under Paul Vixie's licence),
+ * Some bundled code may be sold only with its buildable source (pg_cron's cron code, under Paul Vixie's license),
  * and the release tag alone points to upstream archives that may move, so each release carries its own copy.
  */
 import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";

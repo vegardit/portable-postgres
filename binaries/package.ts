@@ -150,7 +150,7 @@ export async function readBuild(output: string, recipe: string): Promise<BuildRe
 }
 
 /**
- * Returns the toolchain evidence that the build recorded. Licence reviews are bound to it, and reassembly
+ * Returns the toolchain evidence that the build recorded. License reviews are bound to it, and reassembly
  * may run on another host than the build, so it must never measure a toolchain of its own.
  */
 export function recordedToolchain(build: NativeBuild): HostEvidence[] {
@@ -175,7 +175,7 @@ export async function packageCandidate(options: {
   output: string;
   sourceRoot: string;
   /**
-   * The target's tracked licence review. The candidate claims only the parts that still match it, and a
+   * The target's tracked license review. The candidate claims only the parts that still match it, and a
    * missing file leaves its review pending.
    */
   reviewFile: string;
@@ -187,7 +187,7 @@ export async function packageCandidate(options: {
 }): Promise<string> {
   const { output, build } = options;
   // Both inputs must be readable before creating a candidate or auditing its native images.
-  const tracked = await readTrackedReview(options.reviewFile);
+  const tracked = await readTrackedReview(options.reviewFile, options.target);
   const scan = await readSourceNoticeScan(join(build.buildWork, sourceNoticesFile));
   for (const { id } of sources) {
     // An empty entry records a completed scan. An absent entry leaves the source unaccounted for.
@@ -206,7 +206,7 @@ export async function packageCandidate(options: {
     packagingRevision,
     hostEvidence: await options.hostEvidence(candidate),
     noticeSignatures,
-  }, tracked);
+  }, tracked?.review);
   // The archive keeps its release name, so each build gets its own directory instead of a unique file name.
   const archiveDirectory = join(output, "archive-" + basename(candidate).split("-").at(-1));
   await mkdir(archiveDirectory);

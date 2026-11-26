@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 function declaresTimescaleLicense(source: string): boolean {
-  // Upstream's c_license_header-timescale.h declares the licence in the leading C comment.
+  // Upstream's c_license_header-timescale.h declares the license in the leading C comment.
   // Source code or a later comment can quote the same sentence.
   const header = /^\s*\/\*([\s\S]*?)\*\//.exec(source)?.[1];
   return header?.replaceAll(/[\s*]+/g, " ").includes(
@@ -18,7 +18,7 @@ function declaresTimescaleLicense(source: string): boolean {
   ) ?? false;
 }
 
-/** Checks the files named by CMake, since a change of path or licence can affect an Apache-only build. */
+/** Checks the files named by CMake, since a change of path or license can affect an Apache-only build. */
 export async function requireApacheOnlyTimescaleDB(
   buildDirectory: string,
   sourceDirectory: string,

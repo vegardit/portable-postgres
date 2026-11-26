@@ -21,7 +21,6 @@
     "binaries:prune:windows": "node binaries/windows/work.ts",
     "binaries:compare": "node binaries/validate.ts compare",
     "binaries:release": "node binaries/release.ts",
-    "binaries:approve": "node binaries/approve.ts",
     "binaries:review": "node binaries/review.ts",
     "binaries:test:linux": "node binaries/linux/test.ts",
     "binaries:test:linux:clean": "node binaries/linux/test-clean.ts",

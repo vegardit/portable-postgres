@@ -5,7 +5,7 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/* Checks ELF and PE locale-data layouts for packaging audits and linked-runtime licence coverage. */
+/* Checks ELF and PE locale-data layouts for packaging audits and linked-runtime license coverage. */
 export function dataOnlyElf(data: Buffer): boolean {
   if (data.length < 64 || data.readBigUInt64LE(24) !== 0n) return false;
   const start = Number(data.readBigUInt64LE(32));

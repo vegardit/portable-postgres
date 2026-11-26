@@ -94,7 +94,7 @@ it("release validation rejects an obsolete measured library and retains manual p
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow("obsolete.dll");
 });
 
-it.skipIf(process.platform === "win32")("requires compiler-rt's licence on Linux", async () => {
+it.skipIf(process.platform === "win32")("requires compiler-rt's license on Linux", async () => {
   const { root, manifest } = await fixture("linux-x64-glibc");
   manifest.hostRequirements = hostRequirementsFixture("linux-x64-glibc");
   manifest.licenseInventory = reviewedFixture(manifest);
@@ -520,14 +520,14 @@ it.each(toolchainCases)(
   },
 );
 
-it("release validation rejects a licence notice that changed since its review", async () => {
+it("release validation rejects a license notice that changed since its review", async () => {
   const { root, manifest } = await fixture();
   manifest.hostRequirements = hostRequirementsFixture();
   manifest.licenseInventory = reviewedFixture(manifest);
   const pgvector = manifest.licenseInventory.components.find(component =>
     component.id === "pgvector"
   )!;
-  // The review read an older licence text than the one this build ships, as after a source update.
+  // The review read an older license text than the one this build ships, as after a source update.
   pgvector.noticeSha256["notices/pgvector.txt"] = "0".repeat(64);
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
@@ -563,7 +563,7 @@ it.each(toolchainCases)(
   },
 );
 
-it("the glibc startup licence is admitted only for its Linux toolchain component", async () => {
+it("the glibc startup license is admitted only for its Linux toolchain component", async () => {
   const startupLicense = toolchainLicenses["glibc-startup"]![0]!;
   const { root, manifest } = await fixture();
   manifest.hostRequirements = hostRequirementsFixture();
@@ -592,7 +592,7 @@ it("the glibc startup licence is admitted only for its Linux toolchain component
 });
 
 it.skipIf(process.platform === "win32")(
-  "the glibc startup licence is rejected on the other Linux toolchain component",
+  "the glibc startup license is rejected on the other Linux toolchain component",
   async () => {
     const { root, manifest } = await fixture("linux-x64-glibc");
     manifest.hostRequirements = hostRequirementsFixture("linux-x64-glibc");
@@ -612,14 +612,14 @@ it.skipIf(process.platform === "win32")(
     const { root, manifest } = await fixture("linux-x64-glibc");
     manifest.hostRequirements = hostRequirementsFixture("linux-x64-glibc");
     manifest.licenseInventory = reviewedFixture(manifest);
-    // A permitted licence alone would describe glibc's startup code wrongly.
+    // A permitted license alone would describe glibc's startup code wrongly.
     manifest.licenseInventory.components.find(component => component.id === "glibc-startup")!
       .licenses = ["MIT"];
     await rewrite(root, manifest);
     await expect(validateArtifact(root, "linux-x64-glibc")).rejects.toThrow(
       "toolchain component glibc-startup must carry " + toolchainLicenses["glibc-startup"]![0]!,
     );
-    // The MinGW-specific licence has no approved use in this Linux fixture.
+    // The MinGW-specific license has no approved use in this Linux fixture.
     manifest.licenseInventory = reviewedFixture(manifest);
     manifest.licenseInventory.components.find(component => component.id === "postgresql")!
       .licenses = [scopedMingwLicense];
@@ -666,7 +666,7 @@ it("release validation binds the Windows runtime review to the project's notice 
     "missing toolchain notice for mingw-runtime: " + mingwNotice,
   );
 
-  // The runtime licence describes only the linked code and its notice, not another source's files.
+  // The runtime license describes only the linked code and its notice, not another source's files.
   manifest.licenseInventory = reviewedFixture(manifest);
   runtime().files.push("notices/pgvector.txt");
   await rewrite(root, manifest);
@@ -1095,7 +1095,7 @@ it.each([
   ).rejects.toThrow("expected a Windows x64 PE image: share/timezone/Helper");
 });
 
-it("a source component's scoped licences are required on it and admitted nowhere else", async () => {
+it("a source component's scoped licenses are required on it and admitted nowhere else", async () => {
   const { root, manifest } = await fixture();
   manifest.hostRequirements = hostRequirementsFixture();
   manifest.licenseInventory = reviewedFixture(manifest);
@@ -1104,7 +1104,7 @@ it("a source component's scoped licences are required on it and admitted nowhere
   const component = (id: string) =>
     manifest.licenseInventory.components.find(candidate => candidate.id === id)!;
 
-  // Omitted: the reviewed code ships in every build, so its licence must be named.
+  // Omitted: the reviewed code ships in every build, so its license must be named.
   component("pg_cron").licenses = component("pg_cron").licenses.filter(license =>
     license !== "Vixie-Cron"
   );
@@ -1112,7 +1112,7 @@ it("a source component's scoped licences are required on it and admitted nowhere
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
     "source component pg_cron must carry Vixie-Cron",
   );
-  // Substituted by a permitted licence, which every other rule would accept.
+  // Substituted by a permitted license, which every other rule would accept.
   manifest.licenseInventory = reviewedFixture(manifest);
   component("postgresql").licenses = ["MIT"];
   await rewrite(root, manifest);
@@ -1126,7 +1126,7 @@ it("a source component's scoped licences are required on it and admitted nowhere
   await expect(validateArtifact(root, "windows-x64")).rejects.toThrow(
     "unresolved or unapproved license: Spencer-99",
   );
-  // As a host licence.
+  // As a host license.
   manifest.licenseInventory = reviewedFixture(manifest);
   manifest.hostRequirements.libraries[0]!.license = "BSL-1.0";
   await rewrite(root, manifest);
@@ -1192,7 +1192,7 @@ it("every candidate needs each source's scan and a release needs a matching revi
   await rewrite(root, manifest);
   await expect(validateArtifact(root, "windows-x64")).resolves.toMatchObject({ formatVersion: 1 });
 
-  // Without a scan, nothing shows that no new licence text arrived, even when the review lists none either.
+  // Without a scan, nothing shows that no new license text arrived, even when the review lists none either.
   Reflect.deleteProperty(source("pgvector"), "noticeSignatures");
   component("pgvector").noticeSignatures = [];
   await rewrite(root, manifest);

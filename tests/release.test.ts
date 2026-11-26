@@ -225,7 +225,7 @@ it("a real release refuses archives whose review is still pending", async () => 
       requireAllTargets: true,
     }),
   ).rejects.toThrow(
-    nativeArchiveName("windows-x64") + " has not passed the licence and host review",
+    nativeArchiveName("windows-x64") + " has not passed the license and host review",
   );
 });
 

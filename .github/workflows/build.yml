@@ -14,24 +14,17 @@ on: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-
       # Bot branches build through their pull requests.
       - "dependabot/**"
       - "dependencies/**" # Update Sources workflow
+      # Merge queue branches build through merge_group, although GitHub also sends a push for them.
+      - "gh-readonly-queue/**"
     tags-ignore:
       - "**"
     paths-ignore:
       - "**/*.md"
       - ".github/workflows/stale.yml"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - ".github/workflows/stale.yml"
-  # A manual run checks candidates like a push. Release validation without publishing is the Release dry run.
+  merge_group:
   workflow_dispatch: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
   workflow_call:
-    # https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations
-    inputs:
-      validation:
-        description: "candidate checks the archive layout; release also requires the reviewed licences and host requirements"
-        type: string
-        required: true
 
 defaults:
   run:
@@ -41,10 +34,55 @@ permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Select native checks
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: scope
+        run: |
+          native=true
+          if [[ $GITHUB_EVENT_NAME == pull_request ]]; then
+            # The checkout is GitHub's test merge, and its first parent is the base it was merged onto.
+            # The event's base SHA can be older than that parent and is then missing from this clone.
+            if ! git rev-parse --verify --quiet 'HEAD^2' > /dev/null; then
+              echo "The checkout is not the pull request's test merge commit." >&2
+              exit 1
+            fi
+            # Compare the tested merge with its base, including both paths of a rename.
+            if git diff --quiet --no-renames --ignore-submodules=none HEAD^1 HEAD -- . \
+              ':(exclude,glob)**/*.md' ':(exclude).github/workflows/stale.yml'; then
+              native=false
+            else
+              status=$?
+              [[ $status == 1 ]] || exit "$status"
+            fi
+          fi
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+
+  ###########################################################
+  docs:
+    ###########################################################
+    # Without native builds, nothing else here runs the repository checks, and the Documentation workflow
+    # cannot be a required check because its path filter leaves some pull requests without it.
+    name: Documentation
+    needs: scope
+    if: needs.scope.outputs.native == 'false'
+    uses: ./.github/workflows/docs.yml
+
   ###########################################################
   build:
     ###########################################################
     name: Build (${{ matrix.target }})
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
 
@@ -234,8 +272,7 @@ jobs:
           CHECKSUM: ${{ steps.archive.outputs.checksum }}
         run: tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}" < "$CHECKSUM"
 
-      # Approval reads the checkout SHA from GitHub's job metadata independently of the uploaded draft.
-      - name: "Report: licence review changes at ${{ github.sha }}"
+      - name: "Report: license review changes at ${{ github.sha }}"
         # Lists what this build reopens in the tracked review, so a pull request shows what needs a review.
         env:
           TARGET: ${{ matrix.target }}
@@ -243,7 +280,6 @@ jobs:
         run: |
           draft="$RUNNER_TEMP/review-draft-$TARGET"
           pnpm binaries:review "$TARGET" "$INSTALLATION" --output "$draft.json" --summary "${GITHUB_STEP_SUMMARY:-/dev/null}"
-          git rev-parse HEAD 'HEAD^{tree}' > "$draft.git"
 
       - name: "Share: payload manifest"
         # The manifest lists files, hashes and versions but no binaries, so public CI shares it as well.
@@ -256,17 +292,15 @@ jobs:
           path: ${{ steps.archive.outputs.installation }}/native-artifact.json
           if-no-files-found: error
 
-      - name: "Share: licence review draft"
-        # The draft holds file names, hashes and licences but no binaries, so public CI shares it as well.
+      - name: "Share: license review draft"
+        # The draft holds file names, hashes and licenses but no binaries, so public CI shares it as well.
         # act's artifact server rejects this upload action.
         if: ${{ !env.ACT }}
         # https://github.com/actions/upload-artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: review-draft-${{ matrix.target }}
-          path: |
-            ${{ runner.temp }}/review-draft-${{ matrix.target }}.json
-            ${{ runner.temp }}/review-draft-${{ matrix.target }}.git
+          path: ${{ runner.temp }}/review-draft-${{ matrix.target }}.json
           if-no-files-found: error
 
       - name: "Share: Windows linker evidence"
@@ -277,18 +311,8 @@ jobs:
           path: binaries/work/windows-build-*/windows-linked-inputs.txt
           if-no-files-found: error
 
-      - name: "Check: release review"
-        if: inputs.validation == 'release'
-        env:
-          TARGET: ${{ matrix.target }}
-          INSTALLATION: ${{ steps.archive.outputs.installation }}
-        run: pnpm binaries:validate "$TARGET" "$INSTALLATION"
-
       - name: "Share: native archive"
-        # Every run shares its archive as a workflow artifact, which signed-in users can download as soon as
-        # this job ends. Only the archive of a Release run that publishes has passed the license and host
-        # compatibility checks in docs/native-artifact.md; any other is an unreviewed candidate for testing,
-        # as its manifest's pending review says. Every archive expires after 14 days.
+        # Keep the candidate available for inspection when approval is pending.
         # act's artifact server rejects this upload action.
         if: ${{ !env.ACT }}
         # https://github.com/actions/upload-artifact
@@ -303,11 +327,19 @@ jobs:
           # The release job downloads these in the same run, so a release needs no longer retention.
           retention-days: 14
 
+      - name: "Check: release review"
+        env:
+          TARGET: ${{ matrix.target }}
+          INSTALLATION: ${{ steps.archive.outputs.installation }}
+        run: pnpm binaries:validate "$TARGET" "$INSTALLATION"
+
   ###########################################################
   compare:
     ###########################################################
     name: Compare targets
     needs: build
+    # A pending review fails its build job only after the manifest upload, so the comparison still runs then.
+    if: ${{ !cancelled() && needs.build.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -341,7 +373,29 @@ jobs:
           path: ${{ runner.temp }}/manifests
 
       - name: "Check: targets ship the same contents"
-        # Each target installs its extensions with its own recipe, so a candidate build compares them as the
-        # release job does, before any release.
+        # Each target installs its extensions with its own recipe, so every native build compares them as the
+        # release job does, including builds whose review is still pending.
         if: ${{ !env.ACT }}
         run: pnpm binaries:compare --require-all-targets "$RUNNER_TEMP/manifests"
+
+  readiness:
+    name: Native release readiness
+    needs: [scope, docs, build, compare]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all selected checks
+        env:
+          SCOPE: ${{ needs.scope.result }}
+          NATIVE: ${{ needs.scope.outputs.native }}
+          DOCS: ${{ needs.docs.result }}
+          BUILD: ${{ needs.build.result }}
+          COMPARE: ${{ needs.compare.result }}
+        run: |
+          case "$SCOPE/$NATIVE/$DOCS/$BUILD/$COMPARE" in
+            success/true/skipped/success/success | success/false/success/skipped/skipped) exit 0 ;;
+            *)
+              echo "Checks failed: scope=$SCOPE native=$NATIVE docs=$DOCS build=$BUILD compare=$COMPARE"
+              exit 1
+              ;;
+          esac

@@ -33,7 +33,7 @@ const gccDirectory = "/gcc/";
 const glibcCode =
   /^(?:\(\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/[^)]+\.a\)[^ ]+|\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/[^ ]+\.o)$/;
 // glibc's startup files and libc_nonshared.a members are the only glibc code that may be copied into an
-// image; the glibc-startup licence review covers exactly this set, for example not a static libc.a.
+// image; the glibc-startup license review covers exactly this set, for example not a static libc.a.
 const reviewedGlibcCode =
   /^(?:\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/(?:S?crt1|crti|crtn)\.o|\(\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/libc_nonshared\.a\)(?:atexit|at_quick_exit|pthread_atfork|stack_chk_fail_local)\.oS)$/;
 

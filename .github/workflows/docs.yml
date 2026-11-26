@@ -5,6 +5,7 @@
 #
 # Checks Markdown changes, for which the Build workflow skips its native builds. The repository checks
 # still apply to them: dprint formats Markdown, and tests compare documented settings with the code.
+# Pull requests run these checks through the Build workflow, whose readiness check requires them.
 #
 # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 name: Documentation
@@ -15,13 +16,12 @@ on: # https://docs.github.com/en/actions/reference/workflows-and-actions/events-
     branches-ignore:
       - "dependabot/**"
       - "dependencies/**" # Update Sources workflow
+      - "gh-readonly-queue/**" # merge queue
     tags-ignore:
       - "**"
     paths:
       - "**/*.md"
-  pull_request:
-    paths:
-      - "**/*.md"
+  workflow_call:
 
 defaults:
   run:

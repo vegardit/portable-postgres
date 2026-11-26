@@ -5,7 +5,8 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Guards values that shell, batch, CMake, Docker, and SQL files restate because they cannot import TypeScript. */
+/** Checks native build recipes, documented settings, and the CI rules that gate a merge. */
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -105,6 +106,74 @@ it("the native SQL proofs create and count every extension", async () => {
   expect(coexistence, "tap.sql must count the selected extensions").not.toBeNull();
   expect(captures(coexistence![1]!, /'(\w+)'/g).sort()).toEqual(names);
   expect(Number(coexistence![2])).toBe(names.length);
+});
+
+it("the native scope of a pull request compares the tested merge with its first parent", async () => {
+  const workflow = await read(".github/workflows/build.yml");
+  const scope = (/^ {6}- id: scope\r?\n[\s\S]*?(?=^ {2}#{5,})/m.exec(workflow))?.[0];
+  expect(scope, "build.yml has the native scope step").toBeDefined();
+  // The event's base SHA can predate the merge's base and is absent from the depth-2 checkout.
+  expect(scope).not.toContain("pull_request.base.sha");
+  expect(scope).toContain("HEAD^2");
+  expect(scope).toMatch(/git diff [^\n]*"?HEAD\^1"? HEAD /);
+});
+
+it("merge queue branches build through merge_group only", async () => {
+  const workflow = await read(".github/workflows/build.yml");
+  const events = /^on:[^\n]*\n((?:[ \t][^\n]*\n|\r?\n)*)/m.exec(workflow)?.[1];
+  expect(events).toMatch(/^ {2}merge_group:/m);
+  const ignored = (/^ {2}push:\r?\n {4}branches-ignore:\r?\n((?: {6}.*\r?\n)+)/m.exec(events!))
+    ?.[1];
+  expect(ignored, "build.yml ignores branches for push").toBeDefined();
+  // GitHub also sends a push for each queue branch, which would build the same merge twice.
+  expect(ignored).toMatch(/^ {6}- "gh-readonly-queue\/\*\*"/m);
+});
+
+it("readiness requires the repository checks and the comparison of every selected run", async () => {
+  const workflow = (await read(".github/workflows/build.yml")).replaceAll("\r\n", "\n");
+  const readiness = /^ {2}readiness:\n((?: {4}[^\n]*\n|\n)+)/m.exec(workflow)?.[1];
+  expect(readiness, "build.yml has the readiness job").toBeDefined();
+  expect(readiness).toContain("needs: [scope, docs, build, compare]");
+  // GitHub can skip a dependent job after a failure unless its job-level condition still selects it.
+  expect(readiness).toMatch(/^ {4}if: always\(\)$/m);
+  const script = /^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/m.exec(readiness!)?.[1];
+  expect(script, "readiness has a shell step").toBeDefined();
+  // A skipped job reports no failure, so the checks selected for each path must actually succeed.
+  for (const [scope, native, docs, build, compareResult, expectedStatus] of [
+    ["success", "true", "skipped", "success", "success", 0],
+    ["success", "true", "skipped", "success", "failure", 1],
+    ["success", "true", "skipped", "failure", "success", 1],
+    ["success", "true", "skipped", "success", "skipped", 1],
+    ["success", "true", "skipped", "skipped", "skipped", 1],
+    ["success", "false", "success", "skipped", "skipped", 0],
+    ["success", "false", "failure", "skipped", "skipped", 1],
+    ["success", "false", "skipped", "skipped", "skipped", 1],
+    ["failure", "", "skipped", "skipped", "skipped", 1],
+  ] as const) {
+    // Git can launch Bash on Windows even when its bundled bash.exe is outside PATH.
+    const result = spawnSync("git", ["-c", "alias.check-readiness=!bash -e -s", "check-readiness"],
+      {
+        input: script!,
+        env: {
+          ...process.env,
+          SCOPE: scope,
+          NATIVE: native,
+          DOCS: docs,
+          BUILD: build,
+          COMPARE: compareResult,
+        },
+        encoding: "utf8",
+        windowsHide: true,
+      });
+    if (result.error) throw result.error;
+    expect(result.status,
+      `scope=${scope} native=${native} docs=${docs} build=${build} compare=${compareResult}\n${result.stdout}${result.stderr}`)
+      .toBe(expectedStatus);
+  }
+  const compare = (/^ {2}compare:\n[\s\S]*?(?=^ {2}\w+:$)/m.exec(workflow))?.[0];
+  expect(compare, "build.yml has the compare job").toBeDefined();
+  // A pending review fails the build job after its manifest upload; the comparison must still run then.
+  expect(compare).toContain("if: ${{ !cancelled() && needs.build.result != 'skipped' }}");
 });
 
 it("build scripts take the LLVM major and the job count from the TypeScript drivers", async () => {

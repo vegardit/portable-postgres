@@ -5,9 +5,8 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Drafts licence reviews from candidates, merges them into builds, and records explicit reviewer approval. */
+/** Compares the review evidence in Git with a built payload and derives its manifest review state. */
 import { join } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import * as z from "zod";
 import { readOptionalText } from "../files.ts";
 import { root } from "../paths.ts";
@@ -34,7 +33,9 @@ import {
   validateArtifact,
   writeDescribedManifest,
 } from "./artifact.ts";
+import { compareOrdinal } from "./notice-scan.ts";
 import {
+  artifactTargets,
   librarySource,
   mingwRuntimeDlls,
   mingwSourcePrefix,
@@ -42,7 +43,7 @@ import {
 } from "./runtime-layout.ts";
 
 /**
- * The tracked per-target review: the licence inventory and host requirements for one payload file list.
+ * The tracked per-target review: the license inventory and host requirements for one payload file list.
  * Host requirements in a review file may stay pending while the manifest only records verified ones, and a
  * draft leaves the fields that a reviewer fills in empty. The manifest writer refuses a verified review
  * that still has empty fields.
@@ -52,8 +53,111 @@ const reviewSchema = z.object({
   hostRequirements: reviewedHostRequirementsSchema,
 });
 export type Review = z.infer<typeof reviewSchema>;
+// A fresh review file records evidence. The build derives the corresponding manifest statuses.
+const componentFields = licenseInventorySchema.shape.components.element.omit({ status: true });
+const hostFields = reviewedHostRequirementsSchema.omit({ status: true });
+const reviewTarget = z.enum(artifactTargets, "missing or unsupported review target");
+const reviewFileSchema = z.object({
+  target: reviewTarget,
+  licenseInventory: z.object({
+    components: z.array(componentFields.extend({
+      licenses: componentFields.shape.licenses.transform(licenses =>
+        licenses.toSorted(compareOrdinal)
+      ),
+      files: componentFields.shape.files.transform(files => files.toSorted(compareOrdinal)),
+    })),
+  }),
+  hostRequirements: hostFields,
+});
+
+// Preserve an explicit pending decision when opening an older review. New files derive readiness
+// from their evidence; the merge and release validator still check it against the actual payload.
+const legacyStatus = z.enum(["pending", "verified"]).optional();
+const readableReviewSchema = z.object({
+  target: reviewTarget,
+  licenseInventory: z.object({
+    status: legacyStatus,
+    components: z.array(componentFields.extend({ status: legacyStatus })),
+  }),
+  hostRequirements: hostFields.extend({ status: legacyStatus }),
+}).transform(({ licenseInventory, hostRequirements }) => {
+  const components = licenseInventory.components.map(component => ({
+    ...component,
+    status: component.status !== "pending" && component.licenses.length > 0
+        && component.evidence.length > 0
+      ? "verified" as const
+      : "pending" as const,
+  }));
+  const hostComplete = hostRequirements.os.trim() && hostRequirements.cpu.trim()
+    && hostRequirements.libraries.length > 0
+    && hostRequirements.libraries.every(library =>
+      library.requirement.trim() && library.license.trim() && library.evidence.trim()
+    );
+  return {
+    licenseInventory: {
+      components,
+      status: licenseInventory.status !== "pending" && components.length > 0
+          && components.every(component => component.status === "verified")
+        ? "verified"
+        : "pending",
+    },
+    hostRequirements: {
+      ...hostRequirements,
+      status: hostRequirements.status !== "pending" && hostComplete ? "verified" : "pending",
+    },
+  };
+}).pipe(reviewSchema);
 const pinnedSourceIds: ReadonlySet<string> = new Set(sources.map(source => source.id));
 type ReviewedHostRequirements = Review["hostRequirements"];
+type ReviewFile = z.input<typeof readableReviewSchema>;
+type TrackedReview = { file: ReviewFile; review: Review };
+
+/** Keep reviewer annotations and explicit legacy holds. Known build fields always come from the new draft. */
+function reviewAnnotations(previous: object | undefined, fields: object): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(previous ?? {}).filter(([key, value]) =>
+      !Object.hasOwn(fields, key) || (key === "status" && value === "pending")
+    ),
+  );
+}
+
+/** Produces a new review file using the current build and the annotations on surviving tracked records. */
+export function reviewFileFor(
+  target: ArtifactTarget,
+  review: Review,
+  previous?: ReviewFile,
+): ReviewFile {
+  const draft = reviewFileSchema.parse({ target, ...review });
+  if (!previous) return draft;
+  requireReviewTarget(previous.target, target);
+  const inventory = previous.licenseInventory;
+  const host = previous.hostRequirements;
+  return {
+    ...reviewAnnotations(previous, reviewFileSchema.shape),
+    target,
+    licenseInventory: {
+      ...reviewAnnotations(inventory, licenseInventorySchema.shape),
+      components: draft.licenseInventory.components.map(component => ({
+        ...reviewAnnotations(inventory.components.find(part => part.id === component.id),
+          licenseInventorySchema.shape.components.element.shape),
+        ...component,
+      })),
+    },
+    hostRequirements: {
+      ...reviewAnnotations(host, reviewedHostRequirementsSchema.shape),
+      ...draft.hostRequirements,
+      libraries: draft.hostRequirements.libraries.map(library => ({
+        ...reviewAnnotations(host.libraries.find(part => sameLibrary(part, library)),
+          hostFields.shape.libraries.element.shape),
+        ...library,
+      })),
+    },
+  };
+}
+
+function requireReviewTarget(actual: ArtifactTarget, expected: ArtifactTarget): void {
+  if (actual !== expected) throw new Error(`Review for ${actual} cannot be used for ${expected}`);
+}
 
 type Component = LicenseInventory["components"][number];
 
@@ -64,41 +168,44 @@ type Component = LicenseInventory["components"][number];
 export type Draft = {
   review: Review;
   payloadSha256: ReadonlyMap<string, string>;
-  /** Example files of each source's notice signatures, which tell a reviewer where new licence text is. */
+  /** Example files of each source's notice signatures, which tell a reviewer where new license text is. */
   noticeExamples: ReadonlyMap<string, Readonly<Record<string, readonly string[]>>>;
 };
 
 /** Each target's tracked review lives next to its build recipe. */
 export const reviewFiles: Record<ArtifactTarget, string> = {
   "linux-arm64-glibc": join(root, "binaries/linux/review-arm64.json"),
-  "linux-x64-glibc": join(root, "binaries/linux/review.json"),
+  "linux-x64-glibc": join(root, "binaries/linux/review-x64.json"),
   "windows-x64": join(root, "binaries/windows/review.json"),
   "macos-arm64": join(root, "binaries/macos/review.json"),
 };
 
-/** Returns the tracked review as written, or `undefined` while a target has none. */
-export async function readTrackedReview(path: string): Promise<Review | undefined> {
+/** Reads the target's evidence and derives the initial status for comparison with a build. */
+export async function readTrackedReview(
+  path: string,
+  target: ArtifactTarget,
+): Promise<TrackedReview | undefined> {
   const text = await readOptionalText(path);
   if (text === undefined) return undefined;
-  return parseReview(text, path);
+  return parseReview(text, path, target);
 }
 
 /** Validates the same review format on disk, in Git, and in downloaded drafts. */
-export function parseReview(text: string, path: string): Review {
-  const review: unknown = JSON.parse(text);
-  // The merge keeps a library without the measured flag as one that a reviewer added, and it rewrites this
-  // file from what it read, so a file of another shape must stop here.
-  const result = reviewSchema.safeParse(review);
+export function parseReview(text: string, path: string, target: ArtifactTarget): TrackedReview {
+  const input: unknown = JSON.parse(text);
+  const result = readableReviewSchema.safeParse(input);
   const problem = result.success
     ? sourceReviewGap(result.data.licenseInventory, pinnedSourceIds)
     : firstIssue(result.error);
-  if (problem !== undefined) {
+  if (!result.success || problem !== undefined) {
     throw new Error(
       `Review file must contain licenseInventory and hostRequirements; ${problem}: ${path}`,
     );
   }
-  // The file's own object, not the parsed copy, so that keys this version does not know stay in the review.
-  return review as Review;
+  // Keep the validated source record alongside the fields used to build the manifest.
+  const file = input as ReviewFile;
+  requireReviewTarget(file.target, target);
+  return { file, review: result.data };
 }
 
 /**
@@ -145,7 +252,7 @@ export async function releaseReviewGap(
 
 /**
  * Drafts a pending review for a validated candidate. It assigns every payload file to a component but
- * leaves licences and evidence empty: source declarations do not establish the licence of emitted files.
+ * leaves licenses and evidence empty: source declarations do not establish the license of emitted files.
  */
 export async function draftReview(installation: string, target: ArtifactTarget): Promise<Draft> {
   return draftManifest(
@@ -158,7 +265,7 @@ export async function draftReview(installation: string, target: ArtifactTarget):
 async function draftManifest(installation: string, manifest: ArtifactManifest): Promise<Draft> {
   const target = manifest.target;
   const hashes = payloadHashes(manifest);
-  // The review approves the licence texts it reads, so the draft records which ones this build ships.
+  // The review approves the license texts it reads, so the draft records which ones this build ships.
   // Validating the candidate reports a notice that does not ship as missing.
   const noticeSha256 = (notices: readonly string[]): Record<string, string> =>
     shippedNoticeSha256(hashes, notices);
@@ -190,7 +297,7 @@ async function draftManifest(installation: string, manifest: ArtifactManifest): 
       ],
       notices: [...source.notices],
       noticeSha256: noticeSha256(source.notices),
-      // The licence text that the source tree carries, which the review covers along with the notices.
+      // The license text that the source tree carries, which the review covers along with the notices.
       noticeSignatures: Object.keys(examples),
       evidence: [],
     };
@@ -294,7 +401,7 @@ const listedSignatures = 20;
 /**
  * How a reviewed component differs from the build: the reviewed values that a source or toolchain update
  * changed. Every list is empty while the review still describes the build. A signature is a file's normalized
- * notice lines, or a licence file's path and digest (see notice-scan.ts).
+ * notice lines, or a license file's path and digest (see notice-scan.ts).
  */
 type ComponentDifference = {
   signaturesAdded: string[];
@@ -326,7 +433,7 @@ function componentDifference(previous: Component, current: Component): Component
 
 /**
  * Explains why a previously reviewed component no longer matches the build; empty when it still does. Each new
- * signature comes with files that carry it, so a reviewer knows where to read the new licence text.
+ * signature comes with files that carry it, so a reviewer knows where to read the new license text.
  */
 function componentChanges(
   previous: Component,
@@ -339,10 +446,10 @@ function componentChanges(
   const signatures = [
     ...change.signaturesAdded.map(signature => {
       const files = examples?.[signature] ?? [];
-      return "licence text added: " + shorten(signature)
+      return "license text added: " + shorten(signature)
         + (files.length > 0 ? " in " + files.join(", ") : "");
     }),
-    ...change.signaturesGone.map(signature => "licence text gone: " + shorten(signature)),
+    ...change.signaturesGone.map(signature => "license text gone: " + shorten(signature)),
   ];
   return [
     ...signatures.length <= listedSignatures ? signatures : [
@@ -350,35 +457,10 @@ function componentChanges(
       `${signatures.length - listedSignatures} more notice signature changes`,
     ],
     ...change.noticesChanged.length > 0
-      ? ["licence notice changed: " + change.noticesChanged.join(", ")]
+      ? ["license notice changed: " + change.noticesChanged.join(", ")]
       : [],
     ...change.filesAdded.length > 0 ? ["files added: " + change.filesAdded.join(", ")] : [],
     ...change.filesRemoved.length > 0 ? ["files removed: " + change.filesRemoved.join(", ")] : [],
-    ...change.toolchain === undefined ? [] : [change.toolchain],
-  ];
-}
-
-/** Bound lists of paths in the approval preview and the evidence copied into every archive. */
-function pathSummary(label: string, files: readonly string[]): string[] {
-  return files.length === 0 ? [] : [
-    label + ": " + files.slice(0, 10).join(", ")
-    + (files.length > 10 ? ` and ${files.length - 10} more` : ""),
-  ];
-}
-
-/** Summarizes the reviewed changes. The component already lists its signatures in full. */
-function acceptedChanges(previous: Component, current: Component): string[] {
-  const change = componentDifference(previous, current);
-  return [
-    ...change.signaturesAdded.length > 0
-      ? [`${change.signaturesAdded.length} notice signatures added`]
-      : [],
-    ...change.signaturesGone.length > 0
-      ? [`${change.signaturesGone.length} notice signatures removed`]
-      : [],
-    ...pathSummary("licence notice changed", change.noticesChanged),
-    ...pathSummary("files added", change.filesAdded),
-    ...pathSummary("files removed", change.filesRemoved),
     ...change.toolchain === undefined ? [] : [change.toolchain],
   ];
 }
@@ -389,14 +471,14 @@ const toolchainIds: ReadonlySet<string> = new Set(
 );
 
 /**
- * Carries a tracked review forward to a new draft. A component stays as reviewed while its files, licence
+ * Carries a tracked review forward to a new draft. A component stays as reviewed while its files, license
  * texts and toolchain line are unchanged, and one that is still pending is listed as not verified yet; a
- * changed component is reopened with the current values and its previous licences as a starting point.
+ * changed component is reopened with the current values and its previous licenses as a starting point.
  * Reopened components keep no evidence, because evidence must describe the review of the current values,
- * and only `verified` approves them.
+ * so the pull request must supply evidence for the changed payload.
  *
  * A reviewer can cite further notices on any component; a notice can be any shipped file, such as an SQL
- * script with a licence header. A cited notice is kept while it ships, compared by its current hash.
+ * script with a license header. A cited notice is kept while it ships, compared by its current hash.
  * A reviewer can also credit a drafted source component with further files, such as an extension library
  * that compiles code copied from PostgreSQL; such a credit is kept while its file ships.
  * Components that a reviewer added, such as code that a source bundles, have no counterpart in the
@@ -458,10 +540,10 @@ export function mergeReview(
     }
     components.push(reopen(reviewed, citing({ ...reviewed, files }, reviewed.notices)));
   }
-  const verified = previous.licenseInventory.status === "verified"
+  // Removing an entire component also changes the review, even if every remaining part matches.
+  const verified = changes.length === 0 && previous.licenseInventory.status === "verified"
     && components.every(component => component.status === "verified");
-  // Verified parts do not release anything while the inventory as a whole still awaits approval.
-  if (!verified && changes.length === 0) changes.push("licence inventory: not verified yet");
+  if (!verified && changes.length === 0) changes.push("license inventory: not verified yet");
   return {
     review: {
       licenseInventory: { status: verified ? "verified" : "pending", components },
@@ -477,17 +559,16 @@ type HostLibrary = ReviewedHostRequirements["libraries"][number];
 const sameLibrary = (left: { name: string }, right: { name: string }): boolean =>
   left.name.toLowerCase() === right.name.toLowerCase();
 
-/** Compares a build measurement or a reviewer's complete library list with the previously reviewed entries. */
+/** Compares the build measurement with the previously reviewed host libraries. */
 function hostLibraryChanges(
   current: readonly HostLibrary[],
   reviewed: readonly HostLibrary[],
-  source: "measurement" | "review",
 ): string[] {
   const added = current.filter(library => !reviewed.some(other => sameLibrary(library, other)))
     .map(library => library.name);
   // A build cannot measure manual prerequisites. An edited review can explicitly change or remove them.
   const removed = reviewed.filter(library =>
-    (source === "review" || library.measured === true)
+    library.measured === true
     && !current.some(other => sameLibrary(library, other))
   ).map(library => library.name);
   const edits = current.flatMap(library => {
@@ -496,17 +577,6 @@ function hostLibraryChanges(
     const changes: string[] = [];
     if (library.requirement !== "" && library.requirement !== earlier.requirement) {
       changes.push(library.name + " now requires " + library.requirement);
-    }
-    if (source === "review") {
-      if (library.license !== earlier.license) {
-        changes.push(library.name + " licence changed to " + library.license);
-      }
-      if (library.evidence !== earlier.evidence) changes.push(library.name + " evidence changed");
-      if ((library.measured === true) !== (earlier.measured === true)) {
-        changes.push(
-          library.name + (library.measured ? " is now measured" : " is now manually listed"),
-        );
-      }
     }
     return changes;
   });
@@ -529,7 +599,7 @@ function mergeHostRequirements(
   const additions = reviewed.filter(library =>
     library.measured !== true && !current.some(other => sameLibrary(library, other))
   );
-  const differences = hostLibraryChanges(current, reviewed, "measurement");
+  const differences = hostLibraryChanges(current, reviewed);
   changes.push(...differences.map(change => "host requirements: " + change));
   const unchanged = differences.length === 0;
   if (unchanged && previous.hostRequirements.status === "verified") {
@@ -543,175 +613,16 @@ function mergeHostRequirements(
     libraries: [
       ...current.map(library => {
         const earlier = reviewed.find(candidate => sameLibrary(candidate, library));
-        return earlier
-          // A reviewed entry keeps its origin, so one that a reviewer added stays when the import goes away.
-          ? { ...earlier, requirement: library.requirement || earlier.requirement }
-          : library;
+        if (!earlier) return library;
+        // A reviewed entry keeps its origin, so one that a reviewer added stays when the import goes away.
+        if (library.requirement === "" || library.requirement === earlier.requirement) {
+          return earlier;
+        }
+        // The evidence described the earlier requirement. A review file is complete once every field
+        // is filled in, so copying this draft unchanged would otherwise approve the new requirement.
+        return { ...earlier, requirement: library.requirement, evidence: "" };
       }),
       ...additions,
     ],
-  };
-}
-
-/** What an approval accepts, recorded in the evidence of a component that it verifies again. */
-export type Acceptance = {
-  /** The day of the approval, as YYYY-MM-DD. */
-  date: string;
-  /** Where the approved review came from, such as a Build run of the checked-out commit. */
-  source?: string;
-  /** The reviewer's reason for accepting the changes. */
-  note?: string;
-};
-
-/** Keep additional fields on surviving records. An absent known field, such as a missing scan, stays absent. */
-function withExtraFields<T extends object>(previous: T | undefined, current: T, shape: object): T {
-  const extra = Object.entries(previous ?? {}).filter(([key]) => !Object.hasOwn(shape, key));
-  return { ...Object.fromEntries(extra), ...current };
-}
-
-/**
- * Approves a review: the person who runs it has read what it says, and every part that is still pending
- * becomes verified. A component that the merge reopened keeps its earlier licences but has no evidence. It gets
- * back the evidence of its review in `tracked`, plus a dated line naming the changes accepted, so that its
- * evidence still describes the current values. Parts that need a reviewer's judgement are refused, all of them
- * in one error: a component without licences or without an earlier review, and host requirements with an
- * empty field, such as a newly imported library. The release gate checks the result again in every build.
- */
-export function approveReview(
-  review: Review,
-  tracked: Review | undefined,
-  acceptance: Acceptance,
-): { review: Review; approved: string[] } {
-  const problems: string[] = [];
-  const approved: string[] = [];
-  let unusedNote = acceptance.note;
-  const components = review.licenseInventory.components.map((draft): Component => {
-    const earlier = tracked?.licenseInventory.components.find(other => other.id === draft.id);
-    const component = withExtraFields(earlier, draft,
-      licenseInventorySchema.shape.components.element.shape);
-    const licenses = component.licenses.join(", ");
-    if (component.licenses.length === 0) {
-      problems.push(component.id + ": no licences yet");
-      return component;
-    }
-    // The generated draft inherits licences. An edited draft can replace them, which needs its own evidence.
-    const relabelled = earlier !== undefined
-      && !isDeepStrictEqual(new Set(earlier.licenses), new Set(component.licenses));
-    // Dated acceptance entries can be newer than HEAD after an uncommitted approval of the old licences.
-    if (relabelled
-      && !component.evidence.some(line =>
-        !earlier.evidence.includes(line) && !/^\d{4}-\d{2}-\d{2}(?:, .*?)?: accepted /s.test(line)
-      ))
-    {
-      problems.push(component.id + ": changed licences need new evidence");
-      return component;
-    }
-    const changes = earlier === undefined || isDeepStrictEqual(earlier, draft)
-      ? []
-      : acceptedChanges(earlier, component);
-    if (component.evidence.length > 0) {
-      if (earlier && !relabelled && !isDeepStrictEqual(earlier.evidence, component.evidence)) {
-        changes.push("evidence changed");
-      }
-      if (component.status === "verified" && earlier?.status === "verified" && !relabelled
-        && changes.length === 0) return component;
-      approved.push(
-        component.id + ": " + licenses
-          + (changes.length > 0 ? ", accepting " + changes.join("; ") : ""),
-      );
-      return { ...component, status: "verified" };
-    }
-    // Without a difference, the earlier review left this component pending without evidence too.
-    if (component.status === "verified" || earlier === undefined || earlier.evidence.length === 0
-      || changes.length === 0)
-    {
-      problems.push(component.id + ": no evidence yet");
-      return component;
-    }
-    const accepted = changes.join("; ");
-    approved.push(component.id + ": " + licenses + ", accepting " + accepted);
-    const line = acceptance.date + (acceptance.source === undefined ? "" : ", " + acceptance.source)
-      + ": accepted " + accepted + "."
-      + (acceptance.note === undefined ? "" : " " + acceptance.note);
-    unusedNote = undefined;
-    return { ...component, status: "verified", evidence: [...earlier.evidence, line] };
-  });
-  const removed =
-    tracked?.licenseInventory.components.filter(earlier =>
-      !components.some(part => part.id === earlier.id)
-    ) ?? [];
-  if (removed.length > 0) {
-    // An edited review shows which paths are still credited, but cannot prove which files ship.
-    const listed = new Set(components.flatMap(part => part.files));
-    for (const earlier of removed) {
-      approved.push(
-        [
-          earlier.id + ": removed from the review",
-          ...pathSummary("still listed", earlier.files.filter(path => listed.has(path))),
-        ].join("; "),
-      );
-    }
-  }
-  if (review.licenseInventory.status !== "verified") approved.push("licence inventory: as a whole");
-  const { os, cpu, libraries } = review.hostRequirements;
-  const missing = [...os.trim() === "" ? ["os"] : [], ...cpu.trim() === "" ? ["cpu"] : []];
-  if (missing.length > 0) problems.push("host requirements: no " + missing.join(" or ") + " yet");
-  for (const library of libraries) {
-    const fields = (["requirement", "license", "evidence"] as const).filter(field =>
-      library[field].trim() === ""
-    );
-    if (fields.length > 0) {
-      problems.push("host requirements: " + library.name + " has no " + fields.join(", ") + " yet");
-    }
-  }
-  const previousHost = tracked?.hostRequirements;
-  const hostChanges = previousHost === undefined ? [] : [
-    ...os === previousHost.os ? [] : ["OS changed to " + os],
-    ...cpu === previousHost.cpu ? [] : ["CPU changed to " + cpu],
-    ...hostLibraryChanges(libraries, previousHost.libraries, "review"),
-  ];
-  if (review.hostRequirements.status !== "verified" || previousHost?.status !== "verified"
-    || hostChanges.length > 0)
-  {
-    approved.push(
-      `host requirements: ${libraries.length} libraries`
-        + (hostChanges.length === 0 ? "" : ", accepting " + hostChanges.join("; ")),
-    );
-  }
-  if (problems.length > 0) {
-    throw new Error(
-      ["These parts need a review before they can be approved:", ...problems.map(p => "- " + p)]
-        .join("\n"),
-    );
-  }
-  if (unusedNote !== undefined) {
-    throw new Error(
-      "--note needs a reopened component whose earlier evidence is carried forward. No evidence entry would record this note.",
-    );
-  }
-  return {
-    review: {
-      ...tracked,
-      ...review,
-      licenseInventory: {
-        ...tracked?.licenseInventory,
-        ...review.licenseInventory,
-        status: "verified",
-        components,
-      },
-      hostRequirements: {
-        ...tracked?.hostRequirements,
-        ...review.hostRequirements,
-        status: "verified",
-        libraries: libraries.map(library =>
-          withExtraFields(
-            tracked?.hostRequirements.libraries.find(previous => sameLibrary(previous, library)),
-            library,
-            reviewedHostRequirementsSchema.shape.libraries.element.shape,
-          )
-        ),
-      },
-    },
-    approved,
   };
 }

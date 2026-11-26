@@ -9,9 +9,8 @@
  * Checks built archives against the release version and writes the checksums, descriptor, notes, and source
  * bundle to publish.
  *
- * It does not extract or validate the archives again. Each build job validates its archive after packing:
- * it unpacks the finished archive, runs the native tests on that tree, and in release mode runs
- * release validation on it before uploading. The release job trusts the archives of its own workflow run,
+ * Each native build job tests the extracted archive and runs release validation on that tree.
+ * The release job trusts the archives of its own successful build jobs,
  * because whoever could change one there could also change the manifest and review that it would be checked
  * against. It checks what the build jobs cannot: that every archive belongs to this version and checkout,
  * passed its review, exists for every target, and ships the same contents as the others.
@@ -158,7 +157,7 @@ export async function prepareRelease(
         options.requireAllTargets
         && (manifest.licenseInventory.status !== "verified" || manifest.hostRequirements === null)
       ) {
-        throw new Error(`${name} has not passed the licence and host review`);
+        throw new Error(`${name} has not passed the license and host review`);
       }
       manifests.set(target, manifest);
       const digest = await fileSha256(archive);

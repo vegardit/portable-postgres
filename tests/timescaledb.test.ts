@@ -36,7 +36,7 @@ it("a TimescaleDB build that compiles a file under tsl/ is refused, however the 
   ]);
   await expect(requireApacheOnlyTimescaleDB(build, source)).resolves.toBeUndefined();
 
-  // A changed licence on an existing translation unit leaves its compile database entry unchanged.
+  // A changed license on an existing translation unit leaves its compile database entry unchanged.
   await writeFile(unit,
     `/*\n * ${tsl}\n * Please see the included NOTICE.\n */\nint hypertable;\n`);
   await expect(requireApacheOnlyTimescaleDB(build, source)).rejects.toThrow(

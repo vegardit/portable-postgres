@@ -16,8 +16,8 @@ because tar readers apply such metadata differently.
 The packer checks its own output against this format,
 so a payload name outside printable ASCII, or too long for the USTAR name and prefix fields, cannot be packed.
 
-Each build job validates its archive after packing: it unpacks the finished archive,
-runs the native tests on that tree, and in release mode runs release validation on it before uploading.
+Each native build job unpacks its finished archive and runs the native tests on that tree.
+It uploads the candidate and review evidence before running release validation.
 The release job trusts the archives of its own workflow run and does not unpack them again,
 because whoever could change an archive there could also change the manifest and review it would be checked against.
 It checks what a build job cannot: that every archive belongs to the release version and the checkout's source pins,
@@ -59,7 +59,7 @@ It does not hash itself recursively.
 Every other payload file or symlink is listed in `files`.
 The archive digest must be calculated after metadata is written.
 Changing any archive content invalidates the earlier digest.
-The licence review covers the payload file list, the hashes of retained notices,
+The license review covers the payload file list, the hashes of retained notices,
 the notice signatures in each upstream source tree, and the toolchain line.
 A change to any of these reopens the affected component.
 
@@ -127,6 +127,8 @@ so a published minimum always describes the archive's own binaries.
 A supported CPU baseline must also come from evidence, rather than just the compiler host's capabilities.
 
 The macOS target requires macOS 15 or newer on Apple silicon.
+Both the TypeScript and compiled build drivers read the Xcode version and path, deployment target,
+and Bison and Flex paths from [base.json](../binaries/macos/base.json).
 The build reads the deployment version and imported libraries from every image's load commands.
 It rejects an image with a minimum above the deployment target.
 The host review lists the imported system libraries and records the highest image minimum
@@ -135,6 +137,24 @@ Absolute system imports must start with `/usr/lib/` or `/System/Library/` and co
 Bundled imports use `@rpath/<name>` and a search path relative to the image that reaches `lib/`.
 The build verifies each image's ad-hoc signature after relocation.
 
+### CI consumer tests
+
+The Linux test runs the archive in a clean Ubuntu 22.04 container without build tools or network access.
+On a local run, `binaries/output/consumer-proof-*/consumer.json` records the Linux target,
+Docker platform, container image and archive SHA-256.
+On GitHub Actions, the file stays on the runner for the duration of the job.
+The workflow uploads the manifest, review draft, archive and checksum.
+
+On the `macos-15` runner, the workflow hides Xcode and the Command Line Tools.
+It runs [the macOS consumer test](../binaries/macos/test-consumer.sh) without Node.js.
+The script stops if it can still find a compiler.
+
+1. The test marks the archive as a browser download and extracts it with the system `tar`.
+   It records whether `initdb` and `postgres` retain the quarantine flag and whether `initdb --version` runs.
+2. It moves the installation, runs the native SQL tests, and checks the loader trace for libraries outside
+   the archive and the macOS system directories.
+3. The workflow restores the build tools and validates both TAP transcripts.
+
 ## ICU collations
 
 Every installation must include ICU in its source pins.
@@ -142,12 +162,12 @@ It must carry ICU's common, internationalization and full data libraries.
 The runtime keeps their versioned library names and loader aliases.
 Windows places `icuuc<major>.dll`, `icuin<major>.dll` and `icudt<major>.dll` in `bin/`.
 Linux and macOS place the corresponding `libicuuc`, `libicui18n` and `libicudata` libraries in `lib/`.
-Their files belong to the `icu` licence component.
+Their files belong to the `icu` license component.
 The Windows code libraries use the bundled `libc++.dll`.
 ICU's build tools, headers and make fragments stay outside the runtime.
 
 Linux statically links LLVM's C++ runtimes into ICU's code libraries.
-The `llvm-cxx-runtime` component covers those files and retains the LLVM licence notices.
+The `llvm-cxx-runtime` component covers those files and retains the LLVM license notices.
 The data library has no executable code or runtime startup objects.
 Link auditing checks its ELF load segments or PE sections before allowing that layout.
 All code-bearing images still require their complete startup and runtime link evidence.
@@ -173,7 +193,7 @@ The native proof uses a caller-supplied certificate after relocating the archive
 Every archive pins zlib and LZ4 and carries each shared library under its loader name.
 Windows uses `bin/libz.dll` and `bin/lz4.dll`, Linux uses `lib/libz.so.1` and `lib/liblz4.so.1`,
 and macOS uses `lib/libz.1.dylib` and `lib/liblz4.1.dylib`.
-Each library belongs to its own source licence component.
+Each library belongs to its own source license component.
 
 ## Extension installation versions
 
@@ -273,10 +293,12 @@ A source notice ending in `.h` receives an additional `.txt` suffix in the archi
 The pinned TimescaleDB and pg_textsearch NOTICE files are mandatory.
 Configured exact-pin notices remain mandatory even if a later metadata edit omits their declaration.
 
-Some code needs a licence text that its source does not contain.
+Some code needs a license text that its source does not contain.
 PostgreSQL uses Unicode data in its tables and encoding maps, fast-crc32 in its AVX-512 CRC code,
 and Project X0213 data in two Japanese encoding maps.
 It also uses stemmers from the Snowball project and stopword lists published on its website.
+pgcrypto's MD5 crypt code was imported from FreeBSD with only an attribution,
+so the project retains the BSD-2-Clause grant that FreeBSD records for that file.
 
 The project excludes `share/tsearch_data/nepali.stop` from the scope of the Snowball website notice.
 PostgreSQL received that list in a 2018 patch submitted under the project's patch-submission terms.
@@ -295,7 +317,8 @@ A new digest reopens the component's review.
 
 Each project notice also pins the source facts it depends on as `anchors`:
 the Snowball commit in PostgreSQL's `src/backend/snowball/README`, PostgreSQL's Unicode version and the inputs of
-its encoding maps, the stopword lists, the attributed fast-crc32 block, and the headers of the Project X0213 tables.
+its encoding maps, the stopword lists, the attributed fast-crc32 block, the headers of the Project X0213 tables,
+and the FreeBSD attribution in pgcrypto's `crypt-md5.c`.
 An anchor selects lines of one file (matching a pattern, or a block from one start line through the next end line)
 and pins them as text or by SHA-256, or it pins a set of files by their names and contents.
 A fresh build checks every anchor right after extracting the sources, before compiling.
@@ -304,14 +327,14 @@ An anchor mismatch names the changed fact so the reviewer can check the notice b
 Release preparation compares the archived manifest's required notice paths, project-notice origins,
 coverage, digests, and anchors with the release checkout.
 
-A source update can also bring licence text that no pinned notice contains, such as newly bundled third-party code.
-So each fresh build scans every file of every source tree for copyright, licence and grant lines,
+A source update can also bring license text that no pinned notice contains, such as newly bundled third-party code.
+So each fresh build scans every file of every source tree for copyright, license and grant lines,
 right after extraction and before patching or compiling.
 A file's signature includes its distinct notice lines and their continuations in comments.
 For example, a holder or a grant can span several consecutive one-line C comments.
 In a C header, attribution and responsibility clauses can appear between a copyright and its grant,
 or in later paragraphs of the notice.
-In M4 files, a licence notice can span consecutive `dnl` comments or consecutive `#` comments.
+In M4 files, a license notice can span consecutive `dnl` comments or consecutive `#` comments.
 A bare comment marker separates paragraphs, and a physical blank line ends the block.
 In both shell scripts and M4 files, the scanner keeps hash-comment grant paragraphs such as
 Autoconf's permission to copy its generated script, along with warranty and redistribution conditions.
@@ -321,12 +344,12 @@ An SPDX tag line also ends it, because each tag is complete on one line.
 This keeps ordinary translator credits and SQL test descriptions out of the preceding notice.
 In a README, Markdown document, or plain text file, a heading such as `Copyright and License`
 includes the whole section up to the next heading of equal or higher level.
-In C comments containing Perl POD, the scanner keeps the labelled licence section through its
+In C comments containing Perl POD, the scanner keeps the labelled license section through its
 last paragraph and skips the Perl implementation that can follow the documentation.
 In SGML, it records the holder and legal notice from the `<copyright>` and `<legalnotice>` elements,
 ignoring copyright years and the document date.
 The scanner normalizes comment markers, spacing, and years on copyright lines.
-A licence file of its own, such as `LICENSE`, `COPYING` or `NOTICE`, is fingerprinted whole instead,
+A license file of its own, such as `LICENSE`, `COPYING` or `NOTICE`, is fingerprinted whole instead,
 by its path and the SHA-256 of its normalized text, because its conditions often sit in lines without a keyword.
 The scan covers the whole tree, not only the compiled files:
 tracing what each image compiles needs heuristics that an upstream build change can break,
@@ -348,7 +371,7 @@ For the full change, compare the component's `noticeSignatures` in the uploaded 
 with its list in the target's tracked review.
 Release validation checks that each source's reviewed signature list matches its scan.
 Newly bundled code can reuse an existing notice or carry no detected notice.
-Reviewers must also check which files a directory's licence covers.
+Reviewers must also check which files a directory's license covers.
 
 The complete payload inventory includes notices and their hashes.
 Upstream text remains intact.
@@ -367,8 +390,41 @@ Each component contains:
 - `noticeSignatures`: for a source component, the notice signatures of the source tree that the review covered.
 - `toolchain`: the reviewed line for linked toolchain components, the compiler and linked-object inventory for native sources on Windows, or the parser generator identity for PostgreSQL on macOS.
 - `evidence`: references explaining the exact review and contribution.
-  When approval carries forward earlier evidence for a reopened component, it adds a dated line naming the changes.
-  A changed licence set needs new evidence from the reviewer.
+  Update the evidence when a changed file or license affects the review.
+
+### Reusing review evidence
+
+The draft records the candidate's `target`, assigns its files to components,
+and records notice hashes and toolchain identities.
+Packaging and draft generation require the tracked file's target to match the candidate.
+When migrating an older review without a target, confirm the architecture and OS from the original build
+before adding the `target` field.
+
+Drafts keep reviewer annotations on records that still apply.
+An explicit legacy `status: "pending"` stays on its inventory, component or host requirements in the draft.
+Remove that field when you have reviewed the evidence for that record.
+
+Rebuilding the same pins can reuse the tracked evidence while file coverage, notice hashes,
+source notice signatures and toolchain identities match.
+
+- **Source components.** A new upgrade script or a changed notice reopens the affected component.
+  The draft keeps its previous licenses and clears the evidence so the reviewer can supply evidence for the current payload.
+  An unchanged but incomplete component keeps its existing evidence.
+- **Additional coverage.** The draft keeps a reviewer-added component while any of its files ship.
+  Changes to its files or notices reopen it. The draft drops the component when all its files are gone.
+  Extra files credited to a source and extra notices cited by any component also carry forward while they ship.
+  A toolchain component's file list follows the current binaries.
+- **Host libraries.** A new import, a changed measured requirement or the disappearance of a measured library reopens host requirements.
+  A changed requirement also clears the evidence of that library, which was written for the earlier requirement.
+  A manually recorded dependency, such as a library loaded by another library, carries forward.
+
+Without a tracked review, the build produces a pending candidate.
+The manifest marks reopened components as pending and records unresolved host requirements as `null`.
+If nothing reopens, the review command reports any remaining release-validation gaps.
+See [Updating license and host evidence in your PR](../CONTRIBUTING.md#updating-license-and-host-evidence-in-your-pr)
+to prepare a change, and the [maintainer guide](maintaining.md#decide-whether-to-accept-the-evidence) to review it before merge.
+
+### Linked toolchain components
 
 Multiple reviewed components may contribute to the same binary, such as source code and a compiler runtime.
 Every payload file must have reviewed component coverage.
@@ -384,7 +440,9 @@ The generated ICU data library needs no linked-runtime coverage.
 | Linux   | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `Clang major version`                 |
 | Windows | `mingw-runtime`    | MinGW-w64 startup, LLVM runtime code and bundled runtime DLLs        | `CLANG64 packages and linked objects` |
 
-The macOS linker maps must cover every image and have a complete list of object files.
+macOS has no separate linked toolchain component. Its binaries use compiler-rt and the C runtime through `libSystem`.
+The compiler wrapper saves each binary's linker map under its `LC_UUID`.
+The maps must cover every image and have a complete list of object files.
 The audit resolves each input against the original link directory and build root, including after a checkout move.
 It admits build inputs, linker-synthesized entries and dynamic library stubs.
 The PostgreSQL source review also covers the generated parser and scanner code.
@@ -392,15 +450,20 @@ Its `toolchain` matches the `PostgreSQL parser generators` host evidence,
 which identifies Xcode and the Bison and Flex used by configure.
 A missing or changed identity requires a new PostgreSQL component review.
 
-The Linux build records its toolchain lines in the build container when it compiles, and reassembly reuses them as well,
+The Linux build compiles OpenSSL, zlib, LZ4 and ICU before PostgreSQL, using ICU's complete release locale data.
+It records its toolchain lines in the build container when it compiles, and reassembly reuses them as well,
 so a reassembly on another host cannot describe another compiler or glibc.
-These lines change rarely, unlike toolset updates, and the toolchain's licence terms follow them.
-Clang links every Linux image through the build image's `traced-ld`,
+These lines change rarely, unlike toolset updates, and the toolchain's license terms follow them.
+The build checks Clang's link plan for GCC runtime contributions.
+The image's `clang.cfg` routes links through [traced-ld.sh](../binaries/linux/image/traced-ld.sh),
 which records the link's input files and archive members under the output's build ID.
 Packaging, including a reassembly, fails when an image in the candidate has no such record, wherever the image lies,
 and when a record shows GCC's runtime or any other glibc code,
 so the `glibc-startup` review keeps matching what is linked into each image.
-For Windows, LLD reports the resolved input files and the members it loads from each archive.
+
+The Windows driver verifies the SHA-256 of its pinned MSYS2 base, CLANG64 packages and parser generators before extraction.
+It builds native extensions with PGXS and Apache-only TimescaleDB with CMake.
+LLD reports the resolved input files and the members it loads from each archive.
 A link record is identified by the SHA-256 of the linked image.
 Each assembly verifies those records and the pinned bytes of the two shared runtime DLLs.
 The ICU data DLL is checked separately for executable sections and an entry point.
@@ -408,8 +471,9 @@ The `mingw-runtime` review binds the package list and per-image member inventory
 and retains the toolchain notices in `notices/mingw-runtime.txt`.
 The complete receipt is published atomically after the fresh build checks every image.
 Each native source has a `CLANG64 packages and linked objects: <source ID>` entry for its own images.
+Changing one extension's linked objects reopens that extension and the shared runtime review.
 
-The current Windows pins require the following licences on `mingw-runtime`.
+The current Windows pins require the following licenses on `mingw-runtime`.
 
 - LLVM builtins and libc++ use `Apache-2.0 WITH LLVM-exception`.
   The Ryu code in libc++'s floating-point `to_chars` also carries `BSL-1.0`.
@@ -421,7 +485,7 @@ The current Windows pins require the following licences on `mingw-runtime`.
   `LicenseRef-MinGW-printf` identifies Keith Marshall's grant for the printf formatter in the same notice.
 
 When the pins or linked members change, compare the new inventory with the corresponding upstream sources.
-Update the required licences and notices for any changed contributions before approving the review.
+Update the required licenses and notices for any changed contributions before approving the review.
 See the [pinned MinGW sources](https://github.com/mingw-w64/mingw-w64/tree/e3d18511f)
 and the [pinned libc++ Ryu code](https://github.com/llvm/llvm-project/blob/llvmorg-23.1.5/libcxx/src/include/ryu/ryu.h).
 
@@ -444,18 +508,18 @@ Each toolchain component must match its reviewed toolchain line.
 Release validation rejects GPL/AGPL contributions, including GCC's own runtime under
 `GPL-3.0-or-later WITH GCC-exception-3.1`, unresolved components, and licenses outside the explicit permitted set.
 The Linux `compiler-rt` component must carry `Apache-2.0 WITH LLVM-exception`.
-Other components can also use this licence.
+Other components can also use this license.
 The Linux `glibc-startup` component must carry `LGPL-2.1-or-later WITH GCC-exception-2.0`.
 The glibc startup sources include the linking exception, which permits linking them into a program and distributing the result.
 
-Some reviewed source code is under licences outside the permitted set.
-Each listed source component must carry the licences for the code it ships in every build.
+Some reviewed source code is under licenses outside the permitted set.
+Each listed source component must carry the licenses for the code it ships in every build.
 Toolchain components have the separate requirements above.
 
-| Component    | Licence                     | Code                                                                      |
+| Component    | License                     | Code                                                                      |
 | ------------ | --------------------------- | ------------------------------------------------------------------------- |
 | `postgresql` | `Spencer-99`, `TCL`         | Henry Spencer's regex package and the Tcl code in it                      |
-| `postgresql` | `BSL-1.0`                   | Ryu (`src/common/d2s.c`, `f2s.c`), used under the Boost licence           |
+| `postgresql` | `BSL-1.0`                   | Ryu (`src/common/d2s.c`, `f2s.c`), used under the Boost license           |
 | `postgresql` | `LicenseRef-GEQO-Whitley`   | GEQO (`src/backend/optimizer/geqo`), granted for free distribution        |
 | `postgresql` | `LicenseRef-pg-dump-Warner` | parts of pg_dump                                                          |
 | `postgresql` | `LicenseRef-rbtree-Niemann` | `src/backend/lib/rbtree.c`                                                |
@@ -465,7 +529,7 @@ Toolchain components have the separate requirements above.
 | `icu`        | `ICU`, `NAIST-2003`         | Legacy ICU terms and IPADIC dictionary data retained in `notices/icu.txt` |
 
 The `LicenseRef-` texts and the other notices ship among the source's retained notices.
-These licences are not host licences either.
+These licenses are not host licenses either.
 
 Other additions require a deliberate repository policy change and review.
 
@@ -475,7 +539,8 @@ This does not permit bundling LGPL libraries or infer redistribution rights from
 
 Filename exclusions reject obvious TimescaleDB Community libraries and forbidden helper profiles.
 They do not replace build-option evidence, compiled-source review, or an inventory covering generated SQL and binaries.
-A verified status is a review attestation, which `pnpm binaries:approve` records after listing what it approves.
+Merging the reviewed evidence into `main` records approval.
+The build derives each archive's review status from the evidence and its match to the shipped files.
 The validator checks its consistency and completeness; it cannot replace the underlying license investigation.
 
 ## Build-tool API

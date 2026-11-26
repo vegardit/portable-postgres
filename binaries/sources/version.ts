@@ -31,16 +31,7 @@ export function nativeVersion(): string {
   return `${postgresql.version}-r${packagingRevision}`;
 }
 
-/** Compares dotted numeric versions such as `2.35` or `1.10.0`; `1.10` is newer than `1.9`. */
-export function compareVersions(left: string, right: string): number {
-  const leftParts = left.split(".").map(Number);
-  const rightParts = right.split(".").map(Number);
-  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index++) {
-    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
-    if (difference !== 0) return difference;
-  }
-  return 0;
-}
+export { compareVersions } from "./compare-versions.ts";
 
 /** The Git tag of a native release; the prefix keeps it apart from future wrapper tags. */
 export function nativeReleaseTag(): string {

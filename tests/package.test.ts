@@ -269,14 +269,18 @@ it(
       hostRequirements: null,
     });
 
-    // A review of that candidate stays verified while the next candidate matches it.
+    // The same evidence is reusable only for the target it describes.
     const tracked = complete((await draftReview(first.candidate, target)).review);
-    await writeFile(reviewFile, JSON.stringify(tracked));
+    await writeFile(reviewFile, JSON.stringify({ target: "linux-arm64-glibc", ...tracked }));
+    await expect(packaged()).rejects.toThrow(
+      "Review for linux-arm64-glibc cannot be used for " + target,
+    );
+    await writeFile(reviewFile, JSON.stringify({ target, ...tracked }));
     const same = await packaged();
     expect(same.manifest.licenseInventory).toEqual(tracked.licenseInventory);
     expect(same.manifest.hostRequirements).toEqual(tracked.hostRequirements);
 
-    // Another host measurement leaves the host requirements unresolved and the licences verified.
+    // Another host measurement leaves the host requirements unresolved and the licenses verified.
     const measurement = target === "windows-x64"
       ? "ucrtbase.dll, advapi32.dll"
       : "GLIBC_2.34";
@@ -284,8 +288,8 @@ it(
     expect(remeasuredHost.manifest.hostRequirements).toBeNull();
     expect(remeasuredHost.manifest.licenseInventory).toEqual(tracked.licenseInventory);
 
-    // A changed licence text reopens its component and the inventory, not the other components.
-    await writeFile(join(sourceRoot, "pgvector/LICENSE"), "a changed licence text");
+    // A changed license text reopens its component and the inventory, not the other components.
+    await writeFile(join(sourceRoot, "pgvector/LICENSE"), "a changed license text");
     const changed = await packaged();
     expect(changed.manifest.licenseInventory.status).toBe("pending");
     expect(

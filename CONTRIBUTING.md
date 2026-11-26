@@ -1,121 +1,100 @@
 # Contributing
 
+Thank you for your interest in contributing to portable-postgres!
+
+Whether you've found a bug, have an idea for an extension, or spotted a step in this guide that's hard to follow,
+we'd love to hear from you.
+
+## Contents
+
+- [How to contribute](#how-to-contribute)
+- [Tooling](#tooling)
+- [Changes and validation](#changes-and-validation)
+- [Native builds and safety](#native-builds-and-safety)
+- [Building native archives](#building-native-archives)
+- [Updating pinned sources](#updating-pinned-sources)
+- [Updating license and host evidence in your PR](#updating-license-and-host-evidence-in-your-pr)
+- [Development commands](#development-commands)
+
+## How to contribute
+
+### Issues
+
+We use [GitHub Issues](https://github.com/vegardit/portable-postgres/issues) to track bugs and feature requests.
+If you've run into a problem with an archive, please tell us which version you used and which operating system and CPU architecture you ran it on.
+Let us know what you tried, what you expected, and what happened instead.
+Those details help us reproduce the problem on the right platform.
+
+### Pull requests
+
+If you have a small fix, you're welcome to open a pull request directly.
+Before starting a larger change, please open an issue so we can discuss it together.
+For example, if you'd like to add a platform, change which extensions we ship, or revise the archive format,
+we'd like to hear what you have in mind before you spend time implementing it.
+
+When you open your pull request, please describe what you changed and why, link any related issue, and tell us which checks you ran.
+If you're responsible for accepting a pull request or publishing a release, see the [maintainer guide](docs/maintaining.md).
+
+### Contributor responsibilities
+
+Please make sure you have the rights to contribute the work you're submitting, including any permission you need from your employer.
+Our [pull request template](.github/PULL_REQUEST_TEMPLATE.md) includes the contribution declaration we ask you to confirm when you submit your work.
+
 ## Tooling
 
-Use pnpm 12 for all Node.js builds, TypeScript 7 for compilation, dprint for formatting,
-and oxlint for TypeScript linting.
-Install Node.js 26 or newer; pnpm checks the installed version and does not download a runtime.
-Use the pinned tools in the package manifest and lockfile.
-The test suite (`pnpm test` or `pnpm check`) and release preparation for Windows ZIP archives require Python 3
-on `PATH` as `python` on Windows or `python3` on Linux and macOS.
-To match the GitHub Actions runners locally, use the exact Python version in `.python-version`.
-The private root package contains shared binary build orchestration in TypeScript.
-The publishable wrapper belongs in `wrappers/node/` and is a separate package.
-Node.js may be required in build environments; native archive consumers must not need it.
+- **Node.js and pnpm.** Install Node.js 26 or newer and use pnpm 12 for all Node.js builds.
+  pnpm checks the Node.js version already on your machine.
+  Run `pnpm install --frozen-lockfile` from the repository root to install the tools pinned in [package.json](package.json) and [pnpm-lock.yaml](pnpm-lock.yaml).
+- **Compilation, formatting and linting.** Use TypeScript 7 to compile, dprint to format and oxlint to lint TypeScript.
+  See [Development commands](#development-commands) for the corresponding pnpm scripts.
+- **Python.** The test suite (`pnpm test` or `pnpm check`) requires Python 3.
+  Put `python` on `PATH` on Windows or `python3` on Linux and macOS.
+  To match CI, install the version in [.python-version](.python-version).
+
+The private root package contains the TypeScript tooling we use to build native archives.
+People who download an archive can extract it and run PostgreSQL without Node.js.
 Do not copy application code from other projects or reference wrapper implementations, tests, or automation.
 
 ## Changes and validation
 
-Keep changes focused and re-read current files before editing.
-Document each source file's purpose in the language's conventional location.
-Use plain English and semantic line breaks in Markdown.
-Preserve existing line endings; shell scripts always use LF.
-Exclude upstream checkouts and generated outputs from formatting, linting, tests, and packages.
+Please keep your pull request focused on the problem you're solving so we can see what changed and why.
 
-Run the checks on each affected target and run the native SQL tests for changes to the distribution.
+- **Source files.** Document the purpose of each source file you add or change where readers of that language expect to find it.
+  Preserve the file's existing line endings. Shell scripts always use LF.
+- **Documentation.** Write in plain English and start each sentence on a new source line in Markdown.
+  This keeps the diff focused when someone edits a sentence later.
+- **Project files.** Keep upstream checkouts and generated outputs out of formatting, linting, tests and packages.
+
+Run `pnpm check` from the repository root to check formatting, linting, types, compilation and unit tests.
+Run the relevant checks on each target your change affects.
+If you change the native distribution, also run its native SQL tests on each affected target.
+You'll find the platform-specific commands under [Building native archives](#building-native-archives).
 
 ## Native builds and safety
 
-Use verified upstream releases with pinned identities and integrity checks.
-Keep research checkouts separate from reproducible build inputs.
-Never distribute GPL or AGPL components in native archives or npm packages.
-Inspect transitive and linked dependencies, helper executables, licenses, and required notices.
-Build TimescaleDB in Apache-only mode and inspect packaged files.
-Do not silently reduce the extension bundle or target matrix.
-Never delete caller-owned data or act on a process whose ownership is uncertain.
-
-## Development commands
-
-- `pnpm install --frozen-lockfile`: install pinned tools.
-- `pnpm format:check`: check formatting of project-owned files.
-- `pnpm format:fix`: format those files.
-- `pnpm lint`: lint project-owned JavaScript and TypeScript once source files exist.
-
-- `pnpm build`: compile the private binary build tooling with TypeScript 7.
-- `pnpm typecheck`: check the build tooling and tests.
-- `pnpm test`: run build-tool regression tests.
-- `pnpm check`: run formatting, lint, typecheck, build, and unit checks.
-- `pnpm binaries:fetch`: check the SHA-256 of each pinned source archive and download any missing archives.
-- `pnpm binaries:build:linux`: compile and package PostgreSQL inside the Linux build environment below.
-- `pnpm binaries:assemble:linux`: assemble a fresh Linux runtime from the last development installation.
-- `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
-- `pnpm binaries:test:linux:clean <linux-target> <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
-- `pnpm binaries:build:windows`: build and package the Windows candidate with Clang, LLD and MinGW-w64.
-  Set `BUILD_JOBS` to adjust parallel compilation (4 jobs by default).
-- `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
-- `pnpm binaries:prune:windows`: preview Windows work directories, their sizes and retention status.
-  Add `--remove <name> [name ...]` to remove selected directories from the preview.
-- `pnpm binaries:test:windows`: test the relocated Windows candidate with native SQL and TAP.
-- `pnpm binaries:build:macos`: build and package the macOS arm64 candidate with the pinned Xcode.
-- `pnpm binaries:assemble:macos`: reassemble the last matching macOS SDK with current notices and metadata.
-- `pnpm binaries:test:macos`: test the relocated macOS candidate with the same native SQL and TAP proof as Linux.
-- `pnpm binaries:validate:candidate <target> <installation>`: check candidate layout, hashes, architecture, and permissions.
-- `pnpm binaries:validate <target> <installation>`: additionally require reviewed licenses and host prerequisites.
-- `pnpm binaries:verify:archive <archive> <trusted-sha256>`: verify archive bytes before trusting their metadata.
-- `pnpm binaries:compare <installation> <installation>`: report extension versions and files that differ between two targets.
-- `pnpm binaries:compare --require-all-targets <downloads>`: compare the `manifest-<target>` directories from a hosted Build.
-  Each directory must contain the manifest for its named target.
-- `pnpm binaries:review <target> [installation] [--output file] [--summary file]`: write a licence review draft for the last or given candidate, starting from the tracked review, and list what still blocks a release.
-- `pnpm binaries:release <downloads> <output> <owner/repository> [--require-all-targets]`: prepare release assets, including the source bundle, from downloaded archives in a new output directory; with `--require-all-targets`, every archive must also carry a verified review, and every target must be present.
-- `pnpm binaries:update-pins [--summary <file>]`: pin the newest upstream release of every source and set the packaging revision.
+- **Build from verified sources.** Use the pinned upstream releases and verify each archive against its recorded SHA-256.
+  If you're investigating an upstream change, keep that checkout separate from the sources used to build a distributable archive.
+- **Check what ships.** Inspect the packaged files, including helper executables and code linked into binaries.
+  Include indirect dependencies in your license review and check that the package carries every required notice.
+  Build TimescaleDB in Apache-only mode and check its packaged files.
+  Never distribute GPL or AGPL components in a native archive or npm package.
+- **Keep changes to platform and extension support visible.** If a build fails on one target or with one extension,
+  tell us which one failed. If you're proposing to drop support, explain the change in the pull request.
+- **Protect the caller's data and processes.** Never delete data that belongs to the caller.
+  Before acting on a process, confirm that it belongs to the operation you're running.
+  For example, if a test can't confirm that it started a PostgreSQL server, leave that server running.
 
 ## Building native archives
 
-The [Build workflow](.github/workflows/build.yml) builds and tests Linux x64, Linux arm64, Windows x64 and macOS arm64 archives on GitHub Actions.
-It skips changes to Markdown files alone; the [Documentation workflow](.github/workflows/docs.yml) runs `pnpm check` for them.
-Each job records the archive's SHA-256 in its summary.
-On each target the native tests restore gzip and LZ4 dumps and use the bundled `pg_verifybackup`
-to check compressed base backups against their manifests.
-A final job requires a payload manifest for every target and fails when their PostgreSQL version, source pins,
-or extension versions and files differ.
-Every run also shares the archive and checksum as a workflow artifact, `portable-postgres-<target>`,
-which signed-in GitHub users can download from the run's page for 14 days.
-Build runs, manual ones included, check candidates without release validation,
-so these archives are unreviewed candidates for testing and not for redistribution.
-A dry run of the [Release workflow](#releasing) runs release validation on each archive without publishing.
-
-Run `pnpm install --frozen-lockfile` from the repository root before building for any target.
-Every native build uses fresh source, object, and SDK directories.
-Reassembly checks that the saved source identities and build recipe still match the current ones.
-It also verifies the current project-notice anchors against the saved sources.
-A reassembly that finishes after a newer build has started keeps that build as the last one, and warns that its own candidate is not recorded.
-A change to a build script, a source patch, the Windows SQL installer, or a build tool pin therefore needs a fresh build.
-Candidate metadata follows [native artifact format 1](docs/native-artifact.md).
-Release validation deliberately fails until the artifact's license inventory and host prerequisites are verified.
-
-An archive is named after its release, for example `portable-postgres-18.7-r1-linux-x64-glibc.tar.gz`.
-The Windows archive uses the same naming scheme with a `.zip` extension.
-The name combines the pinned PostgreSQL version with the packaging revision in `binaries/sources/revision.json`.
-The revision counts the releases of one PostgreSQL version.
-Leave it unchanged while the current revision is unreleased.
-After a release, the first change to the archives that keeps the PostgreSQL version,
-such as an extension pin, a build recipe, or a review file, takes the next revision.
-Reset it to 1 when the PostgreSQL pin changes.
+To build locally, run `pnpm install --frozen-lockfile` from the repository root.
+Then follow the instructions for [Linux](#linux-x64-and-arm64), [Windows](#windows-x64), or [macOS](#macos-arm64).
+To download an archive that CI has already built, see [CI checks and downloads](#ci-checks-and-downloads).
 
 ### Linux x64 and arm64
 
-The workflow builds on Ubuntu 22.04 with Clang and compiler-rt inside a Docker container.
-OpenSSL, zlib, LZ4 and ICU are built before PostgreSQL, using ICU's complete release locale data.
-Its C++ compiler wrapper links LLVM's libc++, libc++abi and libunwind statically,
-so consumers need only the recorded glibc libraries.
-`binaries/linux/base.json` pins the Ubuntu image, the glibc baseline, and the LLVM major version.
-It checks the compiler link plan for GCC runtime contributions and measures the glibc symbol requirements of every packaged ELF file.
-The image's `clang.cfg` makes Clang link through `binaries/linux/image/traced-ld.sh`,
-which records what each link copies into its output.
-Packaging checks the record of every image in the candidate, also when it reassembles a build.
-Rebuild the image after changing the Dockerfile, `traced-ld.sh` or `clang-cxx.sh`.
-A fresh build stops when the image was built from another Dockerfile, `traced-ld.sh`, or `base.json`.
-To build for the native architecture of an x64 or arm64 Linux host, run the container from the repository root:
+Run these commands from the repository root on an x64 or arm64 Linux host.
+Docker builds for the host architecture using Ubuntu 22.04, Clang and compiler-rt.
+The fixed `/workspace` path lets upstream tools build even when the host checkout path contains spaces.
 
 ```sh
 image=$(node -p 'require("./binaries/linux/base.json").image')
@@ -128,24 +107,31 @@ docker run --rm --user "$(id -u):$(id -g)" \
 pnpm binaries:test:linux
 ```
 
-The fixed container path lets upstream build tools run even when the host checkout path contains spaces.
-The build records paths relative to the directory containing `last-build.json` in `binaries/output/linux-x64/` or `binaries/output/linux-arm64/`,
-so the host and the container can both locate the SDK, installation, and archive.
-Run `pnpm binaries:test:linux:clean <linux-target> <archive>` against a trusted archive.
-Use `linux-x64-glibc` or `linux-arm64-glibc` to select the matching Docker platform.
-This is the same check the workflow runs on the exact archive it produces.
-The clean Ubuntu 22.04 consumer runs PostgreSQL without build tools or network access.
-Its retained `consumer.json` records the Linux target, Docker platform, image and archive SHA-256.
+Find the SDK, installation and archive through `last-build.json` in `binaries/output/linux-x64/`
+or `binaries/output/linux-arm64/`.
+Paths in that record are relative to its directory so they work on both the host and the container.
+
+Rebuild the Docker image if you change the pins in [base.json](binaries/linux/base.json), the Dockerfile,
+`traced-ld.sh` or `clang-cxx.sh`. A fresh build checks that the image matches the current recipe.
+
+#### Test the packaged archive
+
+Run `pnpm binaries:test:linux:clean <linux-target> <archive>` on a trusted archive.
+Choose `linux-x64-glibc` or `linux-arm64-glibc` to match its architecture.
+CI runs this same test on the exact archive it produces.
+
+For the test environment and its recorded evidence, see [CI consumer tests](docs/native-artifact.md#ci-consumer-tests).
 
 ### Windows x64
 
 Windows builds need CMake, Python, 7-Zip and native Windows Perl.
 Set `PG_BUILD_PERL` to its executable if it is outside `PATH`.
-The driver downloads the exact MSYS2 base, CLANG64 packages and parser generators, verifies their SHA-256,
-and extracts them into the fresh build directory.
-Create the isolated Meson environment before the first Windows build.
-A fresh build stops when its Meson differs from the pin in `binaries/windows/requirements.txt`;
-the `pip install` line below then installs the pinned version.
+
+Save any logs you need before starting a replacement build.
+After a successful build or reassembly, cleanup can remove older builds, including their SDKs, sources, object files and logs.
+
+Before the first build, create the isolated Meson environment and install the pinned version as shown below.
+If a later build reports a Meson version mismatch, repeat the `pip install` command.
 
 ```powershell
 python -m venv binaries/work/windows-toolchain
@@ -154,20 +140,11 @@ pnpm binaries:build:windows
 pnpm binaries:test:windows
 ```
 
-At the end of a Windows build or reassembly, cleanup can remove work directories from earlier
-successfully packaged builds, including their SDKs, sources, object files and build logs.
-Save any logs you need before starting a replacement build.
-Automatic cleanup requires a recorded packaged candidate and keeps its work directory, directories
-still in use and incomplete builds.
-Pruning leaves unrecognized directories alone, even when explicitly selected.
-When another checkout reassembles the same SDK, cleanup keeps its build tree until that reader exits.
-Use `pnpm binaries:prune:windows` to preview what remains.
-
-The Windows build uses PGXS for native extensions and CMake for Apache-only TimescaleDB.
-The compiler driver records the inputs to each program and DLL link under the SHA-256 of its output.
-Packaging and reassembly check those records, the two pinned shared runtime DLLs, and the host imports.
-The ICU data DLL contains the full locale data and has no entry point or executable section.
-See [native artifact format 1](docs/native-artifact.md) for the review requirements.
+Use `pnpm binaries:prune:windows` to see each work directory's status.
+Automatic cleanup keeps incomplete builds.
+To remove an inactive incomplete build and its logs, select it explicitly with `--remove <name>`.
+Both modes keep the recorded build and directories still in use, including an SDK that another checkout is reassembling.
+If you select an unrecognized directory, the command rejects the entire selection before removing anything.
 
 ### macOS arm64
 
@@ -181,205 +158,152 @@ pnpm binaries:build:macos
 pnpm binaries:test:macos
 ```
 
-#### Toolchain and licence review
+Run a fresh build after changing the macOS toolchain pins.
+If Xcode, Bison or Flex changes, or the previous review lacks those versions, update the PostgreSQL component review.
+See the [artifact contract](docs/native-artifact.md#identity-and-compatibility) for the deployment target, relocation and signature checks.
 
-Both the TypeScript and compiled drivers read the checkout's `binaries/macos/base.json`.
-It sets the Xcode version and path, the minimum macOS version, and the paths to Bison and Flex.
-Changing these pins requires a fresh build.
+### Reassembling a previous build
 
-The build records the host macOS version and the versions of Xcode, Bison and Flex used to build PostgreSQL.
-Review the PostgreSQL component again if Xcode, Bison or Flex changes, or if the previous review lacks those versions.
+A fresh build creates new source, object and SDK directories.
+Reassembly packages the saved SDK again.
+It checks that the source identities and build recipe still match and verifies the project-notice anchors against the saved sources.
 
-#### Archive checks
+Run a fresh build after changing a build script, source patch, Windows SQL installer or build tool pin.
+If a newer build starts while reassembly is running, the newer build keeps its place as the last build.
+Reassembly warns that its own candidate was not recorded.
 
-- **Minimum macOS version.** Packaging rejects any binary that requires a newer macOS than the configured minimum.
-- **Linked code.** The compiler wrapper saves each binary's linker map under its `LC_UUID`.
-  Packaging checks these maps on every assembly and rejects static code copied from outside the build.
-  The binaries use compiler-rt and the C runtime through macOS's `libSystem`.
-- **Relocation.** The build gives bundled libraries `@rpath` names and sets search paths relative to each binary.
-  It then signs the binaries again with ad-hoc signatures.
-  Packaging rejects library paths outside the installation and macOS's system libraries.
+### Archive names and revisions
 
-#### CI consumer test
+The archive name includes the pinned PostgreSQL version, packaging revision and target,
+for example `portable-postgres-18.7-r1-linux-x64-glibc.tar.gz`.
+Windows archives use `.zip`.
 
-On the `macos-15` runner, the workflow hides Xcode and the Command Line Tools before running
-`binaries/macos/test-consumer.sh` without Node.js.
-The script stops if it can still find a compiler.
+The packaging revision in `binaries/sources/revision.json` counts releases of one PostgreSQL version.
 
-1. The script marks the archive as a browser download and extracts it with the system `tar`.
-   It records whether `initdb` and `postgres` retain the quarantine flag and whether `initdb --version` runs.
-2. It moves the installation, runs the native SQL tests, and checks the loader trace for libraries outside the
-   archive and the macOS system directories.
-3. The workflow restores the build tools and validates both TAP transcripts.
+| When                                                                       | Revision                                                                                             |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| The PostgreSQL pin changes                                                 | Reset to 1.                                                                                          |
+| The current revision is unreleased                                         | Keep the current revision.                                                                           |
+| The current revision was released and PostgreSQL stays at the same version | Increment on the first archive change, such as an extension pin, build recipe or review file change. |
+
+### CI checks and downloads
+
+When you change the native distribution, the [Build workflow](.github/workflows/build.yml) builds and tests all four targets.
+If a job fails, open its summary to see which check needs attention.
+If release validation failed because a review is incomplete, CI has already uploaded the draft you need to
+[update the evidence on your pull request](#updating-license-and-host-evidence-in-your-pr).
+
+Pull requests that change only Markdown or the stale-issue workflow skip native builds.
+For them, the Build workflow runs `pnpm check` through the [Documentation workflow](.github/workflows/docs.yml).
+
+**Download a candidate.** Sign in to GitHub and open the workflow run.
+The `portable-postgres-<target>` artifact contains the archive and its checksum and is available for 14 days.
+The target job also records the SHA-256 in its summary.
+Use [published releases](https://github.com/vegardit/portable-postgres/releases) for redistribution.
+
+Before we merge your pull request, the `Native release readiness` check must pass.
 
 ## Updating pinned sources
 
-`binaries/sources/sources.json` pins PostgreSQL, OpenSSL, ICU, zlib, LZ4 and every separately released extension by version, archive URL, and SHA-256.
-The contrib modules that the archives include come from the PostgreSQL pin;
-`contribExtensions` in `binaries/artifact/runtime-layout.ts` selects them.
-Its `upstream` entries say where new releases come from, so the pins are not edited by hand.
-`pnpm binaries:update-pins` finds the newest stable release of each source,
-keeping PostgreSQL within its pinned major version, and downloads every changed archive.
-OpenSSL stays on the 3.5 LTS patch series.
-PostgreSQL, OpenSSL and LZ4 release archives are checked against their publishers' SHA-256 checksum files.
-For named GitHub release assets such as zlib and ICU, the updater checks the exact archive's SHA-256
-from the selected release when there is no separate checksum file.
-GitHub publishes no checksum for generated tag archives, so the first download defines their pin.
-The command also sets the packaging revision: a new PostgreSQL release restarts it at 1,
-and other changes open the next revision once the current one has been released.
+To propose an upstream update, run `pnpm binaries:update-pins` from the repository root.
+Only one updater can run in a checkout at a time.
+If an interrupted run leaves `binaries/work/update-pins.lock`, confirm the updater has stopped,
+then remove the empty lock directory and retry.
+Review the new versions, archive URLs and hashes in [sources.json](binaries/sources/sources.json)
+and check the [packaging revision](#archive-names-and-revisions).
+The updater keeps PostgreSQL within its pinned major version and OpenSSL on the 3.5 LTS patch series.
+The contrib modules selected in [runtime-layout.ts](binaries/artifact/runtime-layout.ts) come from the PostgreSQL pin.
+For changes to the Windows toolchain, update [clang64.json](binaries/windows/clang64.json) and [tools.json](binaries/windows/tools.json) by hand.
 
-The [Update Sources workflow](.github/workflows/update-sources.yml) runs the command every Monday
-and opens or refreshes a pull request on the `dependencies/sources` branch.
-It skips the refresh once the branch contains a reviewer's changes.
-For a manual run, select the intended base branch.
-The updater refuses a tag, its own branch, or a base that conflicts with an open pull request from the same update branch.
-If someone pushes while the updater is preparing a refresh, their commit stays on the branch.
-After a squash merge, deleting the merged pull request branch lets the next update create a fresh one.
-The Build workflow then checks that every target still compiles and passes the native tests with the new releases.
-The build also fails when a notice file that `noticeFiles` pins no longer exists in the updated source:
-find where its text moved, or whether the code it covers went, and update the pin.
-A notice whose text changed ships under the same path, and the review lists its component as reopened.
-The Windows build fails when a source patch in `binaries/windows/patches/` no longer applies.
-Then check whether the updated source still needs the patch, as "Source patches" in
-[native artifact format 1](docs/native-artifact.md) describes, and update or remove it.
-The workflow creates the pull request with a GitHub App, so that its checks run without a manual approval.
-Configure the App's ID as the `PR_UPDATER_APP_ID` variable and its private key as the `PR_UPDATER_APP_PRIVATE_KEY` secret.
-The Windows package pins in `binaries/windows/clang64.json` and `binaries/windows/tools.json` are not covered and are updated by hand.
+If the update fails CI, use the job summary to find what needs changing.
 
-## Reviewing licences and host requirements
+- **A pinned notice is missing.** Find out where its text moved or whether the code it covered was removed.
+  Update the source's `noticeFiles` entry accordingly.
+- **A notice changed at the same path.** The archive includes the new text.
+  [Update the evidence for the reopened component](#updating-license-and-host-evidence-in-your-pr) on the same pull request.
+- **A Windows patch no longer applies.** Check whether the updated source still needs the patch in `binaries/windows/patches/`.
+  Update or remove it following the [source patch instructions](docs/native-artifact.md#source-patches).
 
-Each target has its own review path.
-Linux x64 uses `binaries/linux/review.json` and Linux arm64 uses `binaries/linux/review-arm64.json`.
-Windows and macOS use `review.json` in their respective target directories.
-It holds the licence inventory and the host requirements that the build writes into the archive manifest.
-The build writes only what still matches the candidate: a part that `pnpm binaries:review` would reopen is pending,
-and host requirements that it would reopen are `null`.
-Without the file, the build produces a candidate whose review is pending.
+## Updating license and host evidence in your PR
 
-1. Build a candidate for the target.
-2. Run `pnpm binaries:review <target>` to write `review-draft.json` next to the build output.
-   The draft assigns every shipped file to a component, including one component per toolchain part
-   linked into native binaries (`compiler-rt`, `glibc-startup` and `llvm-cxx-runtime` on Linux,
-   `mingw-runtime` on Windows, none on macOS),
-   and records the hash of every licence notice and the toolchain line.
-   It starts from the tracked review and lists the parts it reopens.
-   When it reopens nothing, it also lists anything the release gate would still reject.
-   Reopened components keep their previous licences as a starting point but no evidence,
-   because a source's declared licence does not establish the licence of built files.
-   A component that is still pending but unchanged keeps its evidence and is listed as not verified yet.
-   Components that you added to the review yourself, such as code that a source bundles,
-   are kept while their files still ship and reopened when their files or notices change.
-   A component with none of its files left is dropped.
-   Files that you add to a drafted source component, and notices that you add to any drafted component,
-   are kept the same way while they ship. A toolchain component's files always follow the current images.
-   A host library that you add, such as one that another library loads, is kept as well;
-   it reopens nothing by itself. A new import, a changed measured requirement,
-   and a measured library that the build no longer imports reopen the host requirements.
-3. For a review that needs edits, start with the new draft and save it as the target's review file.
-   Keep the draft's current file lists, notice hashes and signatures.
-   Fill in the licences and evidence of a new component and the requirement, licence and evidence of a new host library.
-   When you change a component's licences, add evidence explaining the new licences.
-   A dated entry from a previous approval records what you accepted under the earlier licences.
-   Keep each drafted library and its drafted `requirement`: release validation requires an entry for every
-   imported host library and the measured glibc requirement, such as `GLIBC_2.34 or newer`.
-   A component that you add can describe part of an image, but every image must stay in the files
-   of the source component that built it.
-4. Approve the review with `pnpm binaries:approve <target>`.
-   It lists the parts it approves, asks you to confirm, and sets them to `verified` in the review file.
-   The preview includes edits to previously verified coverage, licences and host requirements.
-   A removed component's entry shows up to ten paths that other components still list and counts any others.
-   It refuses and names any part that still lacks licences, evidence, or host library details.
-   It compares the edited draft with the review committed at `HEAD` to recover evidence for reopened components
-   whose licences you kept.
-   Until you commit the approved review, another approval can list the same changes.
-   Approving is your statement that you checked these parts, so nobody edits the statuses by hand.
-5. Rebuild and run `pnpm binaries:validate <target> <installation>`.
+If your change affects what an archive ships or needs from its host, Build can flag a gap in the recorded evidence.
+Update the file for each affected target on your pull request.
 
-A review stays valid while the shipped files, the licence texts it read, the notice signatures of each source tree,
-and the toolchain line are unchanged, so a rebuild of the same pins keeps it.
-A source update usually reopens its own component: an extension release adds an upgrade script,
-and a PostgreSQL release changes a few notice lines or the year in a licence file.
-The Build workflow lists the reopened parts in its job summary and uploads the draft as `review-draft-<target>`,
-so a pull request shows what needs a review without a local build.
-When the changes leave the licences as they are, check out the pull request's commit and run
-`pnpm binaries:approve <target> <run-id>` with the ID of its Build run.
-The command uses the checkout's default GitHub repository and verifies that Build produced the draft,
-either directly or as the workflow called by Release.
-For a pull request, it checks the merge commit recorded in the Build job against GitHub's commit data
-and the draft's Git checkout record.
-You can check out the PR head or the built merge commit.
-Its tree must match the tree that CI built before the command lists changes and asks you to confirm.
-If the base branch introduced differences, update the pull request branch and use the new Build run.
-Use a fresh Build run if the checkout record or the PR job's commit is missing.
-Each reopened component keeps its licences and the evidence of its earlier review,
-and gains a dated line that names the accepted changes, such as
-`2026-11-22, Build run 123 at abc1234: accepted 2 notice signatures added; files added: vector--0.8.7--0.8.8.sql.`
-Add `--note "<reason>"` to record why you accepted those changes in the dated evidence entry.
-Approval refuses `--note` if no component would receive a dated entry.
-Then commit the review files to the pull request.
-If an update brings another licence or code that needs its own component,
-edit the current draft as in step 3 and approve it without a run ID.
-To review a reopened source, compare its licence, copyright, and notice files between the two releases,
-look for newly bundled third-party code with its own licence, and skim the release notes.
-The job summary shows up to 20 notice signature changes per component.
-It lists additions first as `licence text added`, with up to three example paths each,
-then removals as `licence text gone`.
-To see every change, compare each component's `noticeSignatures` in the uploaded draft
-with the same component in the target's tracked review.
-Read the added text in the upstream source, decide whether it ships and under which licence,
-and add a component or a retained notice where needed.
-Newly bundled code can reuse an existing notice or carry no detected notice,
-so check every updated source's release notes for it.
-A year-only change on a copyright line leaves its signature unchanged.
-It still reopens the component if the changed file is a pinned notice.
+| Build target        | Tracked review file                                                  |
+| ------------------- | -------------------------------------------------------------------- |
+| `linux-x64-glibc`   | [binaries/linux/review-x64.json](binaries/linux/review-x64.json)     |
+| `linux-arm64-glibc` | [binaries/linux/review-arm64.json](binaries/linux/review-arm64.json) |
+| `windows-x64`       | [binaries/windows/review.json](binaries/windows/review.json)         |
+| `macos-arm64`       | [binaries/macos/review.json](binaries/macos/review.json)             |
 
-The toolchain components carry fixed licences.
-`compiler-rt` carries `Apache-2.0 WITH LLVM-exception`.
-`llvm-cxx-runtime` covers the LLVM C++ runtimes linked into ICU's code libraries.
-It requires `Apache-2.0 WITH LLVM-exception` and retains their upstream licence texts.
-ICU's data library contains no executable code and needs no linked-runtime component.
-`glibc-startup` carries `LGPL-2.1-or-later WITH GCC-exception-2.0`.
-`mingw-runtime` covers MinGW startup code, LLVM runtime code, libc++ and winpthreads.
-Its review binds the hash of the package pins, the linked object inventory and the retained notices.
-Each native source review binds the pins and the linked objects in its own images.
-Changing one extension's linked objects reopens that extension and the runtime review.
-See [native artifact format 1](docs/native-artifact.md#notices-and-license-gate) for the required licences.
-For the initial Windows review, record the tested Windows version and CPU requirements.
+1. **Get the draft for the target.** Open the pull request's Build run and download `review-draft-<target>`.
+   The job summary lists what reopened.
+   To generate the same draft locally, build a candidate and run `pnpm binaries:review <target>`.
+   It writes `review-draft.json` beside the build output.
+   Use `--output <new-file>` to keep an earlier draft and any notes you have added.
+2. **Check what changed.** Compare the draft with the tracked review.
+   For each reopened component, check the shipped files and licenses against the upstream source.
+   Read the release notes for each updated source and look for newly bundled code, even if its notices look familiar.
+   Compare the draft's `noticeSignatures` with the tracked review for the full list of changed signatures.
+3. **Update the evidence.** Use the draft as the target's review file.
+   Check that its `target` matches the archive you reviewed.
+   If the tracked review changed after the draft was generated, get a fresh draft from the updated review
+   before copying it so you keep the latest reviewer notes.
+   Keep its current file lists, notice hashes and signatures.
+   - For a new or reopened component, record the licenses and the evidence that they cover the built files.
+     If the licenses changed, explain why.
+     If the earlier evidence still holds, cite the commit on `main` that approved it instead of copying it.
+     Cite only commits on `main` and workflow runs that are kept; a pull request commit or deleted run can disappear.
+   - Keep every drafted host library and its measured requirement, such as `GLIBC_2.34 or newer`.
+     For a new host library, fill in its requirement, license and evidence.
+     If a measured requirement changed, the draft clears that library's evidence; record evidence for the new requirement.
+     For an initial Windows review, also record the tested Windows version and CPU requirements.
+   - If several components contribute code to a binary, credit each one.
+     Keep the binary in the file list of the source component that built it.
+4. **Verify your changes.** Run `pnpm exec dprint fmt <review-file>` on the copied file
+   to apply the checkout's formatting, including Windows line endings.
+   Commit the updated file to the pull request.
+   Build validates the extracted archive and reports remaining gaps.
+   For local verification, rebuild the installation and run `pnpm binaries:validate <target> <installation>`.
 
-## Releasing
+The maintainer reviewing your pull request decides whether the evidence covers the change.
+Merging into `main` records that approval.
 
-Native releases are published only by the [Release workflow](.github/workflows/release.yml), started manually.
-A release is tagged `native-v<version>`, for example `native-v18.7-r1`, and is never changed after publishing.
-A correction needs the next packaging revision.
+## Development commands
 
-The workflow builds every target in release mode, so each build job unpacks its finished archive
-and runs the native tests and release validation on it before it uploads the archive.
-The release job trusts the archives of its own run and does not unpack them again.
-It checks that every archive belongs to the computed version and to the checkout's source pins and carries a verified review,
-checks that no target is missing, compares the targets,
-writes `SHA256SUMS`, a descriptor with each archive's URL and SHA-256, and the release notes,
-packs the source bundle, attests the build provenance, and publishes the release from a draft.
-The source bundle, `portable-postgres-<version>-sources.tar.gz`, holds the release commit's files
-with the pinned source archives in `binaries/work/downloads/`, where a build from it finds and verifies them,
-so that whoever passes an archive on can also pass on the source it was built from.
-The bundle leaves out build tools. For prerequisites and setup, see [Building native archives](#building-native-archives).
-Creating the bundle requires a clean tracked working tree.
-A release needs the archives of all four targets, each with a verified review.
-Only a run from `main` creates a release.
+### Setup and project checks
 
-The `dry-run` input, enabled by default, builds every target that has a recipe and runs release validation on it,
-without creating a tag or release, so a pending review fails it as it would fail a release.
-A dry run stops after the build jobs.
-To rehearse asset preparation from candidate archives, run `pnpm binaries:release` without `--require-all-targets`.
-Each supplied native ZIP or tarball must belong to the current revision and a supported target,
-even when only one target is supplied.
-A local [act](https://github.com/nektos/act) run covers the same build jobs, release validation included:
+- `pnpm install --frozen-lockfile`: install pinned tools.
+- `pnpm format:check`: check formatting of project-owned files.
+- `pnpm format:fix`: format those files.
+- `pnpm lint`: lint project-owned JavaScript and TypeScript once source files exist.
+- `pnpm build`: compile the private binary build tooling with TypeScript 7.
+- `pnpm typecheck`: check the build tooling and tests.
+- `pnpm test`: run build-tool regression tests.
+- `pnpm check`: run formatting, lint, typecheck, build, and unit checks.
 
-```sh
-act workflow_dispatch -W .github/workflows/release.yml --input dry-run=true --matrix output:linux-x64
-```
+### Source pins and native builds
 
-For a candidate check without release validation, run the Build workflow instead (`-W .github/workflows/build.yml`).
+- `pnpm binaries:update-pins [--summary <file>]`: pin the newest upstream release of every source and set the packaging revision.
+- `pnpm binaries:fetch`: check the SHA-256 of each pinned source archive and download any missing archives.
+- `pnpm binaries:build:linux`: compile and package PostgreSQL inside the [Linux build environment](#linux-x64-and-arm64).
+- `pnpm binaries:assemble:linux`: assemble a fresh Linux runtime from the last development installation.
+- `pnpm binaries:test:linux`: run the Linux native SQL and TAP proofs against the last assembled runtime.
+- `pnpm binaries:test:linux:clean <linux-target> <trusted-archive.tar.gz>`: test a Linux archive in the clean Docker consumer.
+- `pnpm binaries:build:windows`: build and package the Windows candidate with Clang, LLD and MinGW-w64.
+  Set `BUILD_JOBS` to adjust parallel compilation (4 jobs by default).
+- `pnpm binaries:assemble:windows`: reassemble the last matching Windows SDK with current notices and metadata.
+- `pnpm binaries:test:windows`: test the relocated Windows candidate with native SQL and TAP.
+- `pnpm binaries:prune:windows`: preview Windows work directories, their sizes and retention status.
+  Add `--remove <name> [name ...]` to remove selected directories from the preview.
+- `pnpm binaries:build:macos`: build and package the macOS arm64 candidate with the pinned Xcode.
+- `pnpm binaries:assemble:macos`: reassemble the last matching macOS SDK with current notices and metadata.
+- `pnpm binaries:test:macos`: test the relocated macOS candidate with the same native SQL and TAP proof as Linux.
 
-act's artifact server does not accept the artifact upload action this workflow uses, so act cannot hand archives to the release job.
-The release job's checks, checksums, descriptor, and notes are covered by `tests/release.test.ts` instead.
+### Archive verification and review
+
+- `pnpm binaries:verify:archive <archive> <trusted-sha256>`: verify archive bytes before trusting their metadata.
+- `pnpm binaries:validate:candidate <target> <installation>`: check candidate layout, hashes, architecture, and permissions.
+- `pnpm binaries:review <target> [installation] [--output file] [--summary file]`: write a license review draft for the last or given candidate, starting from the tracked review, and list what still blocks a release.
+- `pnpm binaries:validate <target> <installation>`: additionally require reviewed licenses and host prerequisites.
+- `pnpm binaries:compare <installation> <installation>`: report extension versions and files that differ between two targets.

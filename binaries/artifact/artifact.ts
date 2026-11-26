@@ -68,7 +68,7 @@ export type { ArtifactTarget } from "./runtime-layout.ts";
 
 /**
  * glibc's startup sources add the GCC linking exception to the LGPL; SPDX lists glibc's wording of it as a
- * reference text. This is not GCC's own runtime, whose GPL licence stays forbidden.
+ * reference text. This is not GCC's own runtime, whose GPL license stays forbidden.
  */
 const glibcStartupLicense = "LGPL-2.1-or-later WITH GCC-exception-2.0";
 const compilerRtLicense = "Apache-2.0 WITH LLVM-exception";
@@ -88,7 +88,7 @@ const linuxToolchain = [
 /**
  * Toolchain code linked into native images besides the source's own code. Each part has its own review,
  * covering the images to which it contributes. Reviews bind the host evidence naming the toolchain line.
- * A part with a `notice` retains the project's notice or upstream licence texts, which the review binds too.
+ * A part with a `notice` retains the project's notice or upstream license texts, which the review binds too.
  */
 export const toolchainComponents: Record<
   ArtifactTarget,
@@ -212,7 +212,7 @@ const permittedHostLicenses = new Set([
 ]);
 
 /**
- * Licences required for code shipped by each source. Toolchain components have their own required licences,
+ * Licenses required for code shipped by each source. Toolchain components have their own required licenses,
  * and host libraries have a separate allowlist. The `LicenseRef-` texts ship as retained notices.
  */
 export const sourceComponentLicenses: ReadonlyMap<string, readonly string[]> = new Map([
@@ -220,7 +220,7 @@ export const sourceComponentLicenses: ReadonlyMap<string, readonly string[]> = n
     // Henry Spencer's regex package and the Tcl code in regc_locale.c.
     "Spencer-99",
     "TCL",
-    // Ryu (src/common/d2s.c, f2s.c), which PostgreSQL uses under the Boost licence.
+    // Ryu (src/common/d2s.c, f2s.c), which PostgreSQL uses under the Boost license.
     "BSL-1.0",
     // GEQO (src/backend/optimizer/geqo), pg_dump, rbtree.c, and the JIS X 0213 conversion tables.
     "LicenseRef-GEQO-Whitley",
@@ -230,7 +230,7 @@ export const sourceComponentLicenses: ReadonlyMap<string, readonly string[]> = n
   ]],
   // Paul Vixie's cron code and the Berkeley bitstring.h.
   ["pg_cron", ["Vixie-Cron", "BSD-4.3TAHOE"]],
-  // ICU retains its older licence and the IPADIC dictionary's additional terms in its full data library.
+  // ICU retains its older license and the IPADIC dictionary's additional terms in its full data library.
   ["icu", ["ICU", "NAIST-2003"]],
 ]);
 
@@ -579,7 +579,7 @@ const sourceSchema = z.object({
   license: text,
   licenseFile: pathChecked(safePath),
   noticeFiles: z.array(pathChecked(safePath)).exactOptional(),
-  /** Pinned project copies of licence texts that the source needs but does not contain. */
+  /** Pinned project copies of license texts that the source needs but does not contain. */
   projectNotices: z.array(z.object({
     file: pathChecked(safePath),
     origin: text,
@@ -592,7 +592,7 @@ const sourceSchema = z.object({
   notices: z.array(text),
   /**
    * The notice signatures that the build's scan found in the source tree, each with example files. The
-   * source's review component must list exactly these signatures, so new licence text reopens it.
+   * source's review component must list exactly these signatures, so new license text reopens it.
    */
   noticeSignatures: z.array(z.object({
     signature: text,
@@ -698,7 +698,7 @@ export type HostRequirements = z.infer<typeof hostRequirementsSchema>;
 
 /**
  * Every shipped file must be assigned to a reviewed component before release validation can pass.
- * A review stays valid across rebuilds and source updates while the licence texts it read, identified
+ * A review stays valid across rebuilds and source updates while the license texts it read, identified
  * by `noticeSha256`, and the reviewed `toolchain` line of the toolchain component stay the same.
  */
 export const licenseInventorySchema = z.object({
@@ -778,7 +778,7 @@ function validateShape(value: unknown): asserts value is ArtifactManifest {
   const gap = sourceReviewGap(result.data.licenseInventory, ids);
   if (gap !== undefined) throw new Error(errorPrefix + gap);
   // PostgreSQL links ICU, OpenSSL, zlib and LZ4 in every build, and pgcrypto calls OpenSSL and zlib.
-  // A manifest cannot opt out of their runtime and licence checks by leaving out a pin.
+  // A manifest cannot opt out of their runtime and license checks by leaving out a pin.
   for (const id of ["postgresql", "icu", "openssl", "zlib", "lz4"]) {
     requireCondition(ids.has(id), "missing source: " + id);
   }
@@ -799,7 +799,7 @@ export function parseArtifactManifest(json: string): ArtifactManifest {
   return manifest;
 }
 
-/** The SHA-256 of each regular payload file; reviews compare licence notices by these hashes. */
+/** The SHA-256 of each regular payload file; reviews compare license notices by these hashes. */
 export function payloadHashes(manifest: Pick<ArtifactManifest, "files">): Map<string, string> {
   return new Map(
     manifest.files.flatMap(file => file.kind === "file" ? [[file.path, file.sha256]] : []),
@@ -842,7 +842,7 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
       // Only a regular payload file has bytes that the review can bind to a digest.
       const digest = hashes.get(notice);
       requireCondition(digest !== undefined, "missing regular license notice: " + notice);
-      // A source update keeps its review only while the licence texts that the review read are unchanged.
+      // A source update keeps its review only while the license texts that the review read are unchanged.
       requireCondition(
         component.noticeSha256[notice] === digest,
         "license notice changed since review: " + component.id + ": " + notice,
@@ -883,7 +883,7 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
       requireCondition(toolchain.licenses.includes(license),
         "toolchain component " + part.id + " must carry " + license);
     }
-    // Its licence describes only the linked code and the project's notice for it.
+    // Its license describes only the linked code and the project's notice for it.
     for (const file of toolchain.files) {
       requireCondition(
         nativeImages.has(file) || file === part.notice,
@@ -934,7 +934,7 @@ function validateLicenses(manifest: ArtifactManifest, images: string[]): void {
         "missing license notice for " + source.id + ": " + notice,
       );
     }
-    // A permitted licence in its place would pass every other rule and misdescribe the reviewed code.
+    // A permitted license in its place would pass every other rule and misdescribe the reviewed code.
     for (const license of sourceComponentLicenses.get(source.id) ?? []) {
       requireCondition(
         component.licenses.includes(license),
@@ -1221,7 +1221,7 @@ async function inspectArtifact(
       || (file.kind === "file" && await isNativeImage(path))
     ) {
       validateMachine(await readFile(path), expectedTarget, file.path);
-      // A library name alone cannot exempt executable code from the linked-runtime licence review.
+      // A library name alone cannot exempt executable code from the linked-runtime license review.
       if (isIcuDataLibrary(file.path, expectedTarget)
         && expectedTarget !== "macos-arm64")
       {

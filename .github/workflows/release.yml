@@ -31,9 +31,6 @@ jobs:
   build:
     ###########################################################
     uses: ./.github/workflows/build.yml
-    with:
-      # Every build job runs release validation and uploads its archive, which the release job downloads.
-      validation: release
 
   ###########################################################
   release:

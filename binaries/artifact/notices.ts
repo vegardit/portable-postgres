@@ -5,7 +5,7 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Names and copies the upstream licence notices that belong to the runtime payload. */
+/** Names and copies the upstream license notices that belong to the runtime payload. */
 import { createHash } from "node:crypto";
 import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -14,7 +14,7 @@ import { root } from "../paths.ts";
 import { sources } from "../sources/sources.ts";
 
 /**
- * Where the repository keeps the licence texts that a source needs but does not contain, such as Unicode's licence
+ * Where the repository keeps the license texts that a source needs but does not contain, such as Unicode's license
  * for the tables PostgreSQL generates from Unicode data. `sources.json` pins each one (`projectNotices`) by SHA-256.
  */
 export const projectNoticeRoot = join(root, "binaries/sources/notices");
@@ -154,7 +154,7 @@ export async function verifyNoticeAnchors(
   }
 }
 
-/** Header files retained for their licence text use a text suffix because the runtime excludes SDK headers. */
+/** Header files retained for their license text use a text suffix because the runtime excludes SDK headers. */
 export function additionalNoticeName(sourceId: string, file: string): string {
   return sourceId + "-" + file.replaceAll("/", "-") + (/\.h$/i.test(file) ? ".txt" : "");
 }

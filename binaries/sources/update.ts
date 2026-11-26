@@ -6,15 +6,14 @@
  */
 
 /** Finds newer upstream releases for the pinned sources and records their URLs, digests, and packaging revision. */
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rmdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import * as z from "zod";
 import { writeJson } from "../files.ts";
 import { root, workRoot } from "../paths.ts";
 import { capture } from "../process.ts";
-import { downloadArchive } from "./sources.ts";
-import { compareVersions } from "./version.ts";
+import { compareVersions } from "./compare-versions.ts";
 
 /** Where a source's releases come from; the archive URL is derived from it and the chosen version. */
 export type Upstream =
@@ -184,6 +183,8 @@ export async function downloadReleaseDigest(
     if (!expectedSha256) throw new Error("Missing or invalid release asset SHA-256 for " + url);
   }
   // Only GitHub's generated tag archives have no published digest to check.
+  // The downloader also imports the checkout's pins. Load it only after the CLI holds the update lock.
+  const { downloadArchive } = await import("./sources.ts");
   return (await downloadArchive(downloads, source.id, url, expectedSha256)).sha256;
 }
 
@@ -214,9 +215,7 @@ export async function writeUpdate(
   await writeJson(paths.sources, update.sources);
 }
 
-if (import.meta.main) {
-  // Strict parsing: a misspelled flag must fail the scheduled update, not silently drop its summary.
-  const summaryPath = parseArgs({ options: { summary: { type: "string" } } }).values.summary;
+async function updateCheckout(summaryPath: string | undefined): Promise<void> {
   const sourcesPath = pinFiles.sources;
   const revisionPath = pinFiles.revision;
   const inputs = JSON.parse(await readFile(sourcesPath, "utf8")) as PinnedSource[];
@@ -253,13 +252,35 @@ if (import.meta.main) {
       ...changes.map(change => `| ${change.id} | ${change.from} | ${change.to} |`),
       "",
       "The build checks that every target still compiles and passes the native tests.",
-      "Its job summary lists reopened licence reviews and up to 20 notice signature changes per component.",
+      "Its job summary lists reopened license reviews and up to 20 notice signature changes per component.",
       "Compare each uploaded review draft with the target's tracked review to see every change.",
       "Check each updated source's release notes for bundled code that brings no new detected notice.",
-      "Check the reopened parts before the next release, then approve them with",
-      "`pnpm binaries:approve <target> <run-id>` on this branch, as described in CONTRIBUTING.md.",
+      "Update the target review files on this pull request and check the new evidence before merging.",
+      "See the license review instructions in CONTRIBUTING.md.",
     ].join("\n") + "\n";
     console.log(summary);
     if (summaryPath) await writeFile(summaryPath, summary);
+  }
+}
+
+if (import.meta.main) {
+  // Strict parsing: a misspelled flag must fail the scheduled update, not silently drop its summary.
+  const summaryPath = parseArgs({ options: { summary: { type: "string" } } }).values.summary;
+  const lock = join(workRoot, "update-pins.lock");
+  await mkdir(workRoot, { recursive: true });
+  // The revision depends on both original files. Reserve the checkout before reading either one.
+  try {
+    await mkdir(lock);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    throw new Error(
+      `Another source update holds ${lock}. If the updater was interrupted, confirm it has stopped before removing the lock and retrying.`,
+      { cause: error },
+    );
+  }
+  try {
+    await updateCheckout(summaryPath);
+  } finally {
+    await rmdir(lock);
   }
 }

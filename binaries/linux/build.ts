@@ -179,7 +179,7 @@ export async function build(command: string | undefined): Promise<void> {
 
 /**
  * Describes the compiler and glibc that the build linked into every image. It runs right after compiling,
- * in the build container, because the licence reviews of their linked code are bound to these lines.
+ * in the build container, because the license reviews of their linked code are bound to these lines.
  */
 function measureToolchain(): HostEvidence[] {
   const libc = capture("getconf", ["GNU_LIBC_VERSION"]).trim();

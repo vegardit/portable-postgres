@@ -6,7 +6,7 @@
  */
 
 /** Checks that review drafts cover every shipped file and that tracked reviews reach the release gate. */
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -15,7 +15,6 @@ import {
   validateArtifact,
 } from "../binaries/artifact/artifact.ts";
 import {
-  approveReview,
   type Draft,
   draftReview,
   mergeReview,
@@ -24,9 +23,9 @@ import {
   releaseReviewGap,
   type Review,
   reviewCandidate,
+  reviewFileFor,
 } from "../binaries/artifact/review.ts";
 import { noticeSignatureExamples } from "../binaries/artifact/notice-scan.ts";
-import { writeJson } from "../binaries/files.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import {
   complete,
@@ -65,7 +64,7 @@ async function windowsDraft(
   return draftReview(installation, "windows-x64");
 }
 
-it("requires the licences of all bundled MinGW runtime contributions", async () => {
+it("requires the licenses of all bundled MinGW runtime contributions", async () => {
   const installation = await directory();
   const review = complete((await windowsDraft(installation)).review);
   const runtime = review.licenseInventory.components.find(part => part.id === "mingw-runtime")!;
@@ -120,7 +119,7 @@ async function draftAndRelease(target: ArtifactTarget): Promise<Review> {
   const manifest = await createCandidate(candidate, target, { hostEvidence: hostEvidence[target] });
   const { review: draft } = await draftReview(candidate, target);
 
-  // Every payload path needs a component, and licences stay empty until a person reviews them.
+  // Every payload path needs a component, and licenses stay empty until a person reviews them.
   const covered = new Set(draft.licenseInventory.components.flatMap(component => component.files));
   expect(manifest.files.filter(file => !covered.has(file.path))).toEqual([]);
   expect(draft.licenseInventory.status).toBe("pending");
@@ -128,7 +127,7 @@ async function draftAndRelease(target: ArtifactTarget): Promise<Review> {
     expect(component).toMatchObject({ licenses: [], evidence: [], status: "pending" });
   }
 
-  // A review reads the shipped licence texts and the toolchain line, so the draft records both.
+  // A review reads the shipped license texts and the toolchain line, so the draft records both.
   for (const component of draft.licenseInventory.components) {
     expect(Object.keys(component.noticeSha256)).toEqual(component.notices);
   }
@@ -153,11 +152,11 @@ async function releaseCandidate(
   options: { hostEvidence: HostEvidence[]; files?: Record<string, string> },
 ): Promise<string> {
   const reviewFile = join(await directory(), "review.json");
-  await writeFile(reviewFile, JSON.stringify(review));
+  await writeFile(reviewFile, JSON.stringify({ target, ...review }));
   const release = await directory();
   await createCandidate(release, target, {
     ...options,
-    trackedReview: (await readTrackedReview(reviewFile))!,
+    trackedReview: (await readTrackedReview(reviewFile, target))!.review,
   });
   return release;
 }
@@ -207,6 +206,30 @@ it.skipIf(process.platform === "win32")(
         measured: true,
       },
     ]);
+  },
+  twoCandidates,
+);
+
+it.skipIf(process.platform === "win32")(
+  "a changed glibc requirement stays pending in a review file copied from the draft",
+  async () => {
+    const target = "linux-x64-glibc";
+    const first = await directory();
+    await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
+    const tracked = complete((await draftReview(first, target)).review);
+    const changed = await directory();
+    await createCandidate(changed, target, {
+      hostEvidence: remeasured(hostEvidence[target], target, "GLIBC_2.38"),
+    });
+    const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
+    expect(changes).toEqual(["host requirements: glibc now requires GLIBC_2.38 or newer"]);
+    expect(review.hostRequirements.libraries).toEqual([
+      expect.objectContaining({ requirement: "GLIBC_2.38 or newer", license: "LGPL-2.1-or-later" }),
+    ]);
+    // The evidence described the earlier minimum, so the copied draft must not verify itself.
+    const copied =
+      parseReview(JSON.stringify(reviewFileFor(target, review)), "review.json", target).review;
+    expect(copied.hostRequirements.status).toBe("pending");
   },
   twoCandidates,
 );
@@ -262,7 +285,7 @@ it(
     await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
     const tracked = complete((await draftReview(first, target)).review);
 
-    // A rebuild with the same licence texts, such as most source updates, keeps the whole review.
+    // A rebuild with the same license texts, such as most source updates, keeps the whole review.
     const same = await directory();
     await createCandidate(same, target, { hostEvidence: hostEvidence[target] });
     expect(mergeReview(await draftReview(same, target), tracked)).toEqual({
@@ -270,18 +293,18 @@ it(
       changes: [],
     });
 
-    // A changed licence text and host library each reopen exactly what they affect.
+    // A changed license text and host library each reopen exactly what they affect.
     const changedEvidence = remeasured(
       hostEvidence[target],
       target,
       "kernel32.dll, advapi32.dll",
     );
-    const files = { "notices/pgvector.txt": "a changed licence text" };
+    const files = { "notices/pgvector.txt": "a changed license text" };
     const changed = await directory();
     await createCandidate(changed, target, { hostEvidence: changedEvidence, files });
     const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
     expect(changes).toEqual([
-      "pgvector: licence notice changed: notices/pgvector.txt",
+      "pgvector: license notice changed: notices/pgvector.txt",
       "host requirements: libraries added: advapi32.dll",
     ]);
     const pending = review.licenseInventory.components.filter(component =>
@@ -289,7 +312,7 @@ it(
     );
     expect(pending.map(component => component.id)).toEqual(["pgvector"]);
     for (const component of pending) {
-      // The previous licences are a starting point; the evidence must be written again.
+      // The previous licenses are a starting point; the evidence must be written again.
       expect(component).toMatchObject({ licenses: ["MIT"], evidence: [] });
     }
     expect(review.licenseInventory.status).toBe("pending");
@@ -333,7 +356,7 @@ it(
     await createCandidate(changed, target, { hostEvidence: newLine, files });
     const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
     expect(changes).toEqual([
-      "mingw-runtime: licence notice changed: notices/mingw-runtime.txt",
+      "mingw-runtime: license notice changed: notices/mingw-runtime.txt",
       "mingw-runtime: toolchain changed from fixture-1 to fixture-2",
     ]);
 
@@ -377,14 +400,14 @@ it(
     const release = await releaseCandidate(tracked, target, { hostEvidence: hostEvidence[target] });
     await expect(validateArtifact(release, target)).resolves.toMatchObject({ target });
 
-    // A changed licence text reopens it with its licences as a starting point and no evidence.
-    const files = { "notices/pgvector.txt": "a changed licence text" };
+    // A changed license text reopens it with its licenses as a starting point and no evidence.
+    const files = { "notices/pgvector.txt": "a changed license text" };
     const changed = await directory();
     await createCandidate(changed, target, { hostEvidence: hostEvidence[target], files });
     const reopened = mergeReview(await draftReview(changed, target), tracked);
     expect(reopened.changes).toEqual([
-      "pgvector: licence notice changed: notices/pgvector.txt",
-      "bundled-code: licence notice changed: notices/pgvector.txt",
+      "pgvector: license notice changed: notices/pgvector.txt",
+      "bundled-code: license notice changed: notices/pgvector.txt",
     ]);
     expect(
       reopened.review.licenseInventory.components.find(component =>
@@ -393,11 +416,12 @@ it(
     ).toMatchObject({ status: "pending", licenses: ["MIT"], evidence: [] });
 
     // Files that no longer ship are removed from it; a component with none left is dropped.
-    tracked.licenseInventory.components.push(
-      handAdded("partly-retired", ["lib/vector.dll", "lib/retired.dll"]),
-      handAdded("retired", ["lib/retired.dll"]),
-    );
-    const { review, changes } = mergeReview(await draftReview(first, target), tracked);
+    const current = await draftReview(first, target);
+    tracked.licenseInventory.components.push(handAdded("retired", ["lib/retired.dll"]));
+    expect(mergeReview(current, tracked).review.licenseInventory.status).toBe("pending");
+    tracked.licenseInventory.components.splice(-1, 0,
+      handAdded("partly-retired", ["lib/vector.dll", "lib/retired.dll"]));
+    const { review, changes } = mergeReview(current, tracked);
     expect(changes).toEqual([
       "partly-retired: files removed: lib/retired.dll",
       "retired: no longer shipped",
@@ -424,7 +448,7 @@ it.each([
     const first = await directory();
     const manifest = await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
     const tracked = complete((await draftReview(first, target)).review);
-    // A reviewer cites the licence header of an SQL script, which no draft lists as a notice.
+    // A reviewer cites the license header of an SQL script, which no draft lists as a notice.
     const components = tracked.licenseInventory.components;
     const drafted = components.find(component => component.id === id);
     if (drafted) {
@@ -451,11 +475,11 @@ it.each([
     await expect(validateArtifact(release, target)).resolves.toMatchObject({ target });
 
     // A changed script reopens the component that cites it, and only that one, which still cites it.
-    const files = { [script]: "a changed licence header" };
+    const files = { [script]: "a changed license header" };
     const changed = await directory();
     await createCandidate(changed, target, { hostEvidence: hostEvidence[target], files });
     const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
-    expect(changes).toEqual([id + ": licence notice changed: " + script]);
+    expect(changes).toEqual([id + ": license notice changed: " + script]);
     expect(review.licenseInventory.components.find(component => component.id === id))
       .toMatchObject({
         status: "pending",
@@ -645,6 +669,14 @@ it(
   3 * twoCandidates,
 );
 
+/** Round-trips the generated file for a legacy review with explicit decisions. */
+function rereadLegacyDraft(previous: Review, merged: Review): Review {
+  const target = "windows-x64";
+  const tracked = parseReview(JSON.stringify({ target, ...previous }), "review.json", target);
+  const file = reviewFileFor(target, merged, tracked.file);
+  return parseReview(JSON.stringify(file), "copied.json", target).review;
+}
+
 it("a draft reports a tracked review that was never approved as a whole", async () => {
   const candidate = await directory();
   await createCandidate(candidate, "windows-x64", { hostEvidence: hostEvidence["windows-x64"] });
@@ -652,7 +684,8 @@ it("a draft reports a tracked review that was never approved as a whole", async 
   tracked.licenseInventory.status = "pending";
   const { review, changes } = mergeReview(await draftReview(candidate, "windows-x64"), tracked);
   expect(review.licenseInventory.status).toBe("pending");
-  expect(changes).toEqual(["licence inventory: not verified yet"]);
+  expect(changes).toEqual(["license inventory: not verified yet"]);
+  expect(rereadLegacyDraft(tracked, review).licenseInventory.status).toBe("pending");
 });
 
 it("an unchanged component that is still pending keeps the evidence written so far", async () => {
@@ -664,12 +697,18 @@ it("an unchanged component that is still pending keeps the evidence written so f
     component.id === "pgvector"
   )!;
   pgvector.status = "pending";
-  pgvector.evidence = ["Compared the licence files of both releases"];
+  pgvector.evidence = ["Compared the license files of both releases"];
   const { review, changes } = mergeReview(await draftReview(candidate, "windows-x64"), tracked);
   expect(changes).toEqual(["pgvector: not verified yet"]);
   expect(review.licenseInventory.status).toBe("pending");
   expect(review.licenseInventory.components.find(component => component.id === "pgvector"))
     .toEqual(pgvector);
+  expect(
+    rereadLegacyDraft(tracked, review).licenseInventory.components.find(part =>
+      part.id === "pgvector"
+    ),
+  )
+    .toMatchObject({ status: "pending", evidence: pgvector.evidence });
 });
 
 it(
@@ -705,8 +744,8 @@ it(
     // The merge would keep the first entry and drop this one, and report that the review still matches.
     tracked.licenseInventory.components.push({ ...pgvector, evidence: ["another review"] });
     const reviewFile = join(await directory(), "review.json");
-    await writeFile(reviewFile, JSON.stringify(tracked));
-    await expect(readTrackedReview(reviewFile)).rejects.toThrow(
+    await writeFile(reviewFile, JSON.stringify({ target, ...tracked }));
+    await expect(readTrackedReview(reviewFile, target)).rejects.toThrow(
       "duplicate license component: pgvector",
     );
   },
@@ -714,7 +753,7 @@ it(
 );
 
 it(
-  "pending host requirements stay unresolved in the manifest while the reviewed licences still count",
+  "pending host requirements stay unresolved in the manifest while the reviewed licenses still count",
   async () => {
     const target = "windows-x64";
     const first = await directory();
@@ -730,6 +769,7 @@ it(
     });
     expect(manifest.hostRequirements).toBeNull();
     expect(manifest.licenseInventory).toEqual(reviewed.licenseInventory);
+    expect(rereadLegacyDraft(trackedReview, trackedReview).hostRequirements.status).toBe("pending");
   },
   twoCandidates,
 );
@@ -761,16 +801,34 @@ it(
   twoCandidates,
 );
 
+it("requires the target in a saved review to match the requested Linux architecture", () => {
+  const review = {
+    licenseInventory: { components: [] },
+    hostRequirements: { os: "", cpu: "", libraries: [] },
+  };
+  const read = (file: unknown) =>
+    parseReview(JSON.stringify(file), "review.json", "linux-x64-glibc");
+  expect(() => read({ ...review, target: "linux-arm64-glibc" })).toThrow(
+    /linux-arm64-glibc.*linux-x64-glibc/,
+  );
+  expect(() => read(review)).toThrow(/target/);
+  expect(read({ ...review, target: "linux-x64-glibc" }).review.licenseInventory.status).toBe(
+    "pending",
+  );
+});
+
 it("a missing review file reads as none, and a malformed one is refused", async () => {
   const reviewFile = join(await directory(), "review.json");
-  await expect(readTrackedReview(reviewFile)).resolves.toBeUndefined();
+  const target = "windows-x64";
+  const read = () => readTrackedReview(reviewFile, target);
+  await expect(read()).resolves.toBeUndefined();
 
   const pending: Review = {
     licenseInventory: { status: "pending", components: [] },
     hostRequirements: { status: "pending", os: "", cpu: "", libraries: [] },
   };
-  await writeFile(reviewFile, JSON.stringify(pending));
-  await expect(readTrackedReview(reviewFile)).resolves.toEqual(pending);
+  await writeFile(reviewFile, JSON.stringify({ target, ...pending }));
+  expect((await read())!.review).toEqual(pending);
 
   // A measured flag that is not a boolean would mark a measured library as one that a reviewer added.
   const library = {
@@ -783,11 +841,12 @@ it("a missing review file reads as none, and a malformed one is refused", async 
   await writeFile(
     reviewFile,
     JSON.stringify({
+      target,
       ...pending,
       hostRequirements: { ...pending.hostRequirements, libraries: [library] },
     }),
   );
-  await expect(readTrackedReview(reviewFile)).rejects.toThrow(
+  await expect(read()).rejects.toThrow(
     "invalid measured flag: kernel32.dll",
   );
 
@@ -796,6 +855,7 @@ it("a missing review file reads as none, and a malformed one is refused", async 
   await writeFile(
     reviewFile,
     JSON.stringify({
+      target,
       ...pending,
       hostRequirements: {
         ...pending.hostRequirements,
@@ -803,17 +863,33 @@ it("a missing review file reads as none, and a malformed one is refused", async 
       },
     }),
   );
-  await expect(readTrackedReview(reviewFile)).rejects.toThrow("duplicate host library: GLIBC");
+  await expect(read()).rejects.toThrow("duplicate host library: GLIBC");
 
-  await writeFile(reviewFile, JSON.stringify({ licenseInventory: pending.licenseInventory }));
-  await expect(readTrackedReview(reviewFile)).rejects.toThrow("must contain licenseInventory");
+  await writeFile(reviewFile,
+    JSON.stringify({ target, licenseInventory: pending.licenseInventory }));
+  await expect(read()).rejects.toThrow("must contain licenseInventory");
 });
 
-it("new or vanished licence text in a source tree reopens that source's review and says where", async () => {
+it("new or vanished license text in a source tree reopens that source's review and says where", async () => {
   const target = "windows-x64";
   const first = await directory();
   await createCandidate(first, target, { hostEvidence: fixtureEvidence(target) });
   const tracked = complete((await draftReview(first, target)).review);
+
+  const evidence = reviewFileFor(target, tracked);
+  expect(JSON.stringify(evidence)).not.toContain('"status":');
+  const roundTrip = parseReview(JSON.stringify(evidence), "review.json", target).review;
+  expect(roundTrip).toEqual({
+    ...tracked,
+    licenseInventory: {
+      ...tracked.licenseInventory,
+      components: tracked.licenseInventory.components.map(part => ({
+        ...part,
+        licenses: part.licenses.toSorted(),
+        files: part.files.toSorted(),
+      })),
+    },
+  });
 
   const vixie =
     "Copyright YYYY by Paul Vixie | May be sold if buildable source is provided to buyer";
@@ -824,13 +900,14 @@ it("new or vanished licence text in a source tree reopens that source's review a
     hostEvidence: fixtureEvidence(target),
     noticeSignatures: noticeSignatureExamples(scan),
   });
-  const { review, changes } = mergeReview(await draftReview(changed, target), tracked);
+  const current = await draftReview(changed, target);
+  const { review, changes } = mergeReview(current, tracked);
   // Three example files point the reviewer to the new text.
   expect(changes).toEqual([
-    `pg_cron: licence text added: ${
+    `pg_cron: license text added: ${
       JSON.stringify(vixie)
     } in src/entry.c, src/misc.c, include/cron.h`,
-    'pg_cron: licence text gone: "Copyright (c) YYYY pg_cron fixture authors"',
+    'pg_cron: license text gone: "Copyright (c) YYYY pg_cron fixture authors"',
   ]);
   const pending = review.licenseInventory.components.filter(component =>
     component.status === "pending"
@@ -842,214 +919,36 @@ it("new or vanished licence text in a source tree reopens that source's review a
     licenses: ["MIT", "Vixie-Cron", "BSD-4.3TAHOE"],
   });
 
+  // A reviewer added links after the first draft. Regenerating must use the latest tracked file.
+  Object.assign(evidence, { reviewLink: "root" });
+  Object.assign(evidence.licenseInventory, { reviewLink: "inventory" });
+  Object.assign(evidence.licenseInventory.components.find(part => part.id === "pg_cron")!, {
+    reviewLink: "cron",
+  });
+  Object.assign(evidence.hostRequirements, { reviewLink: "host" });
+  Object.assign(evidence.hostRequirements.libraries[0]!, { reviewLink: "library" });
+  const latest = parseReview(JSON.stringify(evidence), "review.json", target);
+  const regenerated = mergeReview(current, latest.review).review;
+  const edited = reviewFileFor(target, regenerated, latest.file);
+  expect(edited).toMatchObject({
+    reviewLink: "root",
+    licenseInventory: { reviewLink: "inventory" },
+    hostRequirements: { reviewLink: "host" },
+  });
+  expect(edited.hostRequirements.libraries[0]).toHaveProperty("reviewLink", "library");
+  expect(edited.licenseInventory.components.find(part => part.id === "pg_cron"))
+    .toMatchObject({ reviewLink: "cron", noticeSignatures: [vixie], evidence: [] });
+  // Copying a reopened draft cannot satisfy the gate until its missing evidence is supplied.
+  const copiedStatus = () =>
+    parseReview(JSON.stringify(edited), "review.json", target).review.licenseInventory.status;
+  expect(copiedStatus()).toBe("pending");
+  edited.licenseInventory.components.find(part => part.id === "pg_cron")!.evidence.push(
+    "Reviewed the changed cron notices.",
+  );
+  expect(copiedStatus()).toBe("verified");
+
   delete tracked.licenseInventory.components.find(component => component.id === "postgresql")!
     .noticeSignatures;
-  expect(() => parseReview(JSON.stringify(tracked), "review.json"))
+  expect(() => parseReview(JSON.stringify({ target, ...tracked }), "review.json", target))
     .toThrow("missing reviewed notice signatures for source: postgresql");
-});
-
-/** A review whose parts are all filled in but not approved yet, as a reviewer hands it over. */
-function pendingAgain(review: Review): Review {
-  return {
-    licenseInventory: {
-      status: "pending",
-      components: review.licenseInventory.components.map(component => ({
-        ...component,
-        status: "pending",
-      })),
-    },
-    hostRequirements: { ...review.hostRequirements, status: "pending" },
-  };
-}
-
-it(
-  "approving a filled review verifies every pending part, and a build of it passes the release gate",
-  async () => {
-    const target = "windows-x64";
-    const first = await directory();
-    await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
-    const filled = pendingAgain(complete((await draftReview(first, target)).review));
-    expect.soft(() => approveReview(filled, filled, { date: "2026-11-22", note: "First review." }))
-      .toThrow(/--note/);
-    const { review, approved } = approveReview(filled, filled, { date: "2026-11-22" });
-    expect(review.licenseInventory.status).toBe("verified");
-    for (const component of review.licenseInventory.components) {
-      expect(component.status).toBe("verified");
-    }
-    expect(review.hostRequirements.status).toBe("verified");
-    // The evidence that the reviewer wrote stays as it is.
-    expect(review.licenseInventory.components.map(component => component.evidence)).toEqual(
-      filled.licenseInventory.components.map(component => component.evidence),
-    );
-    expect(approved).toContain("pgvector: MIT");
-    expect(approved.slice(-2)).toEqual([
-      "licence inventory: as a whole",
-      "host requirements: 2 libraries",
-    ]);
-    // An approved review has nothing left to approve.
-    expect(approveReview(review, review, { date: "2026-11-23" })).toEqual({ review, approved: [] });
-
-    // A pending component must not hide manual edits to parts that still carry a verified status.
-    const edited = structuredClone(review);
-    const postgres = edited.licenseInventory.components.find(part => part.id === "postgresql")!;
-    postgres.files.push("lib/vector.dll");
-    edited.licenseInventory.components.find(part => part.id === "pgvector")!.status = "pending";
-    edited.hostRequirements.libraries.push({
-      name: "mswsock.dll",
-      requirement: "Windows",
-      license: "LicenseRef-Microsoft-Windows",
-      evidence: "Loaded by the native proof",
-    });
-    expect.soft(approveReview(edited, review, { date: "2026-11-23" }).approved).toEqual([
-      "postgresql: " + postgres.licenses.join(", ") + ", accepting files added: lib/vector.dll",
-      "pgvector: MIT",
-      "host requirements: 3 libraries, accepting libraries added: mswsock.dll",
-    ]);
-    expect(approveReview(review, edited, { date: "2026-11-23" }).approved)
-      .toContain("host requirements: 2 libraries, accepting libraries removed: mswsock.dll");
-
-    const release = await releaseCandidate(review, target, { hostEvidence: hostEvidence[target] });
-    await expect(validateArtifact(release, target)).resolves.toMatchObject({ target });
-  },
-  twoCandidates,
-);
-
-it(
-  "approving a draft keeps the evidence of a reopened component and records what it accepted",
-  async () => {
-    const target = "windows-x64";
-    const first = await directory();
-    await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
-    const tracked = complete((await draftReview(first, target)).review);
-    const files = { "notices/pgvector.txt": "a changed licence text" };
-    const changed = await directory();
-    await createCandidate(changed, target, { hostEvidence: hostEvidence[target], files });
-    const { review: draft } = mergeReview(await draftReview(changed, target), tracked);
-
-    // A previously generated draft can lack metadata added to the tracked review.
-    const previousVector = tracked.licenseInventory.components.find(part =>
-      part.id === "pgvector"
-    )!;
-    Object.assign(tracked, { reviewLink: "root" });
-    Object.assign(tracked.licenseInventory, { reviewLink: "inventory" });
-    Object.assign(previousVector, { reviewLink: "component" });
-    const edited = structuredClone(draft);
-    const vector = edited.licenseInventory.components.find(part => part.id === "pgvector")!;
-    vector.licenses = ["BSD-3-Clause"];
-    expect.soft(() => approveReview(edited, tracked, { date: "2026-11-22" })).toThrow(
-      /pgvector.*evidence/,
-    );
-    vector.evidence = ["The reviewer read the replacement BSD grant."];
-    const baseline = structuredClone(tracked);
-    baseline.licenseInventory.components.push({
-      ...previousVector,
-      id: "retired",
-      files: ["lib/vector.dll", "lib/gone.dll"],
-    });
-    Object.assign(baseline.hostRequirements, { reviewLink: "host" });
-    Object.assign(baseline.hostRequirements.libraries[0]!, { reviewLink: "library" });
-    delete edited.hostRequirements.libraries[0]!.measured;
-    const { review: reviewedEdit, approved: edits } = approveReview(edited, baseline, {
-      date: "2026-11-22",
-    });
-    expect.soft(edits).toContain("retired: removed from the review; still listed: lib/vector.dll");
-    expect(reviewedEdit.licenseInventory.components.map(part => part.id)).not.toContain("retired");
-    expect(reviewedEdit.hostRequirements).toHaveProperty("reviewLink", "host");
-    expect(reviewedEdit.hostRequirements.libraries[0]).toHaveProperty("reviewLink", "library");
-    expect(reviewedEdit.hostRequirements.libraries[0]).not.toHaveProperty("measured");
-    expect(reviewedEdit.licenseInventory.components.find(part => part.id === "pgvector"))
-      .toMatchObject({
-        status: "verified",
-        licenses: vector.licenses,
-        evidence: vector.evidence,
-        noticeSha256: vector.noticeSha256,
-      });
-
-    const { review, approved } = approveReview(draft, tracked, {
-      date: "2026-11-22",
-      source: "Build run 7 at abc1234",
-      note: "Only the year changed.",
-    });
-    expect(approved).toEqual([
-      "pgvector: MIT, accepting licence notice changed: notices/pgvector.txt",
-      "licence inventory: as a whole",
-    ]);
-    expect.soft(review).toMatchObject({
-      reviewLink: "root",
-      licenseInventory: { reviewLink: "inventory" },
-    });
-    expect.soft(review.licenseInventory.components.find(part => part.id === "pgvector"))
-      .toMatchObject({ reviewLink: "component" });
-    expect(review.licenseInventory.components.find(component => component.id === "pgvector"))
-      .toMatchObject({
-        status: "verified",
-        licenses: ["MIT"],
-        evidence: [
-          "Owned contract-test fixture",
-          "2026-11-22, Build run 7 at abc1234: accepted licence notice changed: notices/pgvector.txt."
-          + " Only the year changed.",
-        ],
-      });
-    // The next build of the same inputs keeps the approved review, and the release gate accepts it.
-    expect(mergeReview(await draftReview(changed, target), review).changes).toEqual([]);
-    const release = await releaseCandidate(review, target, {
-      hostEvidence: hostEvidence[target],
-      files,
-    });
-    await expect(validateArtifact(release, target)).resolves.toMatchObject({ target });
-  },
-  2 * twoCandidates,
-);
-
-it(
-  "approval refuses every part that needs a reviewer's judgement at once",
-  async () => {
-    const target = "windows-x64";
-    const first = await directory();
-    await createCandidate(first, target, { hostEvidence: hostEvidence[target] });
-    const tracked = complete((await draftReview(first, target)).review);
-    // pg_cron was never reviewed, and the build now imports a library that the review does not know.
-    tracked.licenseInventory.components = tracked.licenseInventory.components.filter(component =>
-      component.id !== "pg_cron"
-    );
-    const changedEvidence = remeasured(
-      hostEvidence[target],
-      target,
-      "kernel32.dll, advapi32.dll",
-    );
-    const changed = await directory();
-    await createCandidate(changed, target, { hostEvidence: changedEvidence });
-    const { review: draft } = mergeReview(await draftReview(changed, target), tracked);
-
-    expect(() => approveReview(draft, tracked, { date: "2026-11-22" })).toThrow(
-      [
-        "These parts need a review before they can be approved:",
-        "- pg_cron: no licences yet",
-        "- host requirements: advapi32.dll has no requirement, license, evidence yet",
-      ].join("\n"),
-    );
-    const incomplete = structuredClone(tracked);
-    const vector = incomplete.licenseInventory.components.find(part => part.id === "pgvector")!;
-    vector.evidence = [];
-    incomplete.hostRequirements.libraries[0]!.evidence = "";
-    const approve = () => approveReview(incomplete, tracked, { date: "2026-11-22" });
-    expect.soft(approve).toThrow(/pgvector.*evidence/);
-    expect.soft(approve).toThrow(/host requirements: .*evidence/);
-  },
-  twoCandidates,
-);
-
-it("an approval saves only the review bytes it confirmed, including when two approvals overlap", async () => {
-  const path = join(await directory(), "review.json");
-  const original = "{}\r\n";
-  const corrected = '{"corrected":true}\r\n';
-  await writeFile(path, corrected);
-  await expect(writeJson(path, { stale: true }, original)).rejects.toThrow(/changed/);
-  await expect(readFile(path, "utf8")).resolves.toBe(corrected);
-  const outcomes = await Promise.allSettled(
-    [1, 2].map(approval => writeJson(path, { approval }, corrected)),
-  );
-  expect(outcomes.filter(result => result.status === "fulfilled")).toHaveLength(1);
-  const winner = outcomes.findIndex(result => result.status === "fulfilled") + 1;
-  await expect(readFile(path, "utf8")).resolves.toBe(`{\r\n  "approval": ${winner}\r\n}\r\n`);
 });

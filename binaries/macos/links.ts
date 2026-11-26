@@ -53,7 +53,7 @@ export function mapInputs(map: string): string[] | undefined {
  * refuses any input that comes neither from the build's work directory nor is a library stub. A stub
  * (`.tbd`) names a dynamic library and adds no code; that library then surfaces as a host import. Any other
  * input from outside the build, such as compiler-rt's static builtins, would be toolchain code that no
- * licence review covers (`toolchainComponents` in artifact.ts lists none for macOS).
+ * license review covers (`toolchainComponents` in artifact.ts lists none for macOS).
  * During packaging, candidateImages is the complete image list for this assembly.
  */
 export async function auditLinks(
@@ -89,7 +89,7 @@ export async function auditLinks(
   }
   if (foreign.size > 0) {
     throw new Error(
-      "A link copied code from outside the build that no licence review covers:\n"
+      "A link copied code from outside the build that no license review covers:\n"
         + [...foreign].sort().join("\n"),
     );
   }

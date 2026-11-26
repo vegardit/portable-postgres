@@ -52,6 +52,19 @@
     ],
     "projectNotices": [
       {
+        "file": "freebsd-crypt-md5.txt",
+        "origin": "https://github.com/freebsd/freebsd-src/commit/d8e82636a47b (BSD-2-Clause grant for lib/libcrypt/crypt-md5.c)",
+        "covers": "The FreeBSD implementation in contrib/pgcrypto/crypt-md5.c",
+        "sha256": "afb159f394ca4cbed5c26d0529a23a0a59564b5c6441571eb408ecab0250e6c4",
+        "anchors": [
+          {
+            "file": "contrib/pgcrypto/crypt-md5.c",
+            "match": "File imported from FreeBSD",
+            "text": " * File imported from FreeBSD, original by Poul-Henning Kamp."
+          }
+        ]
+      },
+      {
         "file": "unicode-license-v3.txt",
         "origin": "https://www.unicode.org/license.txt (retrieved 2026-11-21)",
         "covers": "Unicode data in PostgreSQL's Unicode tables (UCD 16.0), encoding conversion maps (Unicode mapping files, ICU data), and the unaccent rules in share/tsearch_data (UCD, CLDR Latin-ASCII transform)",

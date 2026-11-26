@@ -1,145 +1,28 @@
 {
+  "target": "windows-x64",
   "licenseInventory": {
-    "status": "pending",
     "components": [
       {
         "id": "postgresql",
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / c97bbc54e1e162fc44b8d1ca5f143315b25c9d5901dd7e31111298c5c65d7ecf",
         "licenses": [
-          "PostgreSQL",
+          "BSD-2-Clause",
           "BSD-3-Clause",
-          "ISC",
-          "MIT",
-          "Unicode-3.0",
-          "LicenseRef-Public-Domain",
-          "LicenseRef-IANA-tzdata",
-          "Spencer-99",
-          "TCL",
           "BSL-1.0",
+          "ISC",
           "LicenseRef-GEQO-Whitley",
+          "LicenseRef-IANA-tzdata",
+          "LicenseRef-Public-Domain",
+          "LicenseRef-X0213",
           "LicenseRef-pg-dump-Warner",
           "LicenseRef-rbtree-Niemann",
-          "LicenseRef-X0213"
+          "MIT",
+          "PostgreSQL",
+          "Spencer-99",
+          "TCL",
+          "Unicode-3.0"
         ],
-        "status": "pending",
         "files": [
-          "notices/postgresql.txt",
-          "notices/postgresql-src-backend-regex-COPYRIGHT",
-          "notices/postgresql-src-include-lib-sort_template.h.txt",
-          "notices/postgresql-src-port-pgmkdirp.c",
-          "notices/postgresql-src-port-snprintf.c",
-          "notices/postgresql-src-backend-snowball-README",
-          "notices/postgresql-src-port-getopt.c",
-          "notices/postgresql-src-port-getopt_long.c",
-          "notices/postgresql-src-port-bsearch_arg.c",
-          "notices/postgresql-src-port-mkdtemp.c",
-          "notices/postgresql-src-port-inet_aton.c",
-          "notices/postgresql-src-backend-utils-mb-wstrcmp.c",
-          "notices/postgresql-src-backend-utils-mb-wstrncmp.c",
-          "notices/postgresql-src-timezone-strftime.c",
-          "notices/postgresql-src-common-md5.c",
-          "notices/postgresql-src-common-sha1.c",
-          "notices/postgresql-src-common-sha2.c",
-          "notices/postgresql-src-port-inet_net_ntop.c",
-          "notices/postgresql-src-backend-utils-adt-inet_cidr_ntop.c",
-          "notices/postgresql-src-backend-utils-adt-inet_net_pton.c",
-          "notices/postgresql-src-port-strlcpy.c",
-          "notices/postgresql-src-port-strlcat.c",
-          "notices/postgresql-src-port-timingsafe_bcmp.c",
-          "notices/postgresql-src-include-common-hashfn_unstable.h.txt",
-          "notices/postgresql-src-backend-lib-hyperloglog.c",
-          "notices/postgresql-src-port-win32gettimeofday.c",
-          "notices/postgresql-src-backend-optimizer-geqo-geqo_cx.c",
-          "notices/postgresql-src-bin-pg_dump-pg_backup_archiver.c",
-          "notices/postgresql-src-backend-lib-rbtree.c",
-          "notices/postgresql-src-backend-regex-regc_locale.c",
-          "notices/postgresql-src-bin-pg_controldata-pg_controldata.c",
-          "notices/postgresql-contrib-pgcrypto-pgcrypto.h.txt",
-          "notices/postgresql-contrib-pgcrypto-px.c",
-          "notices/postgresql-contrib-pgcrypto-pgp.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-des.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-blowfish.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-gensalt.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-sha.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-md5.c",
-          "notices/postgresql-unicode-license-v3.txt",
-          "notices/postgresql-snowball-copying.txt",
-          "notices/postgresql-snowball-website-license.txt",
-          "notices/postgresql-fast-crc32-license.txt",
-          "notices/postgresql-x0213-tables.txt",
-          "share/extension/btree_gist.control",
-          "share/extension/btree_gist--1.0--1.1.sql",
-          "share/extension/btree_gist--1.1--1.2.sql",
-          "share/extension/btree_gist--1.2--1.3.sql",
-          "share/extension/btree_gist--1.2.sql",
-          "share/extension/btree_gist--1.3--1.4.sql",
-          "share/extension/btree_gist--1.4--1.5.sql",
-          "share/extension/btree_gist--1.5--1.6.sql",
-          "share/extension/btree_gist--1.6--1.7.sql",
-          "share/extension/btree_gist--1.7--1.8.sql",
-          "lib/btree_gist.dll",
-          "share/extension/citext.control",
-          "share/extension/citext--1.0--1.1.sql",
-          "share/extension/citext--1.1--1.2.sql",
-          "share/extension/citext--1.2--1.3.sql",
-          "share/extension/citext--1.3--1.4.sql",
-          "share/extension/citext--1.4--1.5.sql",
-          "share/extension/citext--1.4.sql",
-          "share/extension/citext--1.5--1.6.sql",
-          "share/extension/citext--1.6--1.7.sql",
-          "share/extension/citext--1.7--1.8.sql",
-          "lib/citext.dll",
-          "share/extension/hstore.control",
-          "share/extension/hstore--1.1--1.2.sql",
-          "share/extension/hstore--1.2--1.3.sql",
-          "share/extension/hstore--1.3--1.4.sql",
-          "share/extension/hstore--1.4--1.5.sql",
-          "share/extension/hstore--1.4.sql",
-          "share/extension/hstore--1.5--1.6.sql",
-          "share/extension/hstore--1.6--1.7.sql",
-          "share/extension/hstore--1.7--1.8.sql",
-          "lib/hstore.dll",
-          "share/extension/ltree.control",
-          "share/extension/ltree--1.0--1.1.sql",
-          "share/extension/ltree--1.1--1.2.sql",
-          "share/extension/ltree--1.1.sql",
-          "share/extension/ltree--1.2--1.3.sql",
-          "lib/ltree.dll",
-          "share/extension/pg_stat_statements.control",
-          "share/extension/pg_stat_statements--1.0--1.1.sql",
-          "share/extension/pg_stat_statements--1.1--1.2.sql",
-          "share/extension/pg_stat_statements--1.10--1.11.sql",
-          "share/extension/pg_stat_statements--1.11--1.12.sql",
-          "share/extension/pg_stat_statements--1.2--1.3.sql",
-          "share/extension/pg_stat_statements--1.3--1.4.sql",
-          "share/extension/pg_stat_statements--1.4--1.5.sql",
-          "share/extension/pg_stat_statements--1.4.sql",
-          "share/extension/pg_stat_statements--1.5--1.6.sql",
-          "share/extension/pg_stat_statements--1.6--1.7.sql",
-          "share/extension/pg_stat_statements--1.7--1.8.sql",
-          "share/extension/pg_stat_statements--1.8--1.9.sql",
-          "share/extension/pg_stat_statements--1.9--1.10.sql",
-          "lib/pg_stat_statements.dll",
-          "share/extension/pg_trgm.control",
-          "share/extension/pg_trgm--1.0--1.1.sql",
-          "share/extension/pg_trgm--1.1--1.2.sql",
-          "share/extension/pg_trgm--1.2--1.3.sql",
-          "share/extension/pg_trgm--1.3--1.4.sql",
-          "share/extension/pg_trgm--1.3.sql",
-          "share/extension/pg_trgm--1.4--1.5.sql",
-          "share/extension/pg_trgm--1.5--1.6.sql",
-          "lib/pg_trgm.dll",
-          "share/extension/pgcrypto.control",
-          "share/extension/pgcrypto--1.0--1.1.sql",
-          "share/extension/pgcrypto--1.1--1.2.sql",
-          "share/extension/pgcrypto--1.2--1.3.sql",
-          "share/extension/pgcrypto--1.3--1.4.sql",
-          "share/extension/pgcrypto--1.3.sql",
-          "lib/pgcrypto.dll",
-          "share/extension/unaccent.control",
-          "share/extension/unaccent--1.0--1.1.sql",
-          "share/extension/unaccent--1.1.sql",
-          "lib/unaccent.dll",
           "bin/clusterdb.exe",
           "bin/createdb.exe",
           "bin/createuser.exe",
@@ -179,6 +62,8 @@
           "bin/psql.exe",
           "bin/reindexdb.exe",
           "bin/vacuumdb.exe",
+          "lib/btree_gist.dll",
+          "lib/citext.dll",
           "lib/cyrillic_and_mic.dll",
           "lib/dict_snowball.dll",
           "lib/euc2004_sjis2004.dll",
@@ -186,12 +71,24 @@
           "lib/euc_jp_and_sjis.dll",
           "lib/euc_kr_and_mic.dll",
           "lib/euc_tw_and_big5.dll",
+          "lib/hstore.dll",
+          "lib/hypopg.dll",
           "lib/latin2_and_win1250.dll",
           "lib/latin_and_mic.dll",
           "lib/libpqwalreceiver.dll",
+          "lib/ltree.dll",
+          "lib/pg_cron.dll",
+          "lib/pg_stat_statements.dll",
+          "lib/pg_textsearch.dll",
+          "lib/pg_trgm.dll",
+          "lib/pgcrypto.dll",
           "lib/pgevent.dll",
           "lib/pgoutput.dll",
           "lib/plpgsql.dll",
+          "lib/plpgsql_check.dll",
+          "lib/timescaledb-2.32.0.dll",
+          "lib/timescaledb.dll",
+          "lib/unaccent.dll",
           "lib/utf8_and_big5.dll",
           "lib/utf8_and_cyrillic.dll",
           "lib/utf8_and_euc2004.dll",
@@ -208,10 +105,121 @@
           "lib/utf8_and_sjis2004.dll",
           "lib/utf8_and_uhc.dll",
           "lib/utf8_and_win.dll",
+          "lib/vector.dll",
+          "notices/postgresql-contrib-pgcrypto-crypt-blowfish.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-des.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-gensalt.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-md5.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-sha.c",
+          "notices/postgresql-contrib-pgcrypto-pgcrypto.h.txt",
+          "notices/postgresql-contrib-pgcrypto-pgp.c",
+          "notices/postgresql-contrib-pgcrypto-px.c",
+          "notices/postgresql-fast-crc32-license.txt",
+          "notices/postgresql-freebsd-crypt-md5.txt",
+          "notices/postgresql-snowball-copying.txt",
+          "notices/postgresql-snowball-website-license.txt",
+          "notices/postgresql-src-backend-lib-hyperloglog.c",
+          "notices/postgresql-src-backend-lib-rbtree.c",
+          "notices/postgresql-src-backend-optimizer-geqo-geqo_cx.c",
+          "notices/postgresql-src-backend-regex-COPYRIGHT",
+          "notices/postgresql-src-backend-regex-regc_locale.c",
+          "notices/postgresql-src-backend-snowball-README",
+          "notices/postgresql-src-backend-utils-adt-inet_cidr_ntop.c",
+          "notices/postgresql-src-backend-utils-adt-inet_net_pton.c",
+          "notices/postgresql-src-backend-utils-mb-wstrcmp.c",
+          "notices/postgresql-src-backend-utils-mb-wstrncmp.c",
+          "notices/postgresql-src-bin-pg_controldata-pg_controldata.c",
+          "notices/postgresql-src-bin-pg_dump-pg_backup_archiver.c",
+          "notices/postgresql-src-common-md5.c",
+          "notices/postgresql-src-common-sha1.c",
+          "notices/postgresql-src-common-sha2.c",
+          "notices/postgresql-src-include-common-hashfn_unstable.h.txt",
+          "notices/postgresql-src-include-lib-sort_template.h.txt",
+          "notices/postgresql-src-port-bsearch_arg.c",
+          "notices/postgresql-src-port-getopt.c",
+          "notices/postgresql-src-port-getopt_long.c",
+          "notices/postgresql-src-port-inet_aton.c",
+          "notices/postgresql-src-port-inet_net_ntop.c",
+          "notices/postgresql-src-port-mkdtemp.c",
+          "notices/postgresql-src-port-pgmkdirp.c",
+          "notices/postgresql-src-port-snprintf.c",
+          "notices/postgresql-src-port-strlcat.c",
+          "notices/postgresql-src-port-strlcpy.c",
+          "notices/postgresql-src-port-timingsafe_bcmp.c",
+          "notices/postgresql-src-port-win32gettimeofday.c",
+          "notices/postgresql-src-timezone-strftime.c",
+          "notices/postgresql-unicode-license-v3.txt",
+          "notices/postgresql-x0213-tables.txt",
+          "notices/postgresql.txt",
           "notices/source-inputs.json",
           "share/errcodes.txt",
+          "share/extension/btree_gist--1.0--1.1.sql",
+          "share/extension/btree_gist--1.1--1.2.sql",
+          "share/extension/btree_gist--1.2--1.3.sql",
+          "share/extension/btree_gist--1.2.sql",
+          "share/extension/btree_gist--1.3--1.4.sql",
+          "share/extension/btree_gist--1.4--1.5.sql",
+          "share/extension/btree_gist--1.5--1.6.sql",
+          "share/extension/btree_gist--1.6--1.7.sql",
+          "share/extension/btree_gist--1.7--1.8.sql",
+          "share/extension/btree_gist.control",
+          "share/extension/citext--1.0--1.1.sql",
+          "share/extension/citext--1.1--1.2.sql",
+          "share/extension/citext--1.2--1.3.sql",
+          "share/extension/citext--1.3--1.4.sql",
+          "share/extension/citext--1.4--1.5.sql",
+          "share/extension/citext--1.4.sql",
+          "share/extension/citext--1.5--1.6.sql",
+          "share/extension/citext--1.6--1.7.sql",
+          "share/extension/citext--1.7--1.8.sql",
+          "share/extension/citext.control",
+          "share/extension/hstore--1.1--1.2.sql",
+          "share/extension/hstore--1.2--1.3.sql",
+          "share/extension/hstore--1.3--1.4.sql",
+          "share/extension/hstore--1.4--1.5.sql",
+          "share/extension/hstore--1.4.sql",
+          "share/extension/hstore--1.5--1.6.sql",
+          "share/extension/hstore--1.6--1.7.sql",
+          "share/extension/hstore--1.7--1.8.sql",
+          "share/extension/hstore.control",
+          "share/extension/ltree--1.0--1.1.sql",
+          "share/extension/ltree--1.1--1.2.sql",
+          "share/extension/ltree--1.1.sql",
+          "share/extension/ltree--1.2--1.3.sql",
+          "share/extension/ltree.control",
+          "share/extension/pg_stat_statements--1.0--1.1.sql",
+          "share/extension/pg_stat_statements--1.1--1.2.sql",
+          "share/extension/pg_stat_statements--1.10--1.11.sql",
+          "share/extension/pg_stat_statements--1.11--1.12.sql",
+          "share/extension/pg_stat_statements--1.2--1.3.sql",
+          "share/extension/pg_stat_statements--1.3--1.4.sql",
+          "share/extension/pg_stat_statements--1.4--1.5.sql",
+          "share/extension/pg_stat_statements--1.4.sql",
+          "share/extension/pg_stat_statements--1.5--1.6.sql",
+          "share/extension/pg_stat_statements--1.6--1.7.sql",
+          "share/extension/pg_stat_statements--1.7--1.8.sql",
+          "share/extension/pg_stat_statements--1.8--1.9.sql",
+          "share/extension/pg_stat_statements--1.9--1.10.sql",
+          "share/extension/pg_stat_statements.control",
+          "share/extension/pg_trgm--1.0--1.1.sql",
+          "share/extension/pg_trgm--1.1--1.2.sql",
+          "share/extension/pg_trgm--1.2--1.3.sql",
+          "share/extension/pg_trgm--1.3--1.4.sql",
+          "share/extension/pg_trgm--1.3.sql",
+          "share/extension/pg_trgm--1.4--1.5.sql",
+          "share/extension/pg_trgm--1.5--1.6.sql",
+          "share/extension/pg_trgm.control",
+          "share/extension/pgcrypto--1.0--1.1.sql",
+          "share/extension/pgcrypto--1.1--1.2.sql",
+          "share/extension/pgcrypto--1.2--1.3.sql",
+          "share/extension/pgcrypto--1.3--1.4.sql",
+          "share/extension/pgcrypto--1.3.sql",
+          "share/extension/pgcrypto.control",
           "share/extension/plpgsql--1.0.sql",
           "share/extension/plpgsql.control",
+          "share/extension/unaccent--1.0--1.1.sql",
+          "share/extension/unaccent--1.1.sql",
+          "share/extension/unaccent.control",
           "share/information_schema.sql",
           "share/pg_hba.conf.sample",
           "share/pg_ident.conf.sample",
@@ -859,14 +867,7 @@
           "share/tsearch_data/synonym_sample.syn",
           "share/tsearch_data/thesaurus_sample.ths",
           "share/tsearch_data/turkish.stop",
-          "share/tsearch_data/unaccent.rules",
-          "lib/vector.dll",
-          "lib/timescaledb.dll",
-          "lib/timescaledb-2.32.0.dll",
-          "lib/pg_textsearch.dll",
-          "lib/hypopg.dll",
-          "lib/plpgsql_check.dll",
-          "lib/pg_cron.dll"
+          "share/tsearch_data/unaccent.rules"
         ],
         "notices": [
           "notices/postgresql.txt",
@@ -912,7 +913,8 @@
           "notices/postgresql-snowball-copying.txt",
           "notices/postgresql-snowball-website-license.txt",
           "notices/postgresql-fast-crc32-license.txt",
-          "notices/postgresql-x0213-tables.txt"
+          "notices/postgresql-x0213-tables.txt",
+          "notices/postgresql-freebsd-crypt-md5.txt"
         ],
         "noticeSha256": {
           "notices/postgresql.txt": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
@@ -958,7 +960,8 @@
           "notices/postgresql-snowball-copying.txt": "f6f9e4c0e737728ca980de8595ded046d5e077017c1bb0ee05dc794a01434dae",
           "notices/postgresql-snowball-website-license.txt": "d714d7b98b852b2dfd066e8648596f5ff5bb44d41fc93e20f94f0a333131b2b2",
           "notices/postgresql-fast-crc32-license.txt": "2a089b18ed6324886d134edbf9c5e9cde62e13458f30a10200a1f78089f90be7",
-          "notices/postgresql-x0213-tables.txt": "8dd3204470f568a7b8292fcd003fd366b8d26186ef53458925609d33a3fd7a5d"
+          "notices/postgresql-x0213-tables.txt": "8dd3204470f568a7b8292fcd003fd366b8d26186ef53458925609d33a3fd7a5d",
+          "notices/postgresql-freebsd-crypt-md5.txt": "afb159f394ca4cbed5c26d0529a23a0a59564b5c6441571eb408ecab0250e6c4"
         },
         "noticeSignatures": [
           "! Portions Copyright (c) YYYY, PostgreSQL Global Development Group | ! Portions Copyright (c) YYYY, Regents of the University of California",
@@ -1180,7 +1183,10 @@
           "¥Ç¥Õ¥©¥ë¥È¤Î¥¨¥ó¥³¡¼¥Ç¥£¥ó¥°ÊÑ´¹¤È¤·¤Æ»ÈÍÑ¤Ç¤­¤ë¤¿¤á¤Ë¤Ï¡¤¥½¡¼¥¹¥¨¥ó",
           "© (C)"
         ],
-        "evidence": []
+        "evidence": [
+          "The windows-x64 review at 36075af records the source grants for PostgreSQL core and the earlier extension bundle. Review of the expanded contrib payload uses the paths and notices from dry run 45710944049.",
+          "pgcrypto: Marko Kreen grants BSD-2-Clause in pgcrypto.h, pgp.c and px.c. David Burren grants BSD-3-Clause in crypt-des.c. The blowfish, gensalt and SHA crypt sources state public-domain terms. FreeBSD commit d8e82636a47b records the author-approved BSD-2-Clause grant for the MD5 implementation. notices/postgresql-freebsd-crypt-md5.txt retains that grant."
+        ]
       },
       {
         "id": "pgvector",
@@ -1188,10 +1194,9 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "pending",
         "files": [
+          "lib/vector.dll",
           "notices/pgvector.txt",
-          "share/extension/vector.control",
           "share/extension/vector--0.1.0--0.1.1.sql",
           "share/extension/vector--0.1.1--0.1.3.sql",
           "share/extension/vector--0.1.3--0.1.4.sql",
@@ -1234,7 +1239,7 @@
           "share/extension/vector--0.8.5--0.8.6.sql",
           "share/extension/vector--0.8.6--0.8.7.sql",
           "share/extension/vector--0.8.7.sql",
-          "lib/vector.dll"
+          "share/extension/vector.control"
         ],
         "notices": [
           "notices/pgvector.txt"
@@ -1247,7 +1252,9 @@
           "cp LICENSE README.md /usr/share/doc/pgvector && \\",
           "licence file LICENSE sha256:da5fbc1f146c0131f01680db7fb67998fb22524a6955871cfe79a45432236c04"
         ],
-        "evidence": []
+        "evidence": [
+          "The Windows source review in commit 36075af documents the source grants for pgvector. The notice signatures match. The CLANG64 source-specific linked-object identity in this review binds the current Windows images to the receipt from run 45710944049. Toolchain contributions have separate coverage under mingw-runtime."
+        ]
       },
       {
         "id": "timescaledb",
@@ -1256,11 +1263,11 @@
           "Apache-2.0",
           "PostgreSQL"
         ],
-        "status": "pending",
         "files": [
-          "notices/timescaledb.txt",
+          "lib/timescaledb-2.32.0.dll",
+          "lib/timescaledb.dll",
           "notices/timescaledb-NOTICE",
-          "share/extension/timescaledb.control",
+          "notices/timescaledb.txt",
           "share/extension/timescaledb--2.10.0--2.32.0.sql",
           "share/extension/timescaledb--2.10.1--2.32.0.sql",
           "share/extension/timescaledb--2.10.2--2.32.0.sql",
@@ -1333,8 +1340,7 @@
           "share/extension/timescaledb--2.9.1--2.32.0.sql",
           "share/extension/timescaledb--2.9.2--2.32.0.sql",
           "share/extension/timescaledb--2.9.3--2.32.0.sql",
-          "lib/timescaledb.dll",
-          "lib/timescaledb-2.32.0.dll"
+          "share/extension/timescaledb.control"
         ],
         "notices": [
           "notices/timescaledb.txt",
@@ -1391,7 +1397,9 @@
           "tsl_license_update_check used to check for valid license | __sanitizer.* __sancov.* llvm sanitizer | _ZN11__sanitizer.* llvm sanitizer | __asan.* __odr_asan.* address sanitizer | __ubsan.* _ZN7__ubsan.* undefined behaviour sanitizer | internal_sigreturn gcc | OnPrint gcc | backtrace_uncompress_zdebug libbacktrace | reset_fn_list used by llvm code coverage infrastructure | all of these symbols start with an additional leading '_' on macos",
           "we skip license checks for: | the update script fragments, because the generated update scripts will | contain the license at top, and we don't want to repeat it in the middle | test/sql/dump which contains auto-generated code | src/chunk_adatptive since it's still in BETA"
         ],
-        "evidence": []
+        "evidence": [
+          "The Windows source review in commit 36075af documents the source grants for timescaledb. The notice signatures match. The CLANG64 source-specific linked-object identity in this review binds the current Windows images to the receipt from run 45710944049. Toolchain contributions have separate coverage under mingw-runtime."
+        ]
       },
       {
         "id": "pg_textsearch",
@@ -1399,11 +1407,10 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "pending",
         "files": [
-          "notices/pg_textsearch.txt",
+          "lib/pg_textsearch.dll",
           "notices/pg_textsearch-NOTICE",
-          "share/extension/pg_textsearch.control",
+          "notices/pg_textsearch.txt",
           "share/extension/pg_textsearch--0.0.1--0.0.2.sql",
           "share/extension/pg_textsearch--0.0.2--0.0.3.sql",
           "share/extension/pg_textsearch--0.0.3--0.0.4.sql",
@@ -1427,7 +1434,7 @@
           "share/extension/pg_textsearch--1.4.0--1.5.0.sql",
           "share/extension/pg_textsearch--1.5.0--1.5.1.sql",
           "share/extension/pg_textsearch--1.5.1.sql",
-          "lib/pg_textsearch.dll"
+          "share/extension/pg_textsearch.control"
         ],
         "notices": [
           "notices/pg_textsearch.txt",
@@ -1448,7 +1455,9 @@
           "licence file LICENSE sha256:2b322dc146642192056264c1508716957ad67fe03f511a47aac6d86fdba9a6c5",
           "licence file NOTICE sha256:7e5f8d9202f2cfc0cb385314fa6d3764b655fbf8887b4a1b37bcedad2cd2fc81"
         ],
-        "evidence": []
+        "evidence": [
+          "The Windows source review in commit 36075af documents the source grants for pg_textsearch. The notice signatures match. The CLANG64 source-specific linked-object identity in this review binds the current Windows images to the receipt from run 45710944049. Toolchain contributions have separate coverage under mingw-runtime."
+        ]
       },
       {
         "id": "hypopg",
@@ -1456,10 +1465,9 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "pending",
         "files": [
+          "lib/hypopg.dll",
           "notices/hypopg.txt",
-          "share/extension/hypopg.control",
           "share/extension/hypopg--1.3.1--1.4.0.sql",
           "share/extension/hypopg--1.3.1.sql",
           "share/extension/hypopg--1.4.0--1.4.1.sql",
@@ -1473,7 +1481,7 @@
           "share/extension/hypopg--1.4.4--1.4.5.sql",
           "share/extension/hypopg--1.4.4.sql",
           "share/extension/hypopg--1.4.5.sql",
-          "lib/hypopg.dll"
+          "share/extension/hypopg.control"
         ],
         "notices": [
           "notices/hypopg.txt"
@@ -1490,7 +1498,9 @@
           "copyright = 'YYYY, Julien Rouhaud' | epub_copyright = copyright",
           "licence file LICENSE sha256:fa713329f5c5fea7a1b1e0f7263a7818a35a634cbd63c99caa468dfd5619e1de"
         ],
-        "evidence": []
+        "evidence": [
+          "The Windows source review in commit 36075af documents the source grants for hypopg. The notice signatures match. The CLANG64 source-specific linked-object identity in this review binds the current Windows images to the receipt from run 45710944049. Toolchain contributions have separate coverage under mingw-runtime."
+        ]
       },
       {
         "id": "plpgsql_check",
@@ -1499,12 +1509,11 @@
           "MIT",
           "PostgreSQL"
         ],
-        "status": "pending",
         "files": [
+          "lib/plpgsql_check.dll",
           "notices/plpgsql_check.txt",
-          "share/extension/plpgsql_check.control",
           "share/extension/plpgsql_check--2.10.sql",
-          "lib/plpgsql_check.dll"
+          "share/extension/plpgsql_check.control"
         ],
         "notices": [
           "notices/plpgsql_check.txt",
@@ -1520,24 +1529,26 @@
           "License: BSD",
           "licence file LICENSE sha256:40b35eecae9cb6e59aa52fe5fa3a39d80534efa99f7751e6834902d9cc92d447"
         ],
-        "evidence": []
+        "evidence": [
+          "The Windows source review in commit 36075af documents the source grants for plpgsql_check. The notice signatures match. The CLANG64 source-specific linked-object identity in this review binds the current Windows images to the receipt from run 45710944049. Toolchain contributions have separate coverage under mingw-runtime.",
+          "The MIT-licensed extension incorporates PostgreSQL code from pl_exec.c in src/check_expr.c."
+        ]
       },
       {
         "id": "pg_cron",
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / 85f6d7cfeef53850902bf7c243a0e0fba8912a6e65ce4ad932c51d912c6f01ad",
         "licenses": [
+          "BSD-4.3TAHOE",
           "PostgreSQL",
-          "Vixie-Cron",
-          "BSD-4.3TAHOE"
+          "Vixie-Cron"
         ],
-        "status": "pending",
         "files": [
-          "notices/pg_cron.txt",
-          "notices/pg_cron-src-entry.c",
-          "notices/pg_cron-src-misc.c",
+          "lib/pg_cron.dll",
           "notices/pg_cron-include-bitstring.h.txt",
           "notices/pg_cron-include-cron.h.txt",
-          "share/extension/pg_cron.control",
+          "notices/pg_cron-src-entry.c",
+          "notices/pg_cron-src-misc.c",
+          "notices/pg_cron.txt",
           "share/extension/pg_cron--1.0--1.1.sql",
           "share/extension/pg_cron--1.0.sql",
           "share/extension/pg_cron--1.1--1.2.sql",
@@ -1546,7 +1557,7 @@
           "share/extension/pg_cron--1.4--1.4-1.sql",
           "share/extension/pg_cron--1.4-1--1.5.sql",
           "share/extension/pg_cron--1.5--1.6.sql",
-          "lib/pg_cron.dll"
+          "share/extension/pg_cron.control"
         ],
         "notices": [
           "notices/pg_cron.txt",
@@ -1569,17 +1580,17 @@
           "Copyright YYYY by Paul Vixie | All rights reserved | Distribute freely, except: don't remove my name from the source or | documentation (don't take credit for my work), mark your changes (don't | get me blamed for your possible bugs), don't alter or remove this | notice. May be sold if buildable source is provided to buyer. No | warrantee of any kind, express or implied, is included with this | software; use at your own risk, responsibility for damages (if any) to | anyone resulting from the use of this software rests entirely with the | user.",
           "licence file LICENSE sha256:c56dd143965057e2dc17604019a456a2da3344896333713b14316bd16a4977cc"
         ],
-        "evidence": []
+        "evidence": [
+          "The Windows source review in commit 36075af documents the source grants for pg_cron. The notice signatures match. The CLANG64 source-specific linked-object identity in this review binds the current Windows images to the receipt from run 45710944049. Toolchain contributions have separate coverage under mingw-runtime."
+        ]
       },
       {
         "id": "pg_partman",
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
           "notices/pg_partman.txt",
-          "share/extension/pg_partman.control",
           "share/extension/pg_partman--0.1.0--0.1.1.sql",
           "share/extension/pg_partman--0.1.1--0.1.2.sql",
           "share/extension/pg_partman--0.1.2--0.2.0.sql",
@@ -1681,7 +1692,8 @@
           "share/extension/pg_partman--5.4.2--5.4.3.sql",
           "share/extension/pg_partman--5.4.3--5.5.0.sql",
           "share/extension/pg_partman--5.5.0--5.5.1.sql",
-          "share/extension/pg_partman--5.5.1.sql"
+          "share/extension/pg_partman--5.5.1.sql",
+          "share/extension/pg_partman.control"
         ],
         "notices": [
           "notices/pg_partman.txt"
@@ -1702,13 +1714,19 @@
       {
         "id": "icu",
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / 9aa9771827d96df0248191f05bfb6d7c447fd518e2b0986f3d69ac3215b7ce5a",
-        "licenses": [],
-        "status": "pending",
+        "licenses": [
+          "BSD-2-Clause",
+          "BSD-3-Clause",
+          "ICU",
+          "LicenseRef-IANA-tzdata",
+          "NAIST-2003",
+          "Unicode-3.0"
+        ],
         "files": [
-          "notices/icu.txt",
           "bin/icudt79.dll",
           "bin/icuin79.dll",
-          "bin/icuuc79.dll"
+          "bin/icuuc79.dll",
+          "notices/icu.txt"
         ],
         "notices": [
           "notices/icu.txt"
@@ -1943,16 +1961,21 @@
           "© YYYY and later: Unicode, Inc. and others. | License & terms of use: http://www.unicode.org/copyright.html#License",
           "© YYYY and later: Unicode, Inc. and others. | License & terms of use: https://www.unicode.org/copyright.html"
         ],
-        "evidence": []
+        "evidence": [
+          "ICU 79.1 ships common and i18n code and the complete locale data. The retained ICU notice covers the current Unicode grant, the legacy ICU license, double-conversion, CJK, Lao and Burmese dictionaries and the IANA time zone database.",
+          "Release dry run 45710944049 on windows-x64: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target.",
+          "The code DLLs use the bundled libc++.dll. The linker receipt records their runtime inputs; the data DLL is checked for an empty entry point and no executable sections."
+        ]
       },
       {
         "id": "zlib",
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / e6c4a5eb2c1249fb36514689e0ea78816994ed83d15749e141f4e045dba591bd",
-        "licenses": [],
-        "status": "pending",
+        "licenses": [
+          "Zlib"
+        ],
         "files": [
-          "notices/zlib.txt",
-          "bin/libz.dll"
+          "bin/libz.dll",
+          "notices/zlib.txt"
         ],
         "notices": [
           "notices/zlib.txt"
@@ -2037,18 +2060,22 @@
           "{ Copyright (c) YYYY Borland Corporation }",
           "© Copyright Henrik Ravn YYYY | Use, modification and distribution are subject to the Boost Software License, Version 1.0."
         ],
-        "evidence": []
+        "evidence": [
+          "The compression recipe builds the zlib shared library from its core implementation, without the contrib tools or minizip. notices/zlib.txt retains the Zlib grant.",
+          "Release dry run 45710944049 on windows-x64: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
+        ]
       },
       {
         "id": "lz4",
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / c853b4ab4872695beffba2e4e6ca3ec128a3f563141bd1fd9ead7d416231d09a",
-        "licenses": [],
-        "status": "pending",
+        "licenses": [
+          "BSD-2-Clause"
+        ],
         "files": [
-          "notices/lz4.txt",
-          "notices/lz4-lib-xxhash.c",
+          "bin/lz4.dll",
           "notices/lz4-lib-lz4file.h.txt",
-          "bin/lz4.dll"
+          "notices/lz4-lib-xxhash.c",
+          "notices/lz4.txt"
         ],
         "notices": [
           "notices/lz4.txt",
@@ -2111,17 +2138,21 @@
           "licence file programs/COPYING sha256:2ee3c965219a639df2ad00ead56c5e5019d6e362e12c86679b794dacb166eadc",
           "licence file tests/data/COPYING sha256:2ee3c965219a639df2ad00ead56c5e5019d6e362e12c86679b794dacb166eadc"
         ],
-        "evidence": []
+        "evidence": [
+          "Only the LZ4 shared library is packaged. The CLI is disabled. notices/lz4.txt, notices/lz4-lib-xxhash.c and notices/lz4-lib-lz4file.h.txt cover the library, embedded xxHash and file API under BSD-2-Clause.",
+          "Release dry run 45710944049 on windows-x64: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
+        ]
       },
       {
         "id": "openssl",
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / f204efaa0592a2eefe312c783b968b4fd5c831b9de1ab96d22821639fabecf6b",
-        "licenses": [],
-        "status": "pending",
+        "licenses": [
+          "Apache-2.0"
+        ],
         "files": [
-          "notices/openssl.txt",
           "bin/libcrypto-3-x64.dll",
-          "bin/libssl-3-x64.dll"
+          "bin/libssl-3-x64.dll",
+          "notices/openssl.txt"
         ],
         "notices": [
           "notices/openssl.txt"
@@ -2266,17 +2297,18 @@
           "¥\u00140;¶\u0002!;)''ï÷!l¿(,:µ¿(*;©:§«½:**;i)*w*ë)ã;U\b:'\u0007):ñ;l*!'Ò£",
           "ÎG©jW"
         ],
-        "evidence": []
+        "evidence": [
+          "The pinned OpenSSL distribution builds libcrypto and libssl with Apache-2.0 terms retained in notices/openssl.txt. The recipe disables applications, engines and loadable modules. The Perl generators and test certificates are outside the shipped runtime.",
+          "Release dry run 45710944049 on windows-x64: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
+        ]
       },
       {
         "id": "pgtap",
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
           "notices/pgtap.txt",
-          "share/extension/pgtap.control",
           "share/extension/pgtap--0.90.0--0.91.0.sql",
           "share/extension/pgtap--0.91.0--0.92.0.sql",
           "share/extension/pgtap--0.92.0--0.93.0.sql",
@@ -2295,7 +2327,8 @@
           "share/extension/pgtap--1.3.2--1.3.3.sql",
           "share/extension/pgtap--1.3.3--1.3.4.sql",
           "share/extension/pgtap--1.3.4.sql",
-          "share/extension/pgtap--unpackaged--0.91.0.sql"
+          "share/extension/pgtap--unpackaged--0.91.0.sql",
+          "share/extension/pgtap.control"
         ],
         "notices": [
           "notices/pgtap.txt"
@@ -2318,11 +2351,11 @@
       },
       {
         "id": "pgmq",
-        "licenses": [],
-        "status": "pending",
+        "licenses": [
+          "PostgreSQL"
+        ],
         "files": [
           "notices/pgmq.txt",
-          "share/extension/pgmq.control",
           "share/extension/pgmq--0.10.2--0.11.1.sql",
           "share/extension/pgmq--0.11.1--0.11.2.sql",
           "share/extension/pgmq--0.11.2--0.12.0.sql",
@@ -2399,7 +2432,8 @@
           "share/extension/pgmq--1.7.1--1.8.0.sql",
           "share/extension/pgmq--1.8.0--1.8.1.sql",
           "share/extension/pgmq--1.8.1--1.9.0.sql",
-          "share/extension/pgmq--1.9.0--1.10.0.sql"
+          "share/extension/pgmq--1.9.0--1.10.0.sql",
+          "share/extension/pgmq.control"
         ],
         "notices": [
           "notices/pgmq.txt"
@@ -2413,14 +2447,26 @@
           "licence file pgmq-rs/LICENSE sha256:2abd106411f0700ed3468ee8992bb33e80d4e9b540ced20ce90e4702d2af1bc6",
           "license = \"PostgreSQL\""
         ],
-        "evidence": []
+        "evidence": [
+          "The Tembo PostgreSQL grant in notices/pgmq.txt covers the shipped extension control and SQL files. The Rust client and its dependencies are outside the archive.",
+          "Release dry run 45710944049 on windows-x64: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
+        ]
       },
       {
         "id": "mingw-runtime",
-        "licenses": [],
-        "status": "pending",
+        "licenses": [
+          "Apache-2.0 WITH LLVM-exception",
+          "BSD-2-Clause",
+          "BSD-3-Clause",
+          "BSL-1.0",
+          "ISC",
+          "LicenseRef-MinGW-gdtoa",
+          "LicenseRef-MinGW-printf",
+          "LicenseRef-Public-Domain",
+          "MIT",
+          "ZPL-2.1"
+        ],
         "files": [
-          "notices/mingw-runtime.txt",
           "bin/clusterdb.exe",
           "bin/createdb.exe",
           "bin/createuser.exe",
@@ -2511,7 +2557,8 @@
           "lib/utf8_and_sjis2004.dll",
           "lib/utf8_and_uhc.dll",
           "lib/utf8_and_win.dll",
-          "lib/vector.dll"
+          "lib/vector.dll",
+          "notices/mingw-runtime.txt"
         ],
         "notices": [
           "notices/mingw-runtime.txt"
@@ -2520,14 +2567,17 @@
           "notices/mingw-runtime.txt": "2141c499a486de7445881d328148a647d1047b6461c37915b7b459a6405cf90c"
         },
         "toolchain": "clang64 76a4171c305f1cb28a1f81a0bad34f11946c9ee1e3974aebdd43cd758c9ea73c / abd3e0fe6a295d0cf5490bc6a1460c30e6aa93f03add2f57ff2d78b11147c203",
-        "evidence": []
+        "evidence": [
+          "Release dry run 45710944049: the 94 image hashes in windows-linked-inputs.txt match the Windows payload manifest. The receipt includes crt2.o, dllcrt2.o, compiler-rt builtins, MinGW UCRT helpers and the pinned libc++ and winpthreads DLLs. notices/mingw-runtime.txt records the corresponding grants.",
+          "LLVM builtins and libc++ use the LLVM exception. The libc++ Ryu conversion code also carries BSL-1.0. Winpthreads carries MIT and BSD-3-Clause. The MinGW startup and UCRT helpers include public-domain code.",
+          "The receipt includes signgam and scanf formatting (ZPL-2.1), getopt (ISC and BSD-2-Clause), gdtoa (Lucent and David Gay) and the MinGW printf formatter (Keith Marshall). The pinned source revisions and notice mapping are documented in docs/native-artifact.md."
+        ]
       }
     ]
   },
   "hostRequirements": {
-    "status": "pending",
-    "os": "",
-    "cpu": "",
+    "os": "Windows x64 with the Universal CRT and the listed system imports. Tested on Windows Server 2025, kernel 10.0.26100.",
+    "cpu": "x86-64. The CLANG64 build targets x64 and clears pgvector OPTFLAGS to avoid tuning for the build CPU.",
     "libraries": [
       {
         "name": "ucrtbase.dll",
@@ -2594,9 +2644,9 @@
       },
       {
         "name": "api-ms-win-crt-private-l1-1-0.dll",
-        "requirement": "",
-        "license": "",
-        "evidence": "",
+        "requirement": "Windows Universal CRT private API set available on the tested system",
+        "license": "LicenseRef-Microsoft-Windows",
+        "evidence": "The PE import measurement and the MinGW UCRT import-library members in windows-linked-inputs.txt both identify this API set. The native archive ran on Windows build 26100.",
         "measured": true
       },
       {
@@ -2636,9 +2686,9 @@
       },
       {
         "name": "crypt32.dll",
-        "requirement": "",
-        "license": "",
-        "evidence": "",
+        "requirement": "Windows CryptoAPI system library",
+        "license": "LicenseRef-Microsoft-Windows",
+        "evidence": "Recorded in the PE imports for this build. Microsoft supplies Crypt32.dll with Windows and Windows Server.",
         "measured": true
       },
       {

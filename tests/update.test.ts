@@ -6,12 +6,15 @@
  */
 
 /** Checks release discovery, pin rewriting, and packaging revision rules without network access. */
+import { fork, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import * as processTools from "../binaries/process.ts";
+import { root } from "../binaries/paths.ts";
 import { sources } from "../binaries/sources/sources.ts";
 import {
   inspectUpdateBranch,
@@ -241,6 +244,95 @@ it("a PostgreSQL release restarts the revision, and other changes open the next 
   // An unreleased revision collects further updates instead of skipping numbers.
   expect(nextRevision({ ...base, currentReleased: false })).toBe(3);
   expect(nextRevision({ ...base, otherChanged: false, currentReleased: true })).toBe(3);
+});
+
+it("refuses an overlapping checkout update and releases the guard after success or failure", async () => {
+  const checkout = await mkdtemp(join(tmpdir(), "portable-postgres-pin-lock-"));
+  try {
+    const binaries = join(checkout, "binaries");
+    await cp(join(root, "dist/binaries"), binaries, { recursive: true });
+    await symlink(join(root, "node_modules"), join(checkout, "node_modules"), "junction");
+    await writeFile(join(checkout, "package.json"), '{"type":"module"}');
+    const pins = join(binaries, "sources/sources.json");
+    const revision = join(binaries, "sources/revision.json");
+    const pg = { id: "postgresql", version: "18.1", upstream: { type: "postgresql", major: 18 } };
+    await writeFile(pins, JSON.stringify([pg]));
+    await writeFile(revision, '{"packagingRevision":3}');
+
+    // Pause the owner inside release discovery so the contender starts while the pin snapshot is live.
+    const preload = (source: string) => "data:text/javascript," + encodeURIComponent(source);
+    const lookup = preload(`
+      import { once } from "node:events";
+      globalThis.fetch = async url => {
+        if (url.endsWith("/pub/source/")) {
+          if (process.send) { process.send("lookup"); await once(process, "message"); }
+          return new Response('<a href="v18.2/">v18.2/</a>');
+        }
+        return new Response(url.endsWith(".sha256") ? "${archiveHash}" : "${archiveBytes}");
+      };
+    `);
+    const failLookup = preload('globalThis.fetch = () => { throw Error("unexpected lookup"); };');
+    const cli = join(binaries, "sources/update.js");
+    const run = (mock: string) => spawnSync(process.execPath, ["--import", mock, cli], {
+      cwd: checkout,
+      encoding: "utf8",
+      timeout: 15_000,
+      windowsHide: true,
+    });
+    const owner = fork(cli, {
+      cwd: checkout,
+      execArgv: ["--import", lookup],
+      silent: true,
+      timeout: 20_000,
+    });
+    const finished = once(owner, "exit");
+    try {
+      expect((await Promise.race([once(owner, "message"), finished]))[0]).toBe("lookup");
+      const contender = run(failLookup);
+      expect(contender.status).toBe(1);
+      expect(contender.stderr).toContain("Another source update");
+      expect(JSON.parse(await readFile(pins, "utf8"))).toEqual([pg]);
+      expect(JSON.parse(await readFile(revision, "utf8"))).toEqual({ packagingRevision: 3 });
+    } finally {
+      if (owner.connected) owner.send("continue");
+      await finished;
+    }
+    expect(owner.exitCode).toBe(0);
+    expect(JSON.parse(await readFile(pins, "utf8"))).toMatchObject([{
+      version: "18.2",
+      sha256: archiveHash,
+    }]);
+    expect(JSON.parse(await readFile(revision, "utf8"))).toEqual({ packagingRevision: 1 });
+    expect(run(failLookup).stderr).toContain("unexpected lookup");
+    expect(run(lookup).stdout).toContain("All pinned sources are current");
+  } finally {
+    await rm(checkout, { recursive: true, force: true });
+  }
+});
+
+it("an update keeps the line endings of the pin files it rewrites", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "portable-postgres-update-"));
+  try {
+    const paths = {
+      sources: join(directory, "sources.json"),
+      revision: join(directory, "revision.json"),
+    };
+    // A Windows checkout has CRLF files, and the formatter expects the platform's line endings.
+    await writeFile(paths.sources, "[]\r\n");
+    await writeFile(paths.revision, '{\n  "packagingRevision": 1\n}\n');
+    await writeUpdate(paths, {
+      sources: [{ id: "changed" }] as unknown as PinnedSource[],
+      revision: { packagingRevision: 2 },
+    });
+    await expect(readFile(paths.sources, "utf8")).resolves.toBe(
+      '[\r\n  {\r\n    "id": "changed"\r\n  }\r\n]\r\n',
+    );
+    await expect(readFile(paths.revision, "utf8")).resolves.toBe(
+      '{\n  "packagingRevision": 2\n}\n',
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 it("an interrupted update never leaves new pins with the old packaging revision", async () => {

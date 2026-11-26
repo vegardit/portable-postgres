@@ -42,7 +42,7 @@ import {
 } from "../binaries/artifact/runtime-layout.ts";
 import { sources } from "../binaries/sources/sources.ts";
 
-/** The notice scan of the fixture sources: one signature each, in its licence file. */
+/** The notice scan of the fixture sources: one signature each, in its license file. */
 export function fixtureNoticeScan(): SourceNoticeScan {
   return Object.fromEntries(sources.map(source => [
     source.id,
@@ -66,7 +66,7 @@ export function peFixture(): Buffer {
   return bytes;
 }
 
-/** Fills an empty directory with the extracted sources' licence and notice files, as a build leaves them. */
+/** Fills an empty directory with the extracted sources' license and notice files, as a build leaves them. */
 export async function sourceTree(sourceRoot: string): Promise<string> {
   for (const source of sources) {
     for (const file of [source.licenseFile, ...source.noticeFiles ?? []]) {
@@ -187,7 +187,7 @@ export const toolchainParts: Record<
   "macos-arm64": [],
 };
 
-/** The licence sets used by verified toolchain fixtures. */
+/** The license sets used by verified toolchain fixtures. */
 export const toolchainLicenses: Record<string, string[]> = {
   "compiler-rt": ["Apache-2.0 WITH LLVM-exception"],
   "glibc-startup": ["LGPL-2.1-or-later WITH GCC-exception-2.0"],
@@ -494,7 +494,7 @@ export function reviewedFixture(manifest: ArtifactManifest): LicenseInventory {
   return { status: "verified", components };
 }
 
-/** Completes a draft the way a reviewer would; the fixture licences say nothing about real binaries. */
+/** Completes a draft the way a reviewer would; the fixture licenses say nothing about real binaries. */
 export function complete(draft: Review): Review {
   return {
     licenseInventory: {
@@ -527,7 +527,7 @@ export function complete(draft: Review): Review {
   };
 }
 
-/** A review approves the licence texts that it read, identified by the hashes of the shipped notices. */
+/** A review approves the license texts that it read, identified by the hashes of the shipped notices. */
 export function noticeHashes(
   manifest: ArtifactManifest,
   notices: string[],

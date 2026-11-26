@@ -1,144 +1,27 @@
 {
+  "target": "linux-arm64-glibc",
   "licenseInventory": {
-    "status": "verified",
     "components": [
       {
         "id": "postgresql",
         "licenses": [
-          "PostgreSQL",
+          "BSD-2-Clause",
           "BSD-3-Clause",
-          "ISC",
-          "MIT",
-          "Unicode-3.0",
-          "LicenseRef-Public-Domain",
-          "LicenseRef-IANA-tzdata",
-          "Spencer-99",
-          "TCL",
           "BSL-1.0",
+          "ISC",
           "LicenseRef-GEQO-Whitley",
+          "LicenseRef-IANA-tzdata",
+          "LicenseRef-Public-Domain",
+          "LicenseRef-X0213",
           "LicenseRef-pg-dump-Warner",
           "LicenseRef-rbtree-Niemann",
-          "LicenseRef-X0213"
+          "MIT",
+          "PostgreSQL",
+          "Spencer-99",
+          "TCL",
+          "Unicode-3.0"
         ],
-        "status": "verified",
         "files": [
-          "notices/postgresql.txt",
-          "notices/postgresql-src-backend-regex-COPYRIGHT",
-          "notices/postgresql-src-include-lib-sort_template.h.txt",
-          "notices/postgresql-src-port-pgmkdirp.c",
-          "notices/postgresql-src-port-snprintf.c",
-          "notices/postgresql-src-backend-snowball-README",
-          "notices/postgresql-src-port-getopt.c",
-          "notices/postgresql-src-port-getopt_long.c",
-          "notices/postgresql-src-port-bsearch_arg.c",
-          "notices/postgresql-src-port-mkdtemp.c",
-          "notices/postgresql-src-port-inet_aton.c",
-          "notices/postgresql-src-backend-utils-mb-wstrcmp.c",
-          "notices/postgresql-src-backend-utils-mb-wstrncmp.c",
-          "notices/postgresql-src-timezone-strftime.c",
-          "notices/postgresql-src-common-md5.c",
-          "notices/postgresql-src-common-sha1.c",
-          "notices/postgresql-src-common-sha2.c",
-          "notices/postgresql-src-port-inet_net_ntop.c",
-          "notices/postgresql-src-backend-utils-adt-inet_cidr_ntop.c",
-          "notices/postgresql-src-backend-utils-adt-inet_net_pton.c",
-          "notices/postgresql-src-port-strlcpy.c",
-          "notices/postgresql-src-port-strlcat.c",
-          "notices/postgresql-src-port-timingsafe_bcmp.c",
-          "notices/postgresql-src-include-common-hashfn_unstable.h.txt",
-          "notices/postgresql-src-backend-lib-hyperloglog.c",
-          "notices/postgresql-src-port-win32gettimeofday.c",
-          "notices/postgresql-src-backend-optimizer-geqo-geqo_cx.c",
-          "notices/postgresql-src-bin-pg_dump-pg_backup_archiver.c",
-          "notices/postgresql-src-backend-lib-rbtree.c",
-          "notices/postgresql-src-backend-regex-regc_locale.c",
-          "notices/postgresql-src-bin-pg_controldata-pg_controldata.c",
-          "notices/postgresql-contrib-pgcrypto-pgcrypto.h.txt",
-          "notices/postgresql-contrib-pgcrypto-px.c",
-          "notices/postgresql-contrib-pgcrypto-pgp.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-des.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-blowfish.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-gensalt.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-sha.c",
-          "notices/postgresql-contrib-pgcrypto-crypt-md5.c",
-          "notices/postgresql-unicode-license-v3.txt",
-          "notices/postgresql-snowball-copying.txt",
-          "notices/postgresql-snowball-website-license.txt",
-          "notices/postgresql-fast-crc32-license.txt",
-          "notices/postgresql-x0213-tables.txt",
-          "share/extension/btree_gist.control",
-          "share/extension/btree_gist--1.0--1.1.sql",
-          "share/extension/btree_gist--1.1--1.2.sql",
-          "share/extension/btree_gist--1.2--1.3.sql",
-          "share/extension/btree_gist--1.2.sql",
-          "share/extension/btree_gist--1.3--1.4.sql",
-          "share/extension/btree_gist--1.4--1.5.sql",
-          "share/extension/btree_gist--1.5--1.6.sql",
-          "share/extension/btree_gist--1.6--1.7.sql",
-          "share/extension/btree_gist--1.7--1.8.sql",
-          "lib/btree_gist.so",
-          "share/extension/citext.control",
-          "share/extension/citext--1.0--1.1.sql",
-          "share/extension/citext--1.1--1.2.sql",
-          "share/extension/citext--1.2--1.3.sql",
-          "share/extension/citext--1.3--1.4.sql",
-          "share/extension/citext--1.4--1.5.sql",
-          "share/extension/citext--1.4.sql",
-          "share/extension/citext--1.5--1.6.sql",
-          "share/extension/citext--1.6--1.7.sql",
-          "share/extension/citext--1.7--1.8.sql",
-          "lib/citext.so",
-          "share/extension/hstore.control",
-          "share/extension/hstore--1.1--1.2.sql",
-          "share/extension/hstore--1.2--1.3.sql",
-          "share/extension/hstore--1.3--1.4.sql",
-          "share/extension/hstore--1.4--1.5.sql",
-          "share/extension/hstore--1.4.sql",
-          "share/extension/hstore--1.5--1.6.sql",
-          "share/extension/hstore--1.6--1.7.sql",
-          "share/extension/hstore--1.7--1.8.sql",
-          "lib/hstore.so",
-          "share/extension/ltree.control",
-          "share/extension/ltree--1.0--1.1.sql",
-          "share/extension/ltree--1.1--1.2.sql",
-          "share/extension/ltree--1.1.sql",
-          "share/extension/ltree--1.2--1.3.sql",
-          "lib/ltree.so",
-          "share/extension/pg_stat_statements.control",
-          "share/extension/pg_stat_statements--1.0--1.1.sql",
-          "share/extension/pg_stat_statements--1.1--1.2.sql",
-          "share/extension/pg_stat_statements--1.10--1.11.sql",
-          "share/extension/pg_stat_statements--1.11--1.12.sql",
-          "share/extension/pg_stat_statements--1.2--1.3.sql",
-          "share/extension/pg_stat_statements--1.3--1.4.sql",
-          "share/extension/pg_stat_statements--1.4--1.5.sql",
-          "share/extension/pg_stat_statements--1.4.sql",
-          "share/extension/pg_stat_statements--1.5--1.6.sql",
-          "share/extension/pg_stat_statements--1.6--1.7.sql",
-          "share/extension/pg_stat_statements--1.7--1.8.sql",
-          "share/extension/pg_stat_statements--1.8--1.9.sql",
-          "share/extension/pg_stat_statements--1.9--1.10.sql",
-          "lib/pg_stat_statements.so",
-          "share/extension/pg_trgm.control",
-          "share/extension/pg_trgm--1.0--1.1.sql",
-          "share/extension/pg_trgm--1.1--1.2.sql",
-          "share/extension/pg_trgm--1.2--1.3.sql",
-          "share/extension/pg_trgm--1.3--1.4.sql",
-          "share/extension/pg_trgm--1.3.sql",
-          "share/extension/pg_trgm--1.4--1.5.sql",
-          "share/extension/pg_trgm--1.5--1.6.sql",
-          "lib/pg_trgm.so",
-          "share/extension/pgcrypto.control",
-          "share/extension/pgcrypto--1.0--1.1.sql",
-          "share/extension/pgcrypto--1.1--1.2.sql",
-          "share/extension/pgcrypto--1.2--1.3.sql",
-          "share/extension/pgcrypto--1.3--1.4.sql",
-          "share/extension/pgcrypto--1.3.sql",
-          "lib/pgcrypto.so",
-          "share/extension/unaccent.control",
-          "share/extension/unaccent--1.0--1.1.sql",
-          "share/extension/unaccent--1.1.sql",
-          "lib/unaccent.so",
           "bin/clusterdb",
           "bin/createdb",
           "bin/createuser",
@@ -174,6 +57,8 @@
           "bin/psql",
           "bin/reindexdb",
           "bin/vacuumdb",
+          "lib/btree_gist.so",
+          "lib/citext.so",
           "lib/cyrillic_and_mic.so",
           "lib/dict_snowball.so",
           "lib/euc2004_sjis2004.so",
@@ -181,6 +66,8 @@
           "lib/euc_jp_and_sjis.so",
           "lib/euc_kr_and_mic.so",
           "lib/euc_tw_and_big5.so",
+          "lib/hstore.so",
+          "lib/hypopg.so",
           "lib/latin2_and_win1250.so",
           "lib/latin_and_mic.so",
           "lib/libecpg.so",
@@ -196,8 +83,18 @@
           "lib/libpq.so.5",
           "lib/libpq.so.5.18",
           "lib/libpqwalreceiver.so",
+          "lib/ltree.so",
+          "lib/pg_cron.so",
+          "lib/pg_stat_statements.so",
+          "lib/pg_textsearch.so",
+          "lib/pg_trgm.so",
+          "lib/pgcrypto.so",
           "lib/pgoutput.so",
           "lib/plpgsql.so",
+          "lib/plpgsql_check.so",
+          "lib/timescaledb-2.32.0.so",
+          "lib/timescaledb.so",
+          "lib/unaccent.so",
           "lib/utf8_and_big5.so",
           "lib/utf8_and_cyrillic.so",
           "lib/utf8_and_euc2004.so",
@@ -214,10 +111,121 @@
           "lib/utf8_and_sjis2004.so",
           "lib/utf8_and_uhc.so",
           "lib/utf8_and_win.so",
+          "lib/vector.so",
+          "notices/postgresql-contrib-pgcrypto-crypt-blowfish.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-des.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-gensalt.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-md5.c",
+          "notices/postgresql-contrib-pgcrypto-crypt-sha.c",
+          "notices/postgresql-contrib-pgcrypto-pgcrypto.h.txt",
+          "notices/postgresql-contrib-pgcrypto-pgp.c",
+          "notices/postgresql-contrib-pgcrypto-px.c",
+          "notices/postgresql-fast-crc32-license.txt",
+          "notices/postgresql-freebsd-crypt-md5.txt",
+          "notices/postgresql-snowball-copying.txt",
+          "notices/postgresql-snowball-website-license.txt",
+          "notices/postgresql-src-backend-lib-hyperloglog.c",
+          "notices/postgresql-src-backend-lib-rbtree.c",
+          "notices/postgresql-src-backend-optimizer-geqo-geqo_cx.c",
+          "notices/postgresql-src-backend-regex-COPYRIGHT",
+          "notices/postgresql-src-backend-regex-regc_locale.c",
+          "notices/postgresql-src-backend-snowball-README",
+          "notices/postgresql-src-backend-utils-adt-inet_cidr_ntop.c",
+          "notices/postgresql-src-backend-utils-adt-inet_net_pton.c",
+          "notices/postgresql-src-backend-utils-mb-wstrcmp.c",
+          "notices/postgresql-src-backend-utils-mb-wstrncmp.c",
+          "notices/postgresql-src-bin-pg_controldata-pg_controldata.c",
+          "notices/postgresql-src-bin-pg_dump-pg_backup_archiver.c",
+          "notices/postgresql-src-common-md5.c",
+          "notices/postgresql-src-common-sha1.c",
+          "notices/postgresql-src-common-sha2.c",
+          "notices/postgresql-src-include-common-hashfn_unstable.h.txt",
+          "notices/postgresql-src-include-lib-sort_template.h.txt",
+          "notices/postgresql-src-port-bsearch_arg.c",
+          "notices/postgresql-src-port-getopt.c",
+          "notices/postgresql-src-port-getopt_long.c",
+          "notices/postgresql-src-port-inet_aton.c",
+          "notices/postgresql-src-port-inet_net_ntop.c",
+          "notices/postgresql-src-port-mkdtemp.c",
+          "notices/postgresql-src-port-pgmkdirp.c",
+          "notices/postgresql-src-port-snprintf.c",
+          "notices/postgresql-src-port-strlcat.c",
+          "notices/postgresql-src-port-strlcpy.c",
+          "notices/postgresql-src-port-timingsafe_bcmp.c",
+          "notices/postgresql-src-port-win32gettimeofday.c",
+          "notices/postgresql-src-timezone-strftime.c",
+          "notices/postgresql-unicode-license-v3.txt",
+          "notices/postgresql-x0213-tables.txt",
+          "notices/postgresql.txt",
           "notices/source-inputs.json",
           "share/errcodes.txt",
+          "share/extension/btree_gist--1.0--1.1.sql",
+          "share/extension/btree_gist--1.1--1.2.sql",
+          "share/extension/btree_gist--1.2--1.3.sql",
+          "share/extension/btree_gist--1.2.sql",
+          "share/extension/btree_gist--1.3--1.4.sql",
+          "share/extension/btree_gist--1.4--1.5.sql",
+          "share/extension/btree_gist--1.5--1.6.sql",
+          "share/extension/btree_gist--1.6--1.7.sql",
+          "share/extension/btree_gist--1.7--1.8.sql",
+          "share/extension/btree_gist.control",
+          "share/extension/citext--1.0--1.1.sql",
+          "share/extension/citext--1.1--1.2.sql",
+          "share/extension/citext--1.2--1.3.sql",
+          "share/extension/citext--1.3--1.4.sql",
+          "share/extension/citext--1.4--1.5.sql",
+          "share/extension/citext--1.4.sql",
+          "share/extension/citext--1.5--1.6.sql",
+          "share/extension/citext--1.6--1.7.sql",
+          "share/extension/citext--1.7--1.8.sql",
+          "share/extension/citext.control",
+          "share/extension/hstore--1.1--1.2.sql",
+          "share/extension/hstore--1.2--1.3.sql",
+          "share/extension/hstore--1.3--1.4.sql",
+          "share/extension/hstore--1.4--1.5.sql",
+          "share/extension/hstore--1.4.sql",
+          "share/extension/hstore--1.5--1.6.sql",
+          "share/extension/hstore--1.6--1.7.sql",
+          "share/extension/hstore--1.7--1.8.sql",
+          "share/extension/hstore.control",
+          "share/extension/ltree--1.0--1.1.sql",
+          "share/extension/ltree--1.1--1.2.sql",
+          "share/extension/ltree--1.1.sql",
+          "share/extension/ltree--1.2--1.3.sql",
+          "share/extension/ltree.control",
+          "share/extension/pg_stat_statements--1.0--1.1.sql",
+          "share/extension/pg_stat_statements--1.1--1.2.sql",
+          "share/extension/pg_stat_statements--1.10--1.11.sql",
+          "share/extension/pg_stat_statements--1.11--1.12.sql",
+          "share/extension/pg_stat_statements--1.2--1.3.sql",
+          "share/extension/pg_stat_statements--1.3--1.4.sql",
+          "share/extension/pg_stat_statements--1.4--1.5.sql",
+          "share/extension/pg_stat_statements--1.4.sql",
+          "share/extension/pg_stat_statements--1.5--1.6.sql",
+          "share/extension/pg_stat_statements--1.6--1.7.sql",
+          "share/extension/pg_stat_statements--1.7--1.8.sql",
+          "share/extension/pg_stat_statements--1.8--1.9.sql",
+          "share/extension/pg_stat_statements--1.9--1.10.sql",
+          "share/extension/pg_stat_statements.control",
+          "share/extension/pg_trgm--1.0--1.1.sql",
+          "share/extension/pg_trgm--1.1--1.2.sql",
+          "share/extension/pg_trgm--1.2--1.3.sql",
+          "share/extension/pg_trgm--1.3--1.4.sql",
+          "share/extension/pg_trgm--1.3.sql",
+          "share/extension/pg_trgm--1.4--1.5.sql",
+          "share/extension/pg_trgm--1.5--1.6.sql",
+          "share/extension/pg_trgm.control",
+          "share/extension/pgcrypto--1.0--1.1.sql",
+          "share/extension/pgcrypto--1.1--1.2.sql",
+          "share/extension/pgcrypto--1.2--1.3.sql",
+          "share/extension/pgcrypto--1.3--1.4.sql",
+          "share/extension/pgcrypto--1.3.sql",
+          "share/extension/pgcrypto.control",
           "share/extension/plpgsql--1.0.sql",
           "share/extension/plpgsql.control",
+          "share/extension/unaccent--1.0--1.1.sql",
+          "share/extension/unaccent--1.1.sql",
+          "share/extension/unaccent.control",
           "share/information_schema.sql",
           "share/pg_hba.conf.sample",
           "share/pg_ident.conf.sample",
@@ -865,14 +873,7 @@
           "share/tsearch_data/synonym_sample.syn",
           "share/tsearch_data/thesaurus_sample.ths",
           "share/tsearch_data/turkish.stop",
-          "share/tsearch_data/unaccent.rules",
-          "lib/vector.so",
-          "lib/timescaledb.so",
-          "lib/timescaledb-2.32.0.so",
-          "lib/pg_textsearch.so",
-          "lib/hypopg.so",
-          "lib/plpgsql_check.so",
-          "lib/pg_cron.so"
+          "share/tsearch_data/unaccent.rules"
         ],
         "notices": [
           "notices/postgresql.txt",
@@ -918,7 +919,8 @@
           "notices/postgresql-snowball-copying.txt",
           "notices/postgresql-snowball-website-license.txt",
           "notices/postgresql-fast-crc32-license.txt",
-          "notices/postgresql-x0213-tables.txt"
+          "notices/postgresql-x0213-tables.txt",
+          "notices/postgresql-freebsd-crypt-md5.txt"
         ],
         "noticeSha256": {
           "notices/postgresql.txt": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
@@ -964,7 +966,8 @@
           "notices/postgresql-snowball-copying.txt": "f6f9e4c0e737728ca980de8595ded046d5e077017c1bb0ee05dc794a01434dae",
           "notices/postgresql-snowball-website-license.txt": "d714d7b98b852b2dfd066e8648596f5ff5bb44d41fc93e20f94f0a333131b2b2",
           "notices/postgresql-fast-crc32-license.txt": "2a089b18ed6324886d134edbf9c5e9cde62e13458f30a10200a1f78089f90be7",
-          "notices/postgresql-x0213-tables.txt": "8dd3204470f568a7b8292fcd003fd366b8d26186ef53458925609d33a3fd7a5d"
+          "notices/postgresql-x0213-tables.txt": "8dd3204470f568a7b8292fcd003fd366b8d26186ef53458925609d33a3fd7a5d",
+          "notices/postgresql-freebsd-crypt-md5.txt": "afb159f394ca4cbed5c26d0529a23a0a59564b5c6441571eb408ecab0250e6c4"
         },
         "noticeSignatures": [
           "! Portions Copyright (c) YYYY, PostgreSQL Global Development Group | ! Portions Copyright (c) YYYY, Regents of the University of California",
@@ -1187,9 +1190,10 @@
           "© (C)"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The seven listed extension images also use PostgreSQL server headers. The arm64 atomics header and ARMv8 CRC sources carry the PostgreSQL project notices. bin/postgres contains the ARMv8, software and runtime-selection CRC symbols. The x64-specific AVX-512 implementation is outside this target. The shared MIT-covered hash and HyperLogLog headers still apply.",
-          "The x64 review records the provenance limitation on the shared nepali.stop data. The same source signatures and retained project notices apply to this build."
+          "The x64 review at 1a757d3 records the provenance limitation on the shared nepali.stop data. The same source signatures and retained project notices apply to this build.",
+          "pgcrypto: Marko Kreen grants BSD-2-Clause in pgcrypto.h, pgp.c and px.c. David Burren grants BSD-3-Clause in crypt-des.c. The blowfish, gensalt and SHA crypt sources state public-domain terms. FreeBSD commit d8e82636a47b records the author-approved BSD-2-Clause grant for the MD5 implementation. notices/postgresql-freebsd-crypt-md5.txt retains that grant."
         ]
       },
       {
@@ -1197,10 +1201,9 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
+          "lib/vector.so",
           "notices/pgvector.txt",
-          "share/extension/vector.control",
           "share/extension/vector--0.1.0--0.1.1.sql",
           "share/extension/vector--0.1.1--0.1.3.sql",
           "share/extension/vector--0.1.3--0.1.4.sql",
@@ -1243,7 +1246,7 @@
           "share/extension/vector--0.8.5--0.8.6.sql",
           "share/extension/vector--0.8.6--0.8.7.sql",
           "share/extension/vector--0.8.7.sql",
-          "lib/vector.so"
+          "share/extension/vector.control"
         ],
         "notices": [
           "notices/pgvector.txt"
@@ -1257,7 +1260,7 @@
           "licence file LICENSE sha256:da5fbc1f146c0131f01680db7fb67998fb22524a6955871cfe79a45432236c04"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The file list and retained notices for this component match the x64 review."
         ]
       },
@@ -1267,11 +1270,11 @@
           "Apache-2.0",
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
-          "notices/timescaledb.txt",
+          "lib/timescaledb-2.32.0.so",
+          "lib/timescaledb.so",
           "notices/timescaledb-NOTICE",
-          "share/extension/timescaledb.control",
+          "notices/timescaledb.txt",
           "share/extension/timescaledb--2.10.0--2.32.0.sql",
           "share/extension/timescaledb--2.10.1--2.32.0.sql",
           "share/extension/timescaledb--2.10.2--2.32.0.sql",
@@ -1344,8 +1347,7 @@
           "share/extension/timescaledb--2.9.1--2.32.0.sql",
           "share/extension/timescaledb--2.9.2--2.32.0.sql",
           "share/extension/timescaledb--2.9.3--2.32.0.sql",
-          "lib/timescaledb.so",
-          "lib/timescaledb-2.32.0.so"
+          "share/extension/timescaledb.control"
         ],
         "notices": [
           "notices/timescaledb.txt",
@@ -1403,7 +1405,7 @@
           "we skip license checks for: | the update script fragments, because the generated update scripts will | contain the license at top, and we don't want to repeat it in the middle | test/sql/dump which contains auto-generated code | src/chunk_adatptive since it's still in BETA"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The Linux recipe sets APACHE_ONLY=ON and audits the compile commands before packaging. The retained NOTICE covers the code derived from PostgreSQL."
         ]
       },
@@ -1412,11 +1414,10 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
-          "notices/pg_textsearch.txt",
+          "lib/pg_textsearch.so",
           "notices/pg_textsearch-NOTICE",
-          "share/extension/pg_textsearch.control",
+          "notices/pg_textsearch.txt",
           "share/extension/pg_textsearch--0.0.1--0.0.2.sql",
           "share/extension/pg_textsearch--0.0.2--0.0.3.sql",
           "share/extension/pg_textsearch--0.0.3--0.0.4.sql",
@@ -1440,7 +1441,7 @@
           "share/extension/pg_textsearch--1.4.0--1.5.0.sql",
           "share/extension/pg_textsearch--1.5.0--1.5.1.sql",
           "share/extension/pg_textsearch--1.5.1.sql",
-          "lib/pg_textsearch.so"
+          "share/extension/pg_textsearch.control"
         ],
         "notices": [
           "notices/pg_textsearch.txt",
@@ -1462,7 +1463,7 @@
           "licence file NOTICE sha256:7e5f8d9202f2cfc0cb385314fa6d3764b655fbf8887b4a1b37bcedad2cd2fc81"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The file list and retained notices for this component match the x64 review."
         ]
       },
@@ -1471,10 +1472,9 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
+          "lib/hypopg.so",
           "notices/hypopg.txt",
-          "share/extension/hypopg.control",
           "share/extension/hypopg--1.3.1--1.4.0.sql",
           "share/extension/hypopg--1.3.1.sql",
           "share/extension/hypopg--1.4.0--1.4.1.sql",
@@ -1488,7 +1488,7 @@
           "share/extension/hypopg--1.4.4--1.4.5.sql",
           "share/extension/hypopg--1.4.4.sql",
           "share/extension/hypopg--1.4.5.sql",
-          "lib/hypopg.so"
+          "share/extension/hypopg.control"
         ],
         "notices": [
           "notices/hypopg.txt"
@@ -1506,7 +1506,7 @@
           "licence file LICENSE sha256:fa713329f5c5fea7a1b1e0f7263a7818a35a634cbd63c99caa468dfd5619e1de"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The file list and retained notices for this component match the x64 review."
         ]
       },
@@ -1516,12 +1516,11 @@
           "MIT",
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
+          "lib/plpgsql_check.so",
           "notices/plpgsql_check.txt",
-          "share/extension/plpgsql_check.control",
           "share/extension/plpgsql_check--2.10.sql",
-          "lib/plpgsql_check.so"
+          "share/extension/plpgsql_check.control"
         ],
         "notices": [
           "notices/plpgsql_check.txt",
@@ -1538,25 +1537,24 @@
           "licence file LICENSE sha256:40b35eecae9cb6e59aa52fe5fa3a39d80534efa99f7751e6834902d9cc92d447"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The extension uses MIT terms and incorporates PostgreSQL code in src/check_expr.c. Its retained notices include both grants."
         ]
       },
       {
         "id": "pg_cron",
         "licenses": [
+          "BSD-4.3TAHOE",
           "PostgreSQL",
-          "Vixie-Cron",
-          "BSD-4.3TAHOE"
+          "Vixie-Cron"
         ],
-        "status": "verified",
         "files": [
-          "notices/pg_cron.txt",
-          "notices/pg_cron-src-entry.c",
-          "notices/pg_cron-src-misc.c",
+          "lib/pg_cron.so",
           "notices/pg_cron-include-bitstring.h.txt",
           "notices/pg_cron-include-cron.h.txt",
-          "share/extension/pg_cron.control",
+          "notices/pg_cron-src-entry.c",
+          "notices/pg_cron-src-misc.c",
+          "notices/pg_cron.txt",
           "share/extension/pg_cron--1.0--1.1.sql",
           "share/extension/pg_cron--1.0.sql",
           "share/extension/pg_cron--1.1--1.2.sql",
@@ -1565,7 +1563,7 @@
           "share/extension/pg_cron--1.4--1.4-1.sql",
           "share/extension/pg_cron--1.4-1--1.5.sql",
           "share/extension/pg_cron--1.5--1.6.sql",
-          "lib/pg_cron.so"
+          "share/extension/pg_cron.control"
         ],
         "notices": [
           "notices/pg_cron.txt",
@@ -1589,7 +1587,7 @@
           "licence file LICENSE sha256:c56dd143965057e2dc17604019a456a2da3344896333713b14316bd16a4977cc"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The pinned cron implementation includes Vixie cron and Berkeley bitstring code. Its retained notices and the release source-bundle requirement are the same as in the cited review."
         ]
       },
@@ -1598,10 +1596,8 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
           "notices/pg_partman.txt",
-          "share/extension/pg_partman.control",
           "share/extension/pg_partman--0.1.0--0.1.1.sql",
           "share/extension/pg_partman--0.1.1--0.1.2.sql",
           "share/extension/pg_partman--0.1.2--0.2.0.sql",
@@ -1703,7 +1699,8 @@
           "share/extension/pg_partman--5.4.2--5.4.3.sql",
           "share/extension/pg_partman--5.4.3--5.5.0.sql",
           "share/extension/pg_partman--5.5.0--5.5.1.sql",
-          "share/extension/pg_partman--5.5.1.sql"
+          "share/extension/pg_partman--5.5.1.sql",
+          "share/extension/pg_partman.control"
         ],
         "notices": [
           "notices/pg_partman.txt"
@@ -1716,23 +1713,21 @@
           "licence file LICENSE.txt sha256:363cc44a50855732b134c1248954744e27302d6099f8f6d1d87403be9308c844"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The file list and retained notices for this component match the x64 review."
         ]
       },
       {
         "id": "icu",
         "licenses": [
-          "Unicode-3.0",
-          "ICU",
           "BSD-2-Clause",
           "BSD-3-Clause",
+          "ICU",
+          "LicenseRef-IANA-tzdata",
           "NAIST-2003",
-          "LicenseRef-IANA-tzdata"
+          "Unicode-3.0"
         ],
-        "status": "verified",
         "files": [
-          "notices/icu.txt",
           "lib/libicudata.so",
           "lib/libicudata.so.79",
           "lib/libicudata.so.79.1",
@@ -1741,7 +1736,8 @@
           "lib/libicui18n.so.79.1",
           "lib/libicuuc.so",
           "lib/libicuuc.so.79",
-          "lib/libicuuc.so.79.1"
+          "lib/libicuuc.so.79.1",
+          "notices/icu.txt"
         ],
         "notices": [
           "notices/icu.txt"
@@ -1977,7 +1973,7 @@
           "© YYYY and later: Unicode, Inc. and others. | License & terms of use: https://www.unicode.org/copyright.html"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. ICU 79.1 supplies libicuuc, libicui18n and the full libicudata. notices/icu.txt includes Unicode License V3 and the older IBM ICU grant.",
+          "Approved with the arm64 target in 1a757d3. ICU 79.1 supplies libicuuc, libicui18n and the full libicudata. notices/icu.txt includes Unicode License V3 and the older IBM ICU grant.",
           "The data image contains cjdict.dict, laodict.dict, burmesedict.dict and zoneinfo64.res. The retained third-party terms cover the Google and TaBE word lists, the NAIST/IPADIC dictionary, the Lao and Burmese dictionaries and the public-domain IANA time zone database. libicui18n contains the BSD-licensed double-conversion implementation.",
           "The runtime packages the two code libraries and their data library. The Autoconf and pkg.m4 texts in the upstream notice concern build tooling. LLVM code linked into the ICU code libraries has separate coverage."
         ]
@@ -1987,10 +1983,9 @@
         "licenses": [
           "Zlib"
         ],
-        "status": "verified",
         "files": [
-          "notices/zlib.txt",
-          "lib/libz.so.1"
+          "lib/libz.so.1",
+          "notices/zlib.txt"
         ],
         "notices": [
           "notices/zlib.txt"
@@ -2076,7 +2071,7 @@
           "© Copyright Henrik Ravn YYYY | Use, modification and distribution are subject to the Boost Software License, Version 1.0."
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The ELF source-file symbols in lib/libz.so.1 identify the upstream compression, decompression, CRC and gzip implementation. The source list excludes contrib/minizip, Ada bindings and command-line tools. notices/zlib.txt retains the Gailly and Adler grant."
+          "Approved with the arm64 target in 1a757d3. The ELF source-file symbols in lib/libz.so.1 identify the upstream compression, decompression, CRC and gzip implementation. The source list excludes contrib/minizip, Ada bindings and command-line tools. notices/zlib.txt retains the Gailly and Adler grant."
         ]
       },
       {
@@ -2084,12 +2079,11 @@
         "licenses": [
           "BSD-2-Clause"
         ],
-        "status": "verified",
         "files": [
-          "notices/lz4.txt",
-          "notices/lz4-lib-xxhash.c",
+          "lib/liblz4.so.1",
           "notices/lz4-lib-lz4file.h.txt",
-          "lib/liblz4.so.1"
+          "notices/lz4-lib-xxhash.c",
+          "notices/lz4.txt"
         ],
         "notices": [
           "notices/lz4.txt",
@@ -2153,7 +2147,7 @@
           "licence file tests/data/COPYING sha256:2ee3c965219a639df2ad00ead56c5e5019d6e362e12c86679b794dacb166eadc"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The ELF file symbols in lib/liblz4.so.1 name lz4.c, lz4hc.c, lz4frame.c, lz4file.c and xxhash.c. The three retained notices cover the library, xxHash and the file API. The Linux build disables the CLI and packages only the shared library."
+          "Approved with the arm64 target in 1a757d3. The ELF file symbols in lib/liblz4.so.1 name lz4.c, lz4hc.c, lz4frame.c, lz4file.c and xxhash.c. The three retained notices cover the library, xxHash and the file API. The Linux build disables the CLI and packages only the shared library."
         ]
       },
       {
@@ -2161,11 +2155,10 @@
         "licenses": [
           "Apache-2.0"
         ],
-        "status": "verified",
         "files": [
-          "notices/openssl.txt",
           "lib/libcrypto.so.3",
-          "lib/libssl.so.3"
+          "lib/libssl.so.3",
+          "notices/openssl.txt"
         ],
         "notices": [
           "notices/openssl.txt"
@@ -2311,8 +2304,8 @@
           "ÎG©jW"
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. libcrypto.so.3 and libssl.so.3 come from OpenSSL 3.5.9. notices/openssl.txt retains its Apache licence. The runtime omits the command-line tools, engines and loadable provider modules.",
-          "The ELF file symbols identify the TLS and QUIC sources and arm64 crypto assembly, including aesv8-armx, aes-gcm-armv8 and sha512-armv8. The assembly generators in this OpenSSL release grant the project licence for their OpenSSL distribution. The Bouncy Castle notices found in the pinned source belong to test certificates under test/certs, and the vendored Perl template module is build tooling."
+          "Approved with the arm64 target in 1a757d3. libcrypto.so.3 and libssl.so.3 come from OpenSSL 3.5.9. notices/openssl.txt retains its Apache license. The runtime omits the command-line tools, engines and loadable provider modules.",
+          "The ELF file symbols identify the TLS and QUIC sources and arm64 crypto assembly, including aesv8-armx, aes-gcm-armv8 and sha512-armv8. The assembly generators in this OpenSSL release grant the project license for their OpenSSL distribution. The Bouncy Castle notices found in the pinned source belong to test certificates under test/certs, and the vendored Perl template module is build tooling."
         ]
       },
       {
@@ -2320,10 +2313,8 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
           "notices/pgtap.txt",
-          "share/extension/pgtap.control",
           "share/extension/pgtap--0.90.0--0.91.0.sql",
           "share/extension/pgtap--0.91.0--0.92.0.sql",
           "share/extension/pgtap--0.92.0--0.93.0.sql",
@@ -2342,7 +2333,8 @@
           "share/extension/pgtap--1.3.2--1.3.3.sql",
           "share/extension/pgtap--1.3.3--1.3.4.sql",
           "share/extension/pgtap--1.3.4.sql",
-          "share/extension/pgtap--unpackaged--0.91.0.sql"
+          "share/extension/pgtap--unpackaged--0.91.0.sql",
+          "share/extension/pgtap.control"
         ],
         "notices": [
           "notices/pgtap.txt"
@@ -2358,7 +2350,7 @@
           "testing. It is distributed under the revised FreeBSD license."
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual licence grants and their source paths.",
+          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
           "The file list and retained notices for this component match the x64 review."
         ]
       },
@@ -2367,10 +2359,8 @@
         "licenses": [
           "PostgreSQL"
         ],
-        "status": "verified",
         "files": [
           "notices/pgmq.txt",
-          "share/extension/pgmq.control",
           "share/extension/pgmq--0.10.2--0.11.1.sql",
           "share/extension/pgmq--0.11.1--0.11.2.sql",
           "share/extension/pgmq--0.11.2--0.12.0.sql",
@@ -2447,7 +2437,8 @@
           "share/extension/pgmq--1.7.1--1.8.0.sql",
           "share/extension/pgmq--1.8.0--1.8.1.sql",
           "share/extension/pgmq--1.8.1--1.9.0.sql",
-          "share/extension/pgmq--1.9.0--1.10.0.sql"
+          "share/extension/pgmq--1.9.0--1.10.0.sql",
+          "share/extension/pgmq.control"
         ],
         "notices": [
           "notices/pgmq.txt"
@@ -2462,7 +2453,7 @@
           "license = \"PostgreSQL\""
         ],
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The pgmq component contains the control file, versioned SQL and upgrade scripts from pgmq-extension, plus the Tembo PostgreSQL licence in notices/pgmq.txt. The Rust client and its dependencies are outside the runtime."
+          "Approved with the arm64 target in 1a757d3. The pgmq component contains the control file, versioned SQL and upgrade scripts from pgmq-extension, plus the Tembo PostgreSQL license in notices/pgmq.txt. The Rust client and its dependencies are outside the runtime."
         ]
       },
       {
@@ -2470,7 +2461,6 @@
         "licenses": [
           "Apache-2.0 WITH LLVM-exception"
         ],
-        "status": "verified",
         "files": [
           "bin/clusterdb",
           "bin/createdb",
@@ -2565,7 +2555,7 @@
         "noticeSha256": {},
         "toolchain": "21",
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. Clang 21.1.8 used compiler-rt. The package audit checked each shipped ELF link for forbidden GCC contributions. libssl and libcrypto contain compiler-rt's aarch64.c.o and outline atomic helpers. LLVM 21.1.8 identifies lib/builtins/cpu_model/aarch64.c and lib/builtins/aarch64/lse.S under Apache-2.0 WITH LLVM-exception."
+          "Approved with the arm64 target in 1a757d3. Clang 21.1.8 used compiler-rt. The package audit checked each shipped ELF link for forbidden GCC contributions. libssl and libcrypto contain compiler-rt's aarch64.c.o and outline atomic helpers. LLVM 21.1.8 identifies lib/builtins/cpu_model/aarch64.c and lib/builtins/aarch64/lse.S under Apache-2.0 WITH LLVM-exception."
         ]
       },
       {
@@ -2573,7 +2563,6 @@
         "licenses": [
           "LGPL-2.1-or-later WITH GCC-exception-2.0"
         ],
-        "status": "verified",
         "files": [
           "bin/clusterdb",
           "bin/createdb",
@@ -2668,8 +2657,8 @@
         "noticeSha256": {},
         "toolchain": "glibc 2.35",
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. Ubuntu installed libc6-dev:arm64 2.35-0ubuntu3.18. bin/postgres contains Scrt1.o. The link audit restricts glibc inputs to the reviewed startup objects and libc_nonshared members.",
-          "The exact Ubuntu source tarball and Debian patches match the source package descriptor. The arm64 crti.S and crtn.S contain the linking exception; start.S omits it in this package. Its entire contents following the licence header are identical to the explicitly exception-licensed start.S in upstream glibc commit 06d4381dd81eaab16b538017adc5854033f44b6d. The Ubuntu patches contain no change to that file.",
+          "Approved with the arm64 target in 1a757d3. Ubuntu installed libc6-dev:arm64 2.35-0ubuntu3.18. bin/postgres contains Scrt1.o. The link audit restricts glibc inputs to the reviewed startup objects and libc_nonshared members.",
+          "The exact Ubuntu source tarball and Debian patches match the source package descriptor. The arm64 crti.S and crtn.S contain the linking exception; start.S omits it in this package. Its entire contents following the license header are identical to the explicitly exception-licensed start.S in upstream glibc commit 06d4381dd81eaab16b538017adc5854033f44b6d. The Ubuntu patches contain no change to that file.",
           "glibc steward Carlos O'Donell confirmed the longstanding application of the exception to this code on 2022-08-25 (glibc-alpha message a1840322-9177-1206-f329-44bfb72c5f98@redhat.com). See https://github.com/bminor/glibc/commit/06d4381dd81eaab16b538017adc5854033f44b6d. The glibc ABI-note and reviewed libc_nonshared routines also carry linking exceptions."
         ]
       },
@@ -2678,11 +2667,10 @@
         "licenses": [
           "Apache-2.0 WITH LLVM-exception"
         ],
-        "status": "verified",
         "files": [
-          "notices/llvm-cxx-runtime.txt",
           "lib/libicui18n.so.79.1",
-          "lib/libicuuc.so.79.1"
+          "lib/libicuuc.so.79.1",
+          "notices/llvm-cxx-runtime.txt"
         ],
         "notices": [
           "notices/llvm-cxx-runtime.txt"
@@ -2692,13 +2680,12 @@
         },
         "toolchain": "21",
         "evidence": [
-          "Build 45697881749, job 139499957257, commit c6fb3828313c0d2555ddf588a8d4e6bc0e5a1168. The Linux C++ wrapper uses LLVM's static libc++, libc++abi and libunwind. The ICU libraries' ELF file symbols include libc++abi and unwind implementation objects, including UnwindRegistersSave.S.o in libicuuc. The shipped notices/llvm-cxx-runtime.txt retains the three upstream runtime licence texts. The separate ICU data library contains no executable code."
+          "Approved with the arm64 target in 1a757d3. The Linux C++ wrapper uses LLVM's static libc++, libc++abi and libunwind. The ICU libraries' ELF file symbols include libc++abi and unwind implementation objects, including UnwindRegistersSave.S.o in libicuuc. The shipped notices/llvm-cxx-runtime.txt retains the three upstream runtime license texts. The separate ICU data library contains no executable code."
         ]
       }
     ]
   },
   "hostRequirements": {
-    "status": "verified",
     "os": "Linux on AArch64 with glibc. The archive passed the native SQL and TAP proof in the clean Ubuntu 22.04 arm64 container.",
     "cpu": "64-bit little-endian AArch64 (Armv8-A). PostgreSQL includes software CRC and runtime selection for the optional ARMv8 CRC extension. The build clears pgvector OPTFLAGS to avoid tuning for the build CPU.",
     "libraries": [
@@ -2706,7 +2693,7 @@
         "name": "glibc",
         "requirement": "GLIBC_2.34 or newer",
         "license": "LGPL-2.1-or-later",
-        "evidence": "Build 45697881749 measured GLIBC_2.34 across the packaged ELF files. Its host dependencies were ld-linux-aarch64.so.1, libc.so.6 and libm.so.6. The other reported NEEDED libraries ship in the archive. The clean Ubuntu 22.04 arm64 consumer passed.",
+        "evidence": "The arm64 build reviewed in 1a757d3 measured GLIBC_2.34 across the packaged ELF files. Its host dependencies were ld-linux-aarch64.so.1, libc.so.6 and libm.so.6. The other reported NEEDED libraries ship in the archive. The clean Ubuntu 22.04 arm64 consumer passed. Release dry run 45710944049, job 139553060580, passed release review and the clean consumer with this requirement.",
         "measured": true
       }
     ]

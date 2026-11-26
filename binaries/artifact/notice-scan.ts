@@ -6,8 +6,8 @@
  */
 
 /**
- * Reduces the copyright and licence text of a source tree to a set of signatures, so that a source update that
- * brings new licence text reopens the source's licence review: the set changes. It scans every file of the
+ * Reduces the copyright and license text of a source tree to a set of signatures, so that a source update that
+ * brings new license text reopens the source's license review: the set changes. It scans every file of the
  * pinned source, not only the compiled ones. Tracing what each image compiles needs heuristics that an upstream
  * build change can break silently, and the release's source bundle redistributes the whole tree anyway.
  */
@@ -20,7 +20,7 @@ const attribution =
   /copyright|©|\(c\)\s*(?:19|20)\d\d|\blicen[cs](?:e|ed|es|ing)\b|public domain|all rights reserved/i;
 const grant = /redistribution and use|permission (?:is hereby granted|to use)/i;
 const hashGrant = /\b(?:you (?:can|may) redistribute|gives unlimited permission)\b/i;
-// Not "derived": design notes say "derived state", and licence text that uses it also says "software".
+// Not "derived": design notes say "derived state", and license text that uses it also says "software".
 const condition = /warrant|liab|distribut|permission|\bnotice\b|\bsold\b/i;
 const attributionProse = /\b(?:software|authors?)\b/i;
 
@@ -52,7 +52,7 @@ export function decodeText(data: Uint8Array): string | undefined {
 }
 
 /**
- * Reduces a notice line to what a licence review cares about: comment markers and spacing are dropped, and so
+ * Reduces a notice line to what a license review cares about: comment markers and spacing are dropped, and so
  * are the years of a copyright line, so its yearly bump changes nothing. Holders, grants and exceptions count.
  */
 export function normalizeNoticeLine(line: string): string {
@@ -69,7 +69,7 @@ function addBlockNotices(body: string[], found: Set<string>, hashGrantBlock = fa
   let inGrant = false;
   for (const [index, paragraph] of paragraphs.entries()) {
     const lines = paragraph.split("\n");
-    // Autoconf grants can start a line before the permission phrase or licence name.
+    // Autoconf grants can start a line before the permission phrase or license name.
     const opensHashGrant = hashGrantBlock && hashGrant.test(paragraph);
     // Shell and M4 maintenance notes often mention the software after its grant has ended.
     const aboutTerms = condition.test(paragraph)
@@ -91,7 +91,7 @@ function addBlockNotices(body: string[], found: Set<string>, hashGrantBlock = fa
 const proseFile = /(?:^|\/)readme(?:$|\.)|\.(?:md|mmd|markdown|txt)$/i;
 const licenceHeading = /^(?:licen[cs]es?|licensing|copyright(?:\s+(?:and|&)\s+licen[cs]es?)?)$/i;
 
-/** A subsection belongs to the enclosing licence until a peer or higher-level heading ends it. */
+/** A subsection belongs to the enclosing license until a peer or higher-level heading ends it. */
 function licenceLevel(current: number, depth: number, title: string): number {
   if (current > 0 && depth > current) return current;
   return licenceHeading.test(title) ? depth : 0;
@@ -122,7 +122,7 @@ function addCBlockNotices(body: string[], found: Set<string>): void {
   }
 }
 
-/** Marks complete licence sections in prose so a wrapped condition can change on a line without a keyword. */
+/** Marks complete license sections in prose so a wrapped condition can change on a line without a keyword. */
 function licenceSectionLines(lines: string[]): Set<number> {
   const included = new Set<number>();
   let level = 0;
@@ -167,7 +167,7 @@ function addSourceNotices(text: string, path: string, found: Set<string>): void 
     previousMarker = undefined;
     if (!explicit && !continuation) return;
     const normalized = normalizeNoticeLine(line);
-    // In .po and SQL files a complete licence sentence often precedes unrelated comments.
+    // In .po and SQL files a complete license sentence often precedes unrelated comments.
     const numberedClause = /^(?:\d+[.)]|\([a-z\d]+\))\s/i.test(normalized);
     if (normalized === "" || (!explicit && endedSentence && !numberedClause)) return;
     found.add(normalized);
@@ -245,12 +245,12 @@ export function noticeSignature(text: string, path = ""): string | undefined {
   return found.size === 0 ? undefined : [...found].join(" | ");
 }
 
-/** Source code whose name happens to start like a licence file, such as `notice.c`. */
+/** Source code whose name happens to start like a license file, such as `notice.c`. */
 const codeFile =
   /\.(?:c|h|cc|cpp|hpp|y|l|sql|pl|pm|py|rb|js|ts|sh|cmake|in|am|ac|m4|sgml|xml|html?|out|source|spec|po)$/i;
 
 /**
- * Whether a file is a licence text of its own, such as `LICENSE`, `COPYING.LIB`, `NOTICE` or
+ * Whether a file is a license text of its own, such as `LICENSE`, `COPYING.LIB`, `NOTICE` or
  * `SectionMemoryManager.LICENSE`. Its conditions often sit in lines without any keyword, so such a file is
  * fingerprinted whole instead of by its notice lines.
  */
@@ -262,7 +262,7 @@ export function isLicenceFile(path: string): boolean {
 }
 
 /**
- * The signature of a licence file: its path, so that a moved licence is noticed, and the SHA-256 of its text
+ * The signature of a license file: its path, so that a moved license is noticed, and the SHA-256 of its text
  * with spacing, blank lines and copyright years normalized.
  */
 export function licenceFileSignature(path: string, text: string): string {
@@ -270,6 +270,7 @@ export function licenceFileSignature(path: string, text: string): string {
     (copyrightLine.test(line) ? line.replaceAll(years, "YYYY") : line).replaceAll(/\s+/g, " ")
       .trim()
   ).filter(Boolean).join("\n");
+  // The prefix is part of the stored signature. Changing its spelling would reopen existing reviews.
   return `licence file ${path} sha256:${createHash("sha256").update(normalized).digest("hex")}`;
 }
 

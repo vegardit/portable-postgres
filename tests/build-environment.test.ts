@@ -35,7 +35,7 @@ afterEach(cleanup);
 const requirements = "meson==1.12.1 --hash=sha256:" + "0".repeat(64) + "\n";
 
 it.each([["Linux", linuxRecipe], ["Windows", windowsRecipe]] as const)(
-  "the %s recipe binds reassembly to its TimescaleDB licence check",
+  "the %s recipe binds reassembly to its TimescaleDB license check",
   (_, recipe) => {
     expect(recipe).toContain(join(root, "binaries/timescaledb.ts"));
   },
