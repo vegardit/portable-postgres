@@ -22,8 +22,8 @@ import { isIcuDataLibrary } from "../artifact/runtime-layout.ts";
 export const linkRecordsDirectory = "link-records";
 
 /** Returns the GNU build ID of an ELF image as readelf prints it, which names its trace in traced-ld.sh. */
-export function readBuildId(image: string): string | undefined {
-  return /^\s*Build ID: ([0-9a-f]+)\s*$/m.exec(readelf(image, "--notes"))?.[1];
+export function readBuildId(target: LinuxTarget, image: string): string | undefined {
+  return /^\s*Build ID: ([0-9a-f]+)\s*$/m.exec(readelf(target, image, "--notes"))?.[1];
 }
 
 // GCC's runtime (GPL-3.0-or-later WITH GCC-exception-3.1) may not be linked, so no input may come from GCC's
@@ -36,6 +36,9 @@ const glibcCode =
 // image; the glibc-startup license review covers exactly this set, for example not a static libc.a.
 const reviewedGlibcCode =
   /^(?:\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/(?:S?crt1|crti|crtn)\.o|\(\/(?:usr\/)?lib\/(?:x86_64|aarch64)-linux-gnu\/libc_nonshared\.a\)(?:atexit|at_quick_exit|pthread_atfork|stack_chk_fail_local)\.oS)$/;
+// Alpine puts its CRT in /usr/lib. The PIC LLVM C++ libraries come from the build image's own prefix.
+const alpineCode = /^(?:\(\/(?:usr\/)?lib\/[^/]+\.a\).+|\/(?:usr\/)?lib\/[^/]+\.o)$/;
+const reviewedAlpineCode = /^\/usr\/lib\/(?:S?crt1|crti|crtn)\.o$/;
 
 /**
  * Removes `.` and `..` segments from the path of a trace line, including the archive of an `(archive)member`
@@ -51,15 +54,17 @@ function tracedFile(line: string): string {
 
 /**
  * Requires a full link trace in `records` for every ELF image in the installation, wherever it lies, and
- * refuses any trace that shows GCC's runtime or glibc code that the glibc-startup review does not cover.
+ * refuses traces with GCC's runtime or unreviewed contributions from the system libraries.
  * Tests pass their own `buildId`, because readelf from the build image's LLVM is missing on other hosts.
  */
 export async function auditLinks(
   installation: string,
   records: string,
   target: LinuxTarget,
-  buildId: (image: string) => string | undefined = readBuildId,
+  buildId: (image: string) => string | undefined = image => readBuildId(target, image),
 ): Promise<void> {
+  const { libc, gnuArch } = linuxTargets[target];
+  const systemDirectory = libc === "musl" ? "/" : `/${gnuArch}-linux-gnu/`;
   const unreviewed = new Set<string>();
   const images = await elfImages(installation);
   for (const path of images) {
@@ -68,10 +73,9 @@ export async function auditLinks(
     const trace = id === undefined
       ? undefined
       : await readFile(join(records, id + ".trace"), "utf8").catch(() => undefined);
-    // Code-bearing images need glibc's crti.o. ICU's raw data library deliberately links with -nostdlib.
+    // Code-bearing images need the host CRT. ICU's raw data library deliberately links with -nostdlib.
     // Errors quote the raw line, so that it can be found in the stored trace.
     const lines = (trace?.split("\n") ?? []).map(line => ({ line, file: tracedFile(line) }));
-    const systemDirectory = `/${linuxTargets[target].gnuArch}-linux-gnu/`;
     if (!lines.some(({ file }) =>
       file === "/lib" + systemDirectory + "crti.o"
       || file === "/usr/lib" + systemDirectory + "crti.o"
@@ -87,12 +91,20 @@ export async function auditLinks(
     }
     for (const { line, file } of lines) {
       if (glibcCode.test(file)
-        && !(file.includes(systemDirectory) && reviewedGlibcCode.test(file))) unreviewed.add(line);
+        && !(libc === "glibc" && file.includes(systemDirectory) && reviewedGlibcCode.test(file)))
+      {
+        unreviewed.add(line);
+      }
+      if (libc === "musl" && alpineCode.test(file) && !reviewedAlpineCode.test(file)) {
+        unreviewed.add(line);
+      }
     }
   }
   if (unreviewed.size > 0) {
     throw new Error(
-      "A link copied glibc code that the glibc-startup review does not cover:\n"
+      (libc === "musl"
+        ? "A link copied Alpine system code outside the reviewed CRT and LLVM runtimes:\n"
+        : "A link copied glibc code that the glibc-startup review does not cover:\n")
         + [...unreviewed].sort().join("\n"),
     );
   }

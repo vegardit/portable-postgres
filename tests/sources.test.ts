@@ -78,11 +78,12 @@ it("compiled build drivers and the pin updater use the repository's recipes, not
   const script = `
     const { existsSync } = await import("node:fs");
     const { isAbsolute, join, relative, sep } = await import("node:path");
-    const { linuxRecipe } = await import("./dist/binaries/linux/build.js");
+    const { linuxRecipes } = await import("./dist/binaries/linux/build.js");
     const { windowsRecipe } = await import("./dist/binaries/windows/build.js");
     const { pinFiles } = await import("./dist/binaries/sources/update.js");
     const paths = [
-      ...linuxRecipe,
+      ...linuxRecipes.glibc,
+      ...linuxRecipes.musl,
       ...windowsRecipe,
       pinFiles.sources,
       pinFiles.revision,

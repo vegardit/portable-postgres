@@ -31,6 +31,7 @@ import {
   writeArtifactManifest,
 } from "../binaries/artifact/artifact.ts";
 import {
+  artifactTargets,
   contribExtensions,
   moduleSuffix,
   compressionLibraries,
@@ -59,7 +60,7 @@ const timescaleVersion = sources.find(source => source.id === "timescaledb")!.ve
 /** Linux and macOS fixtures need executable permissions, which only a POSIX host can validate. */
 const releaseTargets: ArtifactTarget[] = process.platform === "win32"
   ? ["windows-x64"]
-  : ["windows-x64", "linux-x64-glibc", "linux-arm64-glibc", "macos-arm64"];
+  : [...artifactTargets];
 /** Every toolchain component of every target that this host can validate. */
 const toolchainCases = releaseTargets.flatMap(target =>
   toolchainParts[target].map(part => ({ target, ...part }))
@@ -80,6 +81,16 @@ async function fixture(
 async function rewrite(root: string, manifest: ArtifactManifest): Promise<void> {
   await writeFile(join(root, artifactManifestName), JSON.stringify(manifest));
 }
+
+it.skipIf(process.platform === "win32").each([
+  ["linux-x64-musl", "/lib64/ld-linux-x86-64.so.2"],
+  ["linux-x64-glibc", "/lib/ld-musl-x86_64.so.1"],
+] as const)("rejects a program with the wrong ELF interpreter for %s", async (target, loader) => {
+  const files = { "bin/postgres": elfFixture(62, loader) };
+  await expect(createCandidate(await directory(), target, { files })).rejects.toThrow(
+    `expected the ${target} ELF interpreter: bin/postgres`,
+  );
+});
 
 it("release validation rejects an obsolete measured library and retains manual prerequisites", async () => {
   const { root, manifest } = await fixture();

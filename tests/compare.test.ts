@@ -15,6 +15,7 @@ import { root } from "../binaries/paths.ts";
 import { createCandidate } from "./candidate.ts";
 import { temporaryDirectories } from "./temporary-directories.ts";
 import { compareTargets } from "../binaries/artifact/compare.ts";
+import { artifactTargets } from "../binaries/artifact/runtime-layout.ts";
 
 type Payload = Parameters<typeof compareTargets>[0];
 const { directory, cleanup } = temporaryDirectories("manifest-comparison");
@@ -30,7 +31,7 @@ it("requires a matching downloaded manifest for every hosted target", async () =
       "--require-all-targets",
       downloads,
     ], { encoding: "utf8" });
-  for (const target of ["linux-x64-glibc", "windows-x64", "macos-arm64"]) {
+  for (const target of artifactTargets.filter(candidate => candidate !== "linux-arm64-glibc")) {
     const location = join(downloads, "manifest-" + target);
     await mkdir(location);
     await writeFile(join(location, artifactManifestName), JSON.stringify({ ...manifest, target }));

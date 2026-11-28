@@ -1,6 +1,6 @@
 LLVM C++ runtimes linked into the Linux ICU libraries
 
-libc++, libc++abi and libunwind from LLVM 21.
+libc++, libc++abi and libunwind from LLVM.
 Upstream notices follow in that order.
 
 ==============================================================================

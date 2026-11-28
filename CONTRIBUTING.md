@@ -93,10 +93,18 @@ To download an archive that CI has already built, see [CI checks and downloads](
 ### Linux x64 and arm64
 
 Run these commands from the repository root on an x64 or arm64 Linux host.
-Docker builds for the host architecture using Ubuntu 22.04, Clang and compiler-rt.
+Docker builds for the host architecture using Clang and compiler-rt.
+Use Ubuntu 22.04 for glibc or Alpine 3.24 for musl.
 The fixed `/workspace` path lets upstream tools build even when the host checkout path contains spaces.
+After either build, [test the packaged archive](#test-the-packaged-archive) in the same shell.
+
+Rebuild the Docker image if you change its pins, Dockerfile, `traced-ld.sh` or `clang-cxx.sh`.
+A fresh build checks that the image matches the current recipe.
+
+#### Build for glibc
 
 ```sh
+target="linux-$(node -p 'process.arch')-glibc"
 image=$(node -p 'require("./binaries/linux/base.json").image')
 llvm=$(node -p 'require("./binaries/linux/base.json").llvm')
 docker build --tag portable-postgres-linux-build \
@@ -104,20 +112,40 @@ docker build --tag portable-postgres-linux-build \
 docker run --rm --user "$(id -u):$(id -g)" \
   --mount "type=bind,source=$PWD,target=/workspace" --workdir /workspace \
   portable-postgres-linux-build node binaries/linux/build.ts build
-pnpm binaries:test:linux
 ```
 
-Find the SDK, installation and archive through `last-build.json` in `binaries/output/linux-x64/`
-or `binaries/output/linux-arm64/`.
-Paths in that record are relative to its directory so they work on both the host and the container.
+#### Build for musl
 
-Rebuild the Docker image if you change the pins in [base.json](binaries/linux/base.json), the Dockerfile,
-`traced-ld.sh` or `clang-cxx.sh`. A fresh build checks that the image matches the current recipe.
+```sh
+target="linux-$(node -p 'process.arch')-musl"
+image=$(node -p 'require("./binaries/linux/musl.json").image')
+llvm=$(node -p 'require("./binaries/linux/musl.json").llvm')
+docker build --tag portable-postgres-linux-musl-build --file binaries/linux/image/musl.Dockerfile \
+  --build-arg "ALPINE_IMAGE=$image" --build-arg "LLVM_MAJOR=$llvm" binaries/linux/image
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$PWD,target=/workspace" --workdir /workspace \
+  portable-postgres-linux-musl-build node binaries/linux/build.ts build
+```
+
+Use the same image for `node binaries/linux/build.ts assemble` when reassembling a musl build.
 
 #### Test the packaged archive
 
-Run `pnpm binaries:test:linux:clean <linux-target> <archive>` on a trusted archive.
-Choose `linux-x64-glibc` or `linux-arm64-glibc` to match its architecture.
+Find the SDK, installation and archive through `last-build.json` in `binaries/output/linux-x64/`
+or `binaries/output/linux-arm64/` for glibc.
+The musl records are in `binaries/output/linux-x64-musl/` and `binaries/output/linux-arm64-musl/`.
+Paths in that record are relative to its directory so they work on both the host and the container.
+
+Use the target set by the build command to test its last recorded archive in a clean container.
+
+```sh
+output_dir="binaries/output/${target%-glibc}"
+archive=$(cd "$output_dir" && node -p 'require("node:path").resolve(require("./last-build.json").archive)')
+pnpm binaries:test:linux:clean "$target" "$archive"
+```
+
+For another trusted archive, run `pnpm binaries:test:linux:clean <linux-target> <archive>`.
+Choose `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl` or `linux-arm64-musl` to match the archive.
 CI runs this same test on the exact archive it produces.
 
 For the test environment and its recorded evidence, see [CI consumer tests](docs/native-artifact.md#ci-consumer-tests).
@@ -188,7 +216,7 @@ The packaging revision in `binaries/sources/revision.json` counts releases of on
 
 ### CI checks and downloads
 
-When you change the native distribution, the [Build workflow](.github/workflows/build.yml) builds and tests all four targets.
+When you change the native distribution, the [Build workflow](.github/workflows/build.yml) builds and tests all six targets.
 If a job fails, open its summary to see which check needs attention.
 If release validation failed because a review is incomplete, CI has already uploaded the draft you need to
 [update the evidence on your pull request](#updating-license-and-host-evidence-in-your-pr).
@@ -229,12 +257,14 @@ If the update fails CI, use the job summary to find what needs changing.
 If your change affects what an archive ships or needs from its host, Build can flag a gap in the recorded evidence.
 Update the file for each affected target on your pull request.
 
-| Build target        | Tracked review file                                                  |
-| ------------------- | -------------------------------------------------------------------- |
-| `linux-x64-glibc`   | [binaries/linux/review-x64.json](binaries/linux/review-x64.json)     |
-| `linux-arm64-glibc` | [binaries/linux/review-arm64.json](binaries/linux/review-arm64.json) |
-| `windows-x64`       | [binaries/windows/review.json](binaries/windows/review.json)         |
-| `macos-arm64`       | [binaries/macos/review.json](binaries/macos/review.json)             |
+| Build target        | Tracked review file                                                              |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `linux-arm64-glibc` | [binaries/linux/review-arm64-glibc.json](binaries/linux/review-arm64-glibc.json) |
+| `linux-arm64-musl`  | `binaries/linux/review-arm64-musl.json`                                          |
+| `linux-x64-glibc`   | [binaries/linux/review-x64-glibc.json](binaries/linux/review-x64-glibc.json)     |
+| `linux-x64-musl`    | [binaries/linux/review-x64-musl.json](binaries/linux/review-x64-musl.json)       |
+| `macos-arm64`       | [binaries/macos/review.json](binaries/macos/review.json)                         |
+| `windows-x64`       | [binaries/windows/review.json](binaries/windows/review.json)                     |
 
 1. **Get the draft for the target.** Open the pull request's Build run and download `review-draft-<target>`.
    The job summary lists what reopened.

@@ -7,12 +7,11 @@
 
 /** Defines the PostgreSQL runtime payload shared by assembly and artifact validation. */
 import { posix } from "node:path";
-import { isLinuxTarget } from "../linux/target.ts";
+import { type LinuxTarget, isLinuxTarget, linuxTargets } from "../linux/target.ts";
 
 /** Every target that the project builds and validates; a release needs an archive for each. */
 export const artifactTargets = [
-  "linux-x64-glibc",
-  "linux-arm64-glibc",
+  ...Object.keys(linuxTargets) as LinuxTarget[],
   "windows-x64",
   "macos-arm64",
 ] as const;

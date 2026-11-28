@@ -174,8 +174,10 @@ export type Draft = {
 
 /** Each target's tracked review lives next to its build recipe. */
 export const reviewFiles: Record<ArtifactTarget, string> = {
-  "linux-arm64-glibc": join(root, "binaries/linux/review-arm64.json"),
-  "linux-x64-glibc": join(root, "binaries/linux/review-x64.json"),
+  "linux-arm64-glibc": join(root, "binaries/linux/review-arm64-glibc.json"),
+  "linux-x64-glibc": join(root, "binaries/linux/review-x64-glibc.json"),
+  "linux-x64-musl": join(root, "binaries/linux/review-x64-musl.json"),
+  "linux-arm64-musl": join(root, "binaries/linux/review-arm64-musl.json"),
   "windows-x64": join(root, "binaries/windows/review.json"),
   "macos-arm64": join(root, "binaries/macos/review.json"),
 };

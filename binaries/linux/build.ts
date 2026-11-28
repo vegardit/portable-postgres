@@ -13,6 +13,7 @@ import {
   type HostEvidence,
   hostMeasurementEvidence,
   toolchainEvidence,
+  toolchainNotices,
 } from "../artifact/artifact.ts";
 import { sourceNoticesFile, writeSourceNoticeScan } from "../artifact/notice-scan.ts";
 import { verifyNoticeAnchors } from "../artifact/notices.ts";
@@ -32,23 +33,22 @@ import {
 } from "../package.ts";
 import { outputRoot, root, workRoot } from "../paths.ts";
 import { buildJobs, capture, run } from "../process.ts";
-import { linuxTargets, nativeLinuxTarget } from "./target.ts";
-import baseline from "./base.json" with { type: "json" };
+import {
+  compilerFor,
+  type LinuxTarget,
+  linuxBases,
+  linuxTargets,
+  nativeLinuxTarget,
+} from "./target.ts";
 
 // From the repository, because the compiled copy of this module in dist has none of these files.
 const recipeRoot = join(root, "binaries/linux");
 
-/**
- * The build image, its pinned base, and the compile script determine the development installation.
- * Reassembly also relies on the fresh build's notice scan and TimescaleDB check.
- */
-export const linuxRecipe: readonly string[] = [
+const commonRecipe = [
   ...[
     "build.sh",
-    "image/Dockerfile",
     "image/traced-ld.sh",
     "image/clang-cxx.sh",
-    "base.json",
     "target.ts",
   ].map(
     file => join(recipeRoot, file),
@@ -59,23 +59,40 @@ export const linuxRecipe: readonly string[] = [
   join(root, "binaries/timescaledb.ts"),
 ];
 
+/**
+ * Each SDK depends on the shared compile scripts and the image used for its libc.
+ * Reassembly also relies on the fresh build's notice scan and TimescaleDB check.
+ */
+export const linuxRecipes = {
+  glibc: [...commonRecipe, join(recipeRoot, "base.json"), join(recipeRoot, "image/Dockerfile")],
+  musl: [...commonRecipe, join(recipeRoot, "musl.json"), join(recipeRoot, "image/musl.Dockerfile")],
+} as const;
+
 /** Where the build image keeps the recipe files and the build arguments that it was built from. */
 export const imageRecipeDirectory = "/usr/local/share/portable-postgres/recipe";
 
 /**
  * Stops a fresh build in an image that another recipe built. The recipe identity covers the image's files
- * and the arguments from base.json, not the image that the build runs in, so the build would otherwise be
+ * and the pinned base and compiler, not the image that the build runs in, so the build would otherwise be
  * recorded as made by a recipe that it did not follow. An image without the copies predates them.
  */
-export async function requireCurrentImage(image: string = imageRecipeDirectory): Promise<void> {
+export async function requireCurrentImage(
+  image: string = imageRecipeDirectory,
+  libc: "glibc" | "musl" = "glibc",
+): Promise<void> {
+  const baseline = linuxBases[libc];
+  const dockerfile = libc === "musl" ? "musl.Dockerfile" : "Dockerfile";
   const differences: string[] = [];
-  for (const file of ["Dockerfile", "traced-ld.sh", "clang-cxx.sh"]) {
+  for (const file of [dockerfile, "traced-ld.sh", "clang-cxx.sh"]) {
     const current = await readFile(join(recipeRoot, "image", file), "utf8");
     if (await readOptionalText(join(image, file)) !== current) differences.push(file);
   }
   const argument = async (file: string): Promise<string | undefined> =>
     (await readOptionalText(join(image, file)))?.trim();
-  if (await argument("ubuntu-image") !== baseline.image) differences.push("Ubuntu image");
+  const distribution = libc === "musl" ? "Alpine" : "Ubuntu";
+  if (await argument(distribution.toLowerCase() + "-image") !== baseline.image) {
+    differences.push(distribution + " image");
+  }
   if (await argument("llvm-major") !== baseline.llvm) differences.push("LLVM major");
   if (differences.length > 0) {
     throw new Error(
@@ -92,8 +109,10 @@ export async function build(command: string | undefined): Promise<void> {
     );
   }
   const target = command === "fetch" ? undefined : nativeLinuxTarget();
-  // Before fetching, so that a stale image stops the build at once.
-  if (command === "build") await requireCurrentImage();
+  if (target !== undefined && command === "build") {
+    // Before fetching, so that a stale image stops the build at once.
+    await requireCurrentImage(imageRecipeDirectory, linuxTargets[target].libc);
+  }
   const downloads = join(workRoot, "downloads");
   // Extraction must read the exact files that fetching verified.
   const archives = command === "assemble"
@@ -101,12 +120,15 @@ export async function build(command: string | undefined): Promise<void> {
     : await fetchSources(downloads);
   if (target === undefined) return;
   const profile = linuxTargets[target];
+  const baseline = linuxBases[profile.libc];
   const output = join(outputRoot, profile.output);
-  const recipe = await recipeIdentity(linuxRecipe);
+  const recipe = await recipeIdentity(linuxRecipes[profile.libc]);
   let current: NativeBuild;
   if (command === "build") {
     // Each build starts with empty sources, objects, and SDK files, even when release pins change.
-    const buildWork = await mkdtemp(join(workRoot, "linux-build-"));
+    const buildWork = await mkdtemp(
+      join(workRoot, profile.libc === "musl" ? "linux-musl-build-" : "linux-build-"),
+    );
     // PostgreSQL keeps share and lib flat when the prefix contains "postgresql".
     current = { buildWork, developmentInstallation: join(buildWork, "postgresql-sdk"), recipe };
     for (const source of sources) {
@@ -135,6 +157,8 @@ export async function build(command: string | undefined): Promise<void> {
         PORTABLE_PG_PREFIX: current.developmentInstallation,
         BUILD_JOBS: buildJobs(),
         PORTABLE_PG_GNU_ARCH: profile.gnuArch,
+        PORTABLE_PG_LIBC: profile.libc,
+        PORTABLE_PG_CC: compilerFor(target),
         LLVM_MAJOR: baseline.llvm,
       },
     });
@@ -142,7 +166,7 @@ export async function build(command: string | undefined): Promise<void> {
       join(buildWork, "timescaledb-build"),
       join(buildWork, "sources", "timescaledb"),
     );
-    current.toolchainEvidence = measureToolchain();
+    current.toolchainEvidence = await measureToolchain(target);
     await recordBuild(output, current);
   } else {
     current = await readBuild(output, recipe);
@@ -155,21 +179,23 @@ export async function build(command: string | undefined): Promise<void> {
     target,
     output,
     reviewFile: reviewFiles[target],
-    toolchainNotices: [join(recipeRoot, "notices/llvm-cxx-runtime.txt")],
+    toolchainNotices: toolchainNotices(target).map(notice => join(recipeRoot, notice)),
     sourceRoot: join(current.buildWork, "sources"),
     build: current,
     hostEvidence: async installation => {
       // The candidate's images, on every assembly: a reassembly reuses a development installation
       // that may have changed since its build.
       await auditLinks(installation, records, target);
+      const glibcVersion = await inspectLinuxRuntime(installation, target);
       return [
         ...toolchain,
         { component: "Linux kernel", version: release(), evidence: "os.release on the build host" },
         {
           component: hostMeasurementEvidence[target],
-          version: `GLIBC_${await inspectLinuxRuntime(installation, target)}`,
-          evidence:
-            "Highest glibc symbol version required by any packaged ELF file, measured with llvm-readelf",
+          version: glibcVersion === undefined ? linuxBases.musl.musl : `GLIBC_${glibcVersion}`,
+          evidence: glibcVersion === undefined
+            ? `Musl baseline from ${linuxBases.musl.image}; ELF interpreter and dependencies verified with llvm-readelf`
+            : "Highest glibc symbol version required by any packaged ELF file, measured with llvm-readelf",
         },
       ];
     },
@@ -178,13 +204,21 @@ export async function build(command: string | undefined): Promise<void> {
 }
 
 /**
- * Describes the compiler and glibc that the build linked into every image. It runs right after compiling,
+ * Describes the compiler and libc that the build linked into every image. It runs right after compiling,
  * in the build container, because the license reviews of their linked code are bound to these lines.
  */
-function measureToolchain(): HostEvidence[] {
-  const libc = capture("getconf", ["GNU_LIBC_VERSION"]).trim();
-  const compiler = "clang-" + baseline.llvm;
+async function measureToolchain(target: LinuxTarget): Promise<HostEvidence[]> {
+  const musl = linuxTargets[target].libc === "musl";
+  const muslPackage = ["info", "--installed", "--verbose", "musl-dev"];
+  const libc = musl
+    ? capture("apk", muslPackage).trim()
+    : capture("getconf", ["GNU_LIBC_VERSION"]).trim();
+  if (musl && !libc.startsWith(`musl-dev-${linuxBases.musl.musl}-r`)) {
+    throw new Error(`Expected musl-dev ${linuxBases.musl.musl}, found ${libc}`);
+  }
+  const compiler = compilerFor(target);
   const clangVersion = capture(compiler, ["-dumpversion"]).trim();
+  const llvmVersionFile = "/opt/portable-llvm/version";
   return [
     {
       // compiler-rt comes with the compiler, so its review is bound to the compiler's major version.
@@ -194,10 +228,19 @@ function measureToolchain(): HostEvidence[] {
     },
     {
       // glibc's startup code is copied from this glibc into every image; its review is bound to it.
-      component: toolchainEvidence("glibc-startup"),
+      component: toolchainEvidence(musl ? "musl-startup" : "glibc-startup"),
       version: libc,
-      evidence: "getconf GNU_LIBC_VERSION on the build host; minimum support is not inferred",
+      evidence: musl
+        ? `apk ${muslPackage.join(" ")} on the build host`
+        : "getconf GNU_LIBC_VERSION on the build host; minimum support is not inferred",
     },
+    ...musl
+      ? [{
+        component: toolchainEvidence("llvm-cxx-runtime", target),
+        version: (await readFile(llvmVersionFile, "utf8")).trim(),
+        evidence: "Pinned LLVM release built as PIC static libraries in the Alpine build image",
+      }]
+      : [],
   ];
 }
 

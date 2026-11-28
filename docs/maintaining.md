@@ -90,7 +90,7 @@ See [Updating pinned sources](../CONTRIBUTING.md#updating-pinned-sources) for th
 Start the [Release workflow](../.github/workflows/release.yml) manually.
 Choose the branch and the `dry-run` setting when you start the run.
 
-- **Dry run (default).** Leave `dry-run` enabled to build all four targets, run their native tests,
+- **Dry run (default).** Leave `dry-run` enabled to build all six targets, run their native tests,
   validate their license and host reviews, and compare the targets.
   A pending review fails the run. A successful dry run stops before release asset preparation.
 - **Publish.** Select `main` and turn off `dry-run`.
@@ -121,11 +121,11 @@ act's artifact server cannot accept this workflow's upload action, so the local 
 
 ### How publication works
 
-1. **Build and test.** Release calls the same four-target Build workflow used on pull requests.
-   Publishing requires all four archives to pass release validation and the cross-target comparison to succeed.
+1. **Build and test.** Release calls the same Build workflow used on pull requests.
+   Publishing requires every archive to pass release validation and the cross-target comparison to succeed.
 2. **Prepare release assets.** The publish job downloads the archives from its own run.
    It reads their manifests without unpacking the full archives again.
-   It checks that all four targets are present, match the checkout's release version and source pins,
+   It checks that all six targets are present, match the checkout's release version and source pins,
    and carry verified reviews. It then compares their contents.
    It writes the per-target manifests, `SHA256SUMS`, a descriptor with each archive's URL and SHA-256, and the release notes.
    It also packs the source bundle.

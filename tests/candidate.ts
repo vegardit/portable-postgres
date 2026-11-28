@@ -77,10 +77,19 @@ export async function sourceTree(sourceRoot: string): Promise<string> {
   return sourceRoot;
 }
 
-export function elfFixture(machine = 62): Buffer {
-  const bytes = Buffer.alloc(64);
+export function elfFixture(machine = 62, interpreter?: string): Buffer {
+  const bytes = Buffer.alloc(interpreter === undefined ? 64 : 120 + interpreter.length + 1);
   bytes.set([127, 69, 76, 70, 2, 1]);
   bytes.writeUInt16LE(machine, 18);
+  if (interpreter !== undefined) {
+    bytes.writeBigUInt64LE(64n, 32);
+    bytes.writeUInt16LE(56, 54);
+    bytes.writeUInt16LE(1, 56);
+    bytes.writeUInt32LE(3, 64);
+    bytes.writeBigUInt64LE(120n, 72);
+    bytes.writeBigUInt64LE(BigInt(interpreter.length + 1), 96);
+    bytes.write(interpreter, 120);
+  }
   return bytes;
 }
 
@@ -141,7 +150,11 @@ function fixtureImages(
   }
   const image = target === "windows-x64"
     ? peFixture()
-    : elfFixture(target === "linux-arm64-glibc" ? 183 : 62);
+    : elfFixture(target.startsWith("linux-arm64-") ? 183 : 62);
+  const executable = target.endsWith("-musl")
+    ? elfFixture(image.readUInt16LE(18),
+      target === "linux-x64-musl" ? "/lib/ld-musl-x86_64.so.1" : "/lib/ld-musl-aarch64.so.1")
+    : image;
   const data = Buffer.alloc(target === "windows-x64" ? 512 : 120);
   image.copy(data);
   if (target === "windows-x64") {
@@ -155,7 +168,7 @@ function fixtureImages(
     data.writeUInt32LE(1, 64);
     data.writeUInt32LE(4, 68);
   }
-  return { executable: image, client: image, module: image, data };
+  return { executable, client: image, module: image, data };
 }
 
 const linuxFixtureParts = [
@@ -164,6 +177,15 @@ const linuxFixtureParts = [
   {
     id: "llvm-cxx-runtime",
     evidence: "Clang major version",
+    notice: "notices/llvm-cxx-runtime.txt",
+  },
+];
+const muslFixtureParts = [
+  { id: "compiler-rt", evidence: "Clang major version" },
+  { id: "musl-startup", evidence: "musl startup package", notice: "notices/musl-startup.txt" },
+  {
+    id: "llvm-cxx-runtime",
+    evidence: "LLVM C++ runtime version",
     notice: "notices/llvm-cxx-runtime.txt",
   },
 ];
@@ -184,6 +206,8 @@ export const toolchainParts: Record<
   }],
   "linux-x64-glibc": linuxFixtureParts,
   "linux-arm64-glibc": linuxFixtureParts,
+  "linux-x64-musl": muslFixtureParts,
+  "linux-arm64-musl": muslFixtureParts,
   "macos-arm64": [],
 };
 
@@ -191,6 +215,7 @@ export const toolchainParts: Record<
 export const toolchainLicenses: Record<string, string[]> = {
   "compiler-rt": ["Apache-2.0 WITH LLVM-exception"],
   "glibc-startup": ["LGPL-2.1-or-later WITH GCC-exception-2.0"],
+  "musl-startup": ["MIT"],
   "mingw-runtime": [
     "Apache-2.0 WITH LLVM-exception",
     "MIT",
@@ -210,6 +235,7 @@ export const toolchainLicenses: Record<string, string[]> = {
 const fixtureLines: Record<string, string> = {
   "compiler-rt": "fixture-1",
   "glibc-startup": "fixture-1",
+  "musl-startup": "musl-dev-1.2.6-r3",
   "mingw-runtime": "fixture-1",
   "llvm-cxx-runtime": "fixture-1",
 };
@@ -217,6 +243,11 @@ const fixtureLines: Record<string, string> = {
 const linuxFixtureMeasurement = {
   component: "ELF glibc symbol requirements",
   version: "GLIBC_2.35",
+  evidence: "Contract test",
+};
+const muslFixtureMeasurement = {
+  component: "ELF musl baseline",
+  version: "1.2.6",
   evidence: "Contract test",
 };
 
@@ -232,6 +263,8 @@ export const hostMeasurements: Record<ArtifactTarget, HostEvidence> = {
   },
   "linux-x64-glibc": linuxFixtureMeasurement,
   "linux-arm64-glibc": linuxFixtureMeasurement,
+  "linux-x64-musl": muslFixtureMeasurement,
+  "linux-arm64-musl": muslFixtureMeasurement,
   "macos-arm64": {
     component: "Mach-O host library imports",
     version: "/usr/lib/libSystem.B.dylib",
@@ -553,15 +586,16 @@ export function nativeImages(manifest: ArtifactManifest): string[] {
 export function hostRequirementsFixture(
   target: ArtifactTarget = "windows-x64",
 ): NonNullable<ArtifactManifest["hostRequirements"]> {
-  if (target === "linux-x64-glibc" || target === "linux-arm64-glibc") {
+  if (target.startsWith("linux-")) {
+    const musl = target.endsWith("-musl");
     return {
       status: "verified",
       os: "Contract-test fixture",
-      cpu: target === "linux-arm64-glibc" ? "arm64 fixture" : "x64 fixture",
+      cpu: target.startsWith("linux-arm64-") ? "arm64 fixture" : "x64 fixture",
       libraries: [{
-        name: "glibc",
-        requirement: "GLIBC_2.35 or newer",
-        license: "LGPL-2.1-or-later",
+        name: musl ? "musl" : "glibc",
+        requirement: musl ? "1.2.6 (tested baseline)" : "GLIBC_2.35 or newer",
+        license: musl ? "MIT" : "LGPL-2.1-or-later",
         evidence: "fixture",
       }],
     };

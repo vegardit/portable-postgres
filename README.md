@@ -23,14 +23,14 @@ Extract the archive and run PostgreSQL directly on your machine.
 
 ## <a name="platforms"></a>Platforms
 
-| Platform            | Status | Host requirement                                            |
-| ------------------- | ------ | ----------------------------------------------------------- |
-| Linux x64 (glibc)   | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
-| Linux arm64 (glibc) | Built  | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
-| Windows x64         | Built  | Windows Universal CRT (included with Windows 10 and later). |
-| macOS arm64         | Built  | macOS 15 or newer on Apple silicon.                         |
-
-Linux distributions based on musl, such as Alpine, are not supported.
+| Platform            | Host requirement                                            |
+| ------------------- | ----------------------------------------------------------- |
+| Linux x64 (glibc)   | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
+| Linux arm64 (glibc) | glibc 2.35 or newer; tested on Ubuntu 22.04.                |
+| Linux x64 (musl)    | Alpine 3.24 with musl 1.2.6.                                |
+| Linux arm64 (musl)  | Alpine 3.24 with musl 1.2.6.                                |
+| Windows x64         | Windows Universal CRT (included with Windows 10 and later). |
+| macOS arm64         | macOS 15 or newer on Apple silicon.                         |
 
 ## <a name="what-is-included"></a>What is included
 
@@ -221,7 +221,7 @@ The table compares it with other ways to run PostgreSQL locally, as of November 
 | **Platforms:**                                  |                            |                                                                                       |                                                                                                  |                                                                                                                                        |                                                                                                                                 |
 | Linux x64 (glibc)                               | ✅                         | ✅                                                                                    | ✅                                                                                               | ✅                                                                                                                                     | ❌                                                                                                                              |
 | Linux arm64 (glibc)                             | ✅                         | ✅                                                                                    | ✅ via WebAssembly                                                                               | ✅ [ARM64 bundle][zonky-arm64]                                                                                                         | ❌                                                                                                                              |
-| Linux x64 (musl)                                | ❌                         | ✅                                                                                    | ✅                                                                                               | ✅                                                                                                                                     | ❌                                                                                                                              |
+| Linux x64 (musl)                                | ✅                         | ✅                                                                                    | ✅                                                                                               | ✅                                                                                                                                     | ❌                                                                                                                              |
 | Windows x64                                     | ✅                         | In a Linux VM                                                                         | ✅                                                                                               | ✅                                                                                                                                     | ✅                                                                                                                              |
 | macOS arm64                                     | ✅                         | In a Linux VM                                                                         | ✅                                                                                               | ✅                                                                                                                                     | ✅                                                                                                                              |
 

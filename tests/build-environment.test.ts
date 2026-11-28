@@ -14,7 +14,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   build as buildLinux,
   imageRecipeDirectory,
-  linuxRecipe,
+  linuxRecipes,
   requireCurrentImage,
 } from "../binaries/linux/build.ts";
 import { recipeIdentity, recordBuild } from "../binaries/package.ts";
@@ -24,8 +24,7 @@ import {
   requirePinnedMeson,
   windowsRecipe,
 } from "../binaries/windows/build.ts";
-import { linuxTargets, nativeLinuxTarget } from "../binaries/linux/target.ts";
-import baseline from "../binaries/linux/base.json" with { type: "json" };
+import { linuxBases, linuxTargets, nativeLinuxTarget } from "../binaries/linux/target.ts";
 import { fixtureEvidence } from "./candidate.ts";
 import { temporaryDirectories } from "./temporary-directories.ts";
 
@@ -34,12 +33,24 @@ afterEach(cleanup);
 
 const requirements = "meson==1.12.1 --hash=sha256:" + "0".repeat(64) + "\n";
 
-it.each([["Linux", linuxRecipe], ["Windows", windowsRecipe]] as const)(
+it.each([
+  ["Linux glibc", linuxRecipes.glibc],
+  ["Linux musl", linuxRecipes.musl],
+  ["Windows", windowsRecipe],
+] as const)(
   "the %s recipe binds reassembly to its TimescaleDB license check",
   (_, recipe) => {
     expect(recipe).toContain(join(root, "binaries/timescaledb.ts"));
   },
 );
+
+it.each(Object.entries(linuxRecipes))("the %s recipe hashes the C compiler selector",
+  async (_, recipe) => {
+    const modules = await Promise.all(
+      recipe.filter(path => path.endsWith(".ts")).map(path => readFile(path, "utf8")),
+    );
+    expect(modules.some(source => source.includes("function compilerFor("))).toBe(true);
+  });
 
 it.skipIf(
   !(process.platform === "win32" && process.arch === "x64"
@@ -56,7 +67,9 @@ it.skipIf(
     await mkdir(join(pg, "src/backend/snowball"), { recursive: true });
     await writeFile(join(pg, "src/backend/snowball/README"), "0".repeat(40));
     await recordBuild(targetOutput, {
-      recipe: await recipeIdentity(windows ? windowsRecipe : linuxRecipe),
+      recipe: await recipeIdentity(
+        target === "windows-x64" ? windowsRecipe : linuxRecipes[linuxTargets[target].libc],
+      ),
       buildWork: output,
       developmentInstallation: join(output, "sdk"),
       toolchainEvidence: fixtureEvidence(target),
@@ -100,18 +113,20 @@ it("the Meson install command in the message is the one that CONTRIBUTING.md doc
 });
 
 /** An image recipe directory as the Dockerfile writes it, from this checkout's recipe. */
-async function imageRecipe(): Promise<string> {
+async function imageRecipe(libc: keyof typeof linuxBases): Promise<string> {
   const directory = await createDirectory("image");
-  for (const file of ["Dockerfile", "traced-ld.sh", "clang-cxx.sh"]) {
+  const dockerfile = libc === "musl" ? "musl.Dockerfile" : "Dockerfile";
+  for (const file of [dockerfile, "traced-ld.sh", "clang-cxx.sh"]) {
     await copyFile(join(root, "binaries/linux/image", file), join(directory, file));
   }
-  await writeFile(join(directory, "ubuntu-image"), baseline.image + "\n");
-  await writeFile(join(directory, "llvm-major"), baseline.llvm + "\n");
+  const marker = libc === "musl" ? "alpine-image" : "ubuntu-image";
+  await writeFile(join(directory, marker), linuxBases[libc].image + "\n");
+  await writeFile(join(directory, "llvm-major"), linuxBases[libc].llvm + "\n");
   return directory;
 }
 
 it("a fresh Linux build runs only in an image built from the current recipe", async () => {
-  const image = await imageRecipe();
+  const image = await imageRecipe("glibc");
   await expect(requireCurrentImage(image)).resolves.toBeUndefined();
 
   await writeFile(join(image, "traced-ld.sh"), '#!/bin/sh\nexec ld "$@"\n');
@@ -123,6 +138,18 @@ it("a fresh Linux build runs only in an image built from the current recipe", as
   // An image from before the image kept its recipe, or a host outside the image, has none.
   await expect(requireCurrentImage(join(image, "missing"))).rejects.toThrow(
     "another recipe (Dockerfile, traced-ld.sh, clang-cxx.sh, Ubuntu image, LLVM major)",
+  );
+});
+
+it.each([
+  ["musl.Dockerfile", "musl.Dockerfile"],
+  ["alpine-image", "Alpine image"],
+] as const)("a fresh musl build rejects a stale %s", async (file, difference) => {
+  const image = await imageRecipe("musl");
+  await expect(requireCurrentImage(image, "musl")).resolves.toBeUndefined();
+  await writeFile(join(image, file), "stale\n");
+  await expect(requireCurrentImage(image, "musl")).rejects.toThrow(
+    `The build image was built from another recipe (${difference}).`,
   );
 });
 

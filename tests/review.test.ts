@@ -50,6 +50,8 @@ const hostEvidence: Record<ArtifactTarget, HostEvidence[]> = {
   ),
   "linux-arm64-glibc": fixtureEvidence("linux-arm64-glibc"),
   "linux-x64-glibc": fixtureEvidence("linux-x64-glibc"),
+  "linux-x64-musl": fixtureEvidence("linux-x64-musl"),
+  "linux-arm64-musl": fixtureEvidence("linux-arm64-musl"),
   "macos-arm64": fixtureEvidence("macos-arm64"),
 };
 

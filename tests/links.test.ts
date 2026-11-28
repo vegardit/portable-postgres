@@ -50,6 +50,18 @@ it("accepts an image whose link copied only reviewed toolchain code", async () =
     .toBeUndefined();
 });
 
+it("accepts musl startup objects and rejects other Alpine archive members", async () => {
+  const lines = ["/usr/lib/Scrt1.o", "/usr/lib/crti.o", "/usr/lib/crtn.o"];
+  const { installation, records } = await candidate("bin/postgres", lines);
+  await expect(auditLinks(installation, records, "linux-x64-musl", buildId)).resolves
+    .toBeUndefined();
+  await writeFile(join(records, id + ".trace"),
+    [...lines, "(/usr/lib/libc.a)memcpy.lo"].join("\n"));
+  await expect(auditLinks(installation, records, "linux-x64-musl", buildId)).rejects.toThrow(
+    "Alpine system code outside the reviewed CRT and LLVM runtimes",
+  );
+});
+
 it("checks ICU's data-only library without requiring C startup objects", async () => {
   const path = "lib/libicudata.so.79.1";
   const { installation, records } = await candidate(path, ["/build/icudt79l_dat.o"]);

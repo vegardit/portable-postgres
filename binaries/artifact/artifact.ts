@@ -73,16 +73,32 @@ export type { ArtifactTarget } from "./runtime-layout.ts";
 const glibcStartupLicense = "LGPL-2.1-or-later WITH GCC-exception-2.0";
 const compilerRtLicense = "Apache-2.0 WITH LLVM-exception";
 
-const linuxToolchain = [
-  { id: "compiler-rt", evidence: "Clang major version", licenses: [compilerRtLicense] },
+const linuxCompilerRt = {
+  id: "compiler-rt",
+  evidence: "Clang major version",
+  licenses: [compilerRtLicense],
+};
+const linuxCxx = {
+  id: "llvm-cxx-runtime",
+  evidence: "Clang major version",
+  licenses: [compilerRtLicense],
+  notice: "notices/llvm-cxx-runtime.txt",
+};
+const glibcToolchain = [
+  linuxCompilerRt,
   // Scrt1.o, crti.o, crtn.o and members of libc_nonshared.a are linked statically into every ELF image.
   { id: "glibc-startup", evidence: "glibc", licenses: [glibcStartupLicense] },
+  linuxCxx,
+];
+const muslToolchain = [
+  linuxCompilerRt,
   {
-    id: "llvm-cxx-runtime",
-    evidence: "Clang major version",
-    licenses: [compilerRtLicense],
-    notice: "notices/llvm-cxx-runtime.txt",
+    id: "musl-startup",
+    evidence: "musl startup package",
+    licenses: ["MIT"],
+    notice: "notices/musl-startup.txt",
   },
+  { ...linuxCxx, evidence: "LLVM C++ runtime version" },
 ];
 
 /**
@@ -94,8 +110,10 @@ export const toolchainComponents: Record<
   ArtifactTarget,
   ReadonlyArray<{ id: string; evidence: string; licenses: readonly string[]; notice?: string }>
 > = {
-  "linux-x64-glibc": linuxToolchain,
-  "linux-arm64-glibc": linuxToolchain,
+  "linux-x64-glibc": glibcToolchain,
+  "linux-arm64-glibc": glibcToolchain,
+  "linux-x64-musl": muslToolchain,
+  "linux-arm64-musl": muslToolchain,
   "windows-x64": [
     {
       id: "mingw-runtime",
@@ -130,8 +148,11 @@ export function toolchainNotices(target: ArtifactTarget): string[] {
 }
 
 /** Returns the host evidence entry that a toolchain component's review is bound to. */
-export function toolchainEvidence(id: string): string {
-  const part = Object.values(toolchainComponents).flat().find(candidate => candidate.id === id);
+export function toolchainEvidence(id: string, target?: ArtifactTarget): string {
+  const parts = target === undefined
+    ? Object.values(toolchainComponents).flat()
+    : toolchainComponents[target];
+  const part = parts.find(candidate => candidate.id === id);
   if (part === undefined) throw new Error("Unknown toolchain component: " + id);
   return part.evidence;
 }
@@ -153,18 +174,22 @@ export function toolchainImages(
 export const requiredHostLibraries: Record<ArtifactTarget, readonly string[]> = {
   "linux-x64-glibc": ["glibc"],
   "linux-arm64-glibc": ["glibc"],
+  "linux-x64-musl": ["musl"],
+  "linux-arm64-musl": ["musl"],
   "windows-x64": ["ucrtbase.dll"],
   "macos-arm64": ["/usr/lib/libSystem.B.dylib"],
 };
 
 /**
  * The host evidence in which a build records what its packaged images need from the host: the imported
- * system DLLs on Windows, the highest glibc symbol version on Linux, and the imported system libraries on
- * macOS, whose minimum OS is measured separately (`macOSMinimumEvidence`).
+ * system DLLs on Windows, the glibc symbol or musl build baseline on Linux, and the imported system
+ * libraries on macOS, whose minimum OS is measured separately (`macOSMinimumEvidence`).
  */
 export const hostMeasurementEvidence: Record<ArtifactTarget, string> = {
   "linux-x64-glibc": "ELF glibc symbol requirements",
   "linux-arm64-glibc": "ELF glibc symbol requirements",
+  "linux-x64-musl": "ELF musl baseline",
+  "linux-arm64-musl": "ELF musl baseline",
   "windows-x64": "PE host library imports",
   "macos-arm64": "Mach-O host library imports",
 };
@@ -339,7 +364,39 @@ function validateMachine(binary: Buffer, target: ArtifactTarget, path: string): 
         && binary.readUInt16LE(18) === linuxTargets[target].machine,
       `expected a ${target} ELF image: ${path}`,
     );
+    const { libc, loader } = linuxTargets[target];
+    if (path.startsWith("bin/")) {
+      const interpreter = elfInterpreter(binary);
+      // Glibc loader paths can vary by distribution. The musl loader name identifies a mismatch.
+      const compatible = libc === "musl"
+        ? interpreter === "/lib/" + loader
+        : !/^ld-musl-.+\.so\.1$/.test(posix.basename(interpreter ?? ""));
+      requireCondition(
+        compatible,
+        `expected the ${target} ELF interpreter: ${path}`,
+      );
+    }
   }
+}
+
+/** Reads the interpreter from a 64-bit little-endian ELF program header table. */
+function elfInterpreter(binary: Buffer): string | undefined {
+  if (binary.length < 64) return undefined;
+  const table = Number(binary.readBigUInt64LE(32));
+  const entrySize = binary.readUInt16LE(54);
+  const count = binary.readUInt16LE(56);
+  if (table < 64 || entrySize !== 56 || table + count * entrySize > binary.length) return undefined;
+  for (let index = 0; index < count; index++) {
+    const entry = table + index * entrySize;
+    if (binary.readUInt32LE(entry) !== 3) continue; // PT_INTERP
+    const offset = Number(binary.readBigUInt64LE(entry + 8));
+    const size = Number(binary.readBigUInt64LE(entry + 32));
+    if (size < 2 || offset + size > binary.length || binary[offset + size - 1] !== 0) {
+      return undefined;
+    }
+    return binary.toString("utf8", offset, offset + size - 1);
+  }
+  return undefined;
 }
 
 /** Checks path containment on the validation host. Pass resolved paths when following links. */
@@ -1016,13 +1073,13 @@ export function measuredHostRequirements(
   const observed = isLinuxTarget(manifest.target)
     ? []
     : measurement?.version.split(", ") ?? [];
-  const glibc = isLinuxTarget(manifest.target) ? measurement : undefined;
+  const libc = isLinuxTarget(manifest.target) ? linuxTargets[manifest.target].libc : undefined;
   const macOS = manifest.target === "macos-arm64"
     ? manifest.hostEvidence.find(entry => entry.component === macOSMinimumEvidence)
     : undefined;
   const requirement = (name: string): string =>
-    name === "glibc" && glibc
-      ? glibc.version + " or newer"
+    name === libc && measurement
+      ? measurement.version + (libc === "musl" ? " (tested baseline)" : " or newer")
       : name === "/usr/lib/libSystem.B.dylib" && macOS
         ? "macOS " + macOS.version + " or newer"
         : "";

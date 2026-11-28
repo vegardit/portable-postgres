@@ -14,7 +14,7 @@ build_jobs=${BUILD_JOBS:?The parallel job count must be supplied by the TypeScri
 mkdir -p "$install_root"
 export PATH="$install_root/bin:$PATH"
 # GCC embeds GPL runtime helpers and CRT objects even without a libgcc shared dependency.
-export CC=clang-${LLVM_MAJOR:?The LLVM major from base.json must be supplied by the TypeScript orchestrator}
+export CC=${PORTABLE_PG_CC:?The compiler must be supplied by the TypeScript orchestrator}
 export CXX=/usr/local/bin/portable-clang-cxx
 # The build image's clang.cfg selects compiler-rt for every link and links through traced-ld, which
 # records the input files and archive members of each link under the output's build ID. Packaging
@@ -22,8 +22,8 @@ export CXX=/usr/local/bin/portable-clang-cxx
 link_records="$work_root/link-records"
 mkdir -p "$link_records"
 export PORTABLE_PG_LINK_RECORDS=$link_records
-runtime_root=$("$CC" --print-resource-dir)/lib/linux
 gnu_arch=${PORTABLE_PG_GNU_ARCH:?The native compiler architecture must be supplied}
+runtime_root=$(dirname "$("$CC" --print-libgcc-file-name)")
 for runtime_file in "clang_rt.crtbegin-$gnu_arch.o" "clang_rt.crtend-$gnu_arch.o" "libclang_rt.builtins-$gnu_arch.a"; do
   test -s "$runtime_root/$runtime_file"
 done
@@ -34,11 +34,13 @@ if grep -qE '"-lgcc[^\"]*"|/gcc/[^\"]*/crt(begin|end)' "$work_root/compiler-link
   exit 1
 fi
 
-# Exercise exception handling through the real wrapper. LLVM's libc++.a can also supply the ABI
-# symbols, so a successful link need not extract a member from the separate libc++abi.a.
+# Exercise exception handling from a shared library. ICU needs C++ runtime objects that can be
+# linked into a shared library and run after relocation.
 printf '%s\n' 'int main(void) { return 0; }' | "$CC" -x c - -o "$work_root/probe-c"
-printf '%s\n' '#include <stdexcept>' 'int main() { try { throw std::runtime_error("probe"); } catch (const std::exception&) { return 0; } }' \
-  | "$CXX" -x c++ - -o "$work_root/probe-cxx"
+printf '%s\n' '#include <stdexcept>' 'extern "C" int probe_cpp() { try { throw std::runtime_error("probe"); } catch (const std::exception&) { return 0; } }' \
+  | "$CXX" -x c++ - -fPIC -shared -o "$work_root/libprobe-cxx.so"
+printf '%s\n' 'extern int probe_cpp(void); int main(void) { return probe_cpp(); }' \
+  | "$CC" -x c - -L"$work_root" -lprobe-cxx -Wl,-rpath,'$ORIGIN' -o "$work_root/probe-cxx"
 "$work_root/probe-c"
 "$work_root/probe-cxx"
 

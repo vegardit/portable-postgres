@@ -24,7 +24,12 @@ const proofScripts = ["binaries/linux/smoke.sh", "binaries/windows/test.ts"];
 const { directory, cleanup } = temporaryDirectories("consumer-tap");
 afterEach(cleanup);
 
-it.each([["linux-x64-glibc", "linux/amd64"], ["linux-arm64-glibc", "linux/arm64"]])(
+it.each([
+  ["linux-x64-glibc", "linux/amd64"],
+  ["linux-arm64-glibc", "linux/arm64"],
+  ["linux-x64-musl", "linux/amd64"],
+  ["linux-arm64-musl", "linux/arm64"],
+])(
   "%s retains the Docker platform even when the consumer fails",
   async (target, platform) => {
     const output = await directory();
@@ -37,6 +42,7 @@ it.each([["linux-x64-glibc", "linux/amd64"], ["linux-arm64-glibc", "linux/arm64"
       vi.spyOn(await import("../binaries/paths.ts"), "outputRoot", "get").mockReturnValue(output);
       const docker = vi.spyOn(await import("../binaries/process.ts"), "capture")
         .mockImplementation((_, args) => {
+          if (args[0] === "build") return "fixture-consumer-image";
           if (args[0] === "create") return "fixture-container";
           if (args[0] === "inspect") return "1";
           if (args[0] === "logs") {
@@ -52,9 +58,15 @@ it.each([["linux-x64-glibc", "linux/amd64"], ["linux-arm64-glibc", "linux/arm64"
       const proof = (await readdir(output)).find(name => name.startsWith("consumer-proof-"))!;
       const record = JSON.parse(await readFile(join(output, proof, "consumer.json"), "utf8"));
       expect(record).toMatchObject({ target, platform });
-      const args = docker.mock.calls[0]![1];
-      expect(args[0]).toBe("create");
-      expect(args.slice(1, 3)).toEqual(["--platform", record.platform]);
+      const create = docker.mock.calls.find(([, args]) => args[0] === "create")![1];
+      expect(create.slice(1, 3)).toEqual(["--platform", record.platform]);
+      const build = docker.mock.calls.find(([, args]) => args[0] === "build")?.[1];
+      if (target.endsWith("-musl")) {
+        expect(build?.slice(2, 6)).toEqual(["--platform", record.platform, "--target", "consumer"]);
+        expect(create).toContain("fixture-consumer-image");
+      } else {
+        expect(build).toBeUndefined();
+      }
     } finally {
       process.argv = argv;
       vi.restoreAllMocks();

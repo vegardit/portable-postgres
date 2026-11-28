@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, expect, it } from "vitest";
 import { writeNativeArchive } from "../binaries/artifact/archive.ts";
+import { artifactTargets } from "../binaries/artifact/runtime-layout.ts";
 import {
   type ArtifactManifest,
   artifactManifestName,
@@ -185,34 +186,33 @@ it("a real release needs every target", async () => {
     prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
       requireAllTargets: true,
     }),
-  ).rejects.toThrow("Missing release archives for linux-x64-glibc, linux-arm64-glibc, macos-arm64");
+  ).rejects.toThrow("Missing release archives for "
+    + artifactTargets.filter(target => target !== "windows-x64").join(", "));
 }, reviewedArchives);
 
 // Linux and macOS candidates need executable permissions, which only a POSIX host can validate.
 it.skipIf(process.platform === "win32")(
-  "a real release needs the ARM64 Linux archive and succeeds once all four are reviewed",
+  "a real release needs the musl archives and succeeds once all targets are reviewed",
   async () => {
     const assets = await directory();
-    await archive(assets, "windows-x64", { reviewed: true });
-    await archive(assets, "linux-x64-glibc", { reviewed: true });
+    for (const target of artifactTargets.filter(candidate => !candidate.endsWith("-musl"))) {
+      await archive(assets, target, { reviewed: true });
+    }
     const prepare = () =>
       prepareRelease(assets, join(assets, "release"), "vegardit/portable-postgres", {
         requireAllTargets: true,
       });
-    await archive(assets, "macos-arm64", { reviewed: true });
-    await expect(prepare()).rejects.toThrow("Missing release archives for linux-arm64-glibc");
-    await archive(assets, "linux-arm64-glibc", { reviewed: true });
+    await expect(prepare()).rejects.toThrow(
+      "Missing release archives for linux-x64-musl, linux-arm64-musl",
+    );
+    await archive(assets, "linux-x64-musl", { reviewed: true });
+    await archive(assets, "linux-arm64-musl", { reviewed: true });
     const { assets: prepared } = await prepare();
-    for (const target of [
-      "linux-x64-glibc",
-      "linux-arm64-glibc",
-      "windows-x64",
-      "macos-arm64",
-    ] as const) {
+    for (const target of artifactTargets) {
       expect(prepared).toContain(nativeArchiveName(target));
     }
   },
-  reviewedArchives * 1.5,
+  reviewedArchives * 2,
 );
 
 // The permission checks apply to Linux archives, which only a POSIX host can validate.

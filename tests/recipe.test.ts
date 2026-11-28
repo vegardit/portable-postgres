@@ -181,6 +181,7 @@ it("build scripts take the LLVM major and the job count from the TypeScript driv
     const file of [
       "binaries/linux/build.sh",
       "binaries/linux/image/Dockerfile",
+      "binaries/linux/image/musl.Dockerfile",
       "binaries/linux/image/traced-ld.sh",
       "binaries/linux/abi.ts",
       "binaries/windows/build.sh",
@@ -192,10 +193,10 @@ it("build scripts take the LLVM major and the job count from the TypeScript driv
     );
     expect(text, `${file} fixes a job count`).not.toMatch(/ -j ?\d|--parallel \d/);
   }
-  // The image build receives the LLVM major from base.json like the Ubuntu image.
+  // Each image build receives its LLVM major from the selected libc's pins.
   for (const file of [".github/workflows/build.yml", "CONTRIBUTING.md"]) {
     const text = await read(file);
-    const imageBuilds = text.match(/--build-arg "UBUNTU_IMAGE=/g)?.length ?? 0;
+    const imageBuilds = text.match(/^\s*docker build --/gm)?.length ?? 0;
     expect(imageBuilds, `${file} builds the Linux image`).toBeGreaterThan(0);
     expect(text.match(/--build-arg "LLVM_MAJOR=\$llvm"/g)?.length ?? 0).toBe(imageBuilds);
   }

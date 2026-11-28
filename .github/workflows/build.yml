@@ -95,11 +95,25 @@ jobs:
             target: linux-x64-glibc
             output: linux-x64
             platform: linux/amd64
+            libc: glibc
             test-command: binaries:test:linux
           - os: ubuntu-26.04-arm
             target: linux-arm64-glibc
             output: linux-arm64
             platform: linux/arm64
+            libc: glibc
+            test-command: binaries:test:linux
+          - os: ubuntu-26.04
+            target: linux-x64-musl
+            output: linux-x64-musl
+            platform: linux/amd64
+            libc: musl
+            test-command: binaries:test:linux
+          - os: ubuntu-26.04-arm
+            target: linux-arm64-musl
+            output: linux-arm64-musl
+            platform: linux/arm64
+            libc: musl
             test-command: binaries:test:linux
           - os: macos-15 # arm64
             target: macos-arm64
@@ -141,11 +155,19 @@ jobs:
 
       - name: "Prepare: Linux build image"
         if: runner.os == 'Linux'
+        env:
+          LIBC: ${{ matrix.libc }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          image=$(node -p 'require("./binaries/linux/base.json").image')
-          llvm=$(node -p 'require("./binaries/linux/base.json").llvm')
-          docker build --platform "${{ matrix.platform }}" --tag portable-postgres-linux-build \
-            --build-arg "UBUNTU_IMAGE=$image" --build-arg "LLVM_MAJOR=$llvm" binaries/linux/image
+          pins=base.json dockerfile=Dockerfile image_arg=UBUNTU_IMAGE
+          if [[ $LIBC == musl ]]; then
+            pins=musl.json dockerfile=musl.Dockerfile image_arg=ALPINE_IMAGE
+          fi
+          image=$(node -p 'require("./binaries/linux/" + process.argv[1]).image' "$pins")
+          llvm=$(node -p 'require("./binaries/linux/" + process.argv[1]).llvm' "$pins")
+          docker build --platform "$PLATFORM" --tag portable-postgres-linux-build \
+            --file "binaries/linux/image/$dockerfile" \
+            --build-arg "$image_arg=$image" --build-arg "LLVM_MAJOR=$llvm" binaries/linux/image
 
       - name: "Build: Linux native archive"
         id: linux-build
@@ -158,6 +180,7 @@ jobs:
             volume=$(findmnt -n -o SOURCE -T "$PWD" | sed -nE 's@.*/volumes/(act-[^/]+)/_data\]$@\1@p')
             if [[ -n "$volume" ]]; then workspace="type=volume,source=$volume,target=/workspace"; fi
           fi
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
           docker run --rm --platform "${{ matrix.platform }}" --user "$(id -u):$(id -g)" \
             --mount "$workspace" --workdir /workspace --env BUILD_JOBS="$(nproc)" \
             portable-postgres-linux-build node binaries/linux/build.ts build
@@ -232,13 +255,25 @@ jobs:
         env:
           TEST_COMMAND: ${{ matrix.test-command }}
           INSTALLATION: ${{ steps.archive.outputs.installation }}
+          LIBC: ${{ matrix.libc }}
+          PLATFORM: ${{ matrix.platform }}
+          WORKSPACE_MOUNT: ${{ steps.linux-build.outputs.workspace }}
         run: |
+          if [[ $LIBC == musl ]]; then
+            # ctypes and the native proof must run with the packaged library's libc.
+            # initdb needs an account in the image's passwd database.
+            docker run --rm --platform "$PLATFORM" --user nobody --network none \
+              --mount "$WORKSPACE_MOUNT" --workdir /workspace --env INSTALLATION \
+              portable-postgres-linux-build bash -ec \
+              'python3 tests/openssl-provider-directory.py "$INSTALLATION" && node binaries/linux/test.ts "$INSTALLATION"'
+            exit
+          fi
           python=python3
           if [[ $RUNNER_OS == Windows ]]; then python=python; fi
           "$python" tests/openssl-provider-directory.py "$INSTALLATION"
           pnpm "$TEST_COMMAND" "$INSTALLATION"
 
-      - name: "Test: archive on Ubuntu 22.04"
+      - name: "Test: archive in a clean Linux consumer"
         if: runner.os == 'Linux'
         env:
           ARCHIVE: ${{ steps.archive.outputs.path }}

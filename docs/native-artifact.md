@@ -1,7 +1,7 @@
 # Native artifact format 1
 
 This contract describes the native installation independently of Node.js, npm, and wrapper versions.
-It covers Linux x64 and arm64 with glibc, Windows x64 and macOS arm64.
+It covers Linux x64 and arm64 with glibc or musl, Windows x64 and macOS arm64.
 
 A candidate can pass layout and integrity checks while its release license review or host prerequisites remain unresolved.
 Candidate validation is preparation evidence.
@@ -41,7 +41,7 @@ notices/
 
 Consumers do not need Node.js or npm to extract or run the installation.
 Build environments may use Node.js and native build tools.
-All four targets contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
+All targets contain the same core PostgreSQL programs, including `ecpg`, and the same extensions.
 The extension payload contains PL/pgSQL and the extensions listed below.
 The packager excludes every other PostgreSQL contrib module with its SQL and data files, upstream test helpers,
 development headers, PGXS, static libraries, and optional SDK documentation.
@@ -75,7 +75,7 @@ and extraction outside its owned staging directory before writing those entries.
 | `format`            | Exact string `portable-postgres-native`.                                                             |
 | `formatVersion`     | Integer `1`; independent of wrapper semantic versioning.                                             |
 | `packagingRevision` | Positive integer selected for a native packaging revision.                                           |
-| `target`            | Exact `linux-x64-glibc`, `linux-arm64-glibc`, `windows-x64` or `macos-arm64`.                        |
+| `target`            | Exact target identifier for the OS, CPU architecture and C library.                                  |
 | `postgresqlVersion` | Exact PostgreSQL 18 minor release from the recorded source pin.                                      |
 | `executables`       | Relative paths for `postgres`, `initdb`, `pg_ctl`, and `psql`.                                       |
 | `extensions`        | Every selected extension's installation version, control, SQL files, and native libraries.           |
@@ -86,9 +86,14 @@ and extraction outside its owned staging directory before writing those entries.
 | `licenseInventory`  | Explicit pending/verified review and component-to-file coverage.                                     |
 | `files`             | Complete sorted payload inventory, file hashes, executable flags, and symlink targets.               |
 
+The target identifiers are `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl`, `linux-arm64-musl`,
+`windows-x64` and `macos-arm64`.
+
 The executable paths are `bin/<name>` on Linux and macOS and `bin/<name>.exe` on Windows.
 Windows requires x64 PE images.
 Linux requires little-endian 64-bit ELF images for the architecture named by the target.
+Musl executables must name the architecture's musl interpreter under `/lib`.
+For a glibc target, the validator rejects executables that name a musl interpreter.
 macOS requires thin, signed 64-bit arm64 Mach-O images with the macOS build platform.
 For the macOS 15 baseline, the validator accepts `CPU_SUBTYPE_ARM64_ALL` and `CPU_SUBTYPE_ARM64_V8`.
 The validator requires executable images in `bin/`, linked client dylibs in `lib/`, and dylibs or bundles for
@@ -111,10 +116,17 @@ A library's optional boolean `measured` records where its review entry came from
 `true` when a build measured the library as the entry was drafted, absent when a reviewer added it,
 for example for a library that another one loads. An entry keeps that origin in later reviews,
 so `measured` does not say what the current build imports; the build's host measurement in `hostEvidence` does.
-Each Linux build targets Ubuntu 22.04 and glibc 2.35.
+The glibc builds target Ubuntu 22.04 and glibc 2.35.
 The build records the highest required glibc symbol version across all packaged ELF files and rejects versions above 2.35.
 The validated PostgreSQL 18.7 Linux x64 archive requires symbols through `GLIBC_2.34`.
 The workflow runs the resulting archive in a separate Ubuntu 22.04 container to check native startup, authentication, and SQL.
+
+The musl builds target Alpine 3.24 and record musl 1.2.6 as the compatibility baseline.
+Musl does not provide symbol versions for deriving a minimum from the ELF files.
+The build verifies the ELF interpreter, rejects glibc symbol requirements and checks that every shared library is
+either bundled or provided by the host musl package.
+The host review records the musl requirement as `1.2.6 (tested baseline)`.
+
 Windows requires `ucrtbase.dll`.
 Release validation requires an entry for each prerequisite and for every DLL that the packaged files import
 (the `PE host library imports` evidence), unless the archive supplies that DLL in `bin/`.
@@ -139,7 +151,8 @@ The build verifies each image's ad-hoc signature after relocation.
 
 ### CI consumer tests
 
-The Linux test runs the archive in a clean Ubuntu 22.04 container without build tools or network access.
+The Linux test runs the archive without build tools or network access.
+It uses Ubuntu 22.04 for glibc and Alpine 3.24 with Bash and runuser for musl.
 On a local run, `binaries/output/consumer-proof-*/consumer.json` records the Linux target,
 Docker platform, container image and archive SHA-256.
 On GitHub Actions, the file stays on the runner for the duration of the job.
@@ -431,13 +444,17 @@ Every payload file must have reviewed component coverage.
 Every native image must also be in the files of a source component, even when another component describes part of it.
 Each code-bearing image must also be covered by its linked toolchain components.
 The LLVM C++ runtime component covers ICU's code libraries.
+The Alpine build image builds its LLVM C++ runtimes from a SHA-256-pinned release as position-independent
+static libraries, so ICU can link them into its shared libraries.
 The generated ICU data library needs no linked-runtime coverage.
 
 | Target  | Component          | Linked code                                                          | Toolchain line in `hostEvidence`      |
 | ------- | ------------------ | -------------------------------------------------------------------- | ------------------------------------- |
 | Linux   | `compiler-rt`      | Clang's runtime builtins and startup objects                         | `Clang major version`                 |
-| Linux   | `glibc-startup`    | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                               |
-| Linux   | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `Clang major version`                 |
+| glibc   | `glibc-startup`    | glibc's `Scrt1.o`, `crti.o`, `crtn.o` and `libc_nonshared.a` members | `glibc`                               |
+| musl    | `musl-startup`     | musl's `Scrt1.o`, `crti.o` and `crtn.o`                              | `musl startup package`                |
+| glibc   | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `Clang major version`                 |
+| musl    | `llvm-cxx-runtime` | LLVM's libc++, libc++abi and libunwind linked into ICU               | `LLVM C++ runtime version`            |
 | Windows | `mingw-runtime`    | MinGW-w64 startup, LLVM runtime code and bundled runtime DLLs        | `CLANG64 packages and linked objects` |
 
 macOS has no separate linked toolchain component. Its binaries use compiler-rt and the C runtime through `libSystem`.
@@ -452,14 +469,14 @@ A missing or changed identity requires a new PostgreSQL component review.
 
 The Linux build compiles OpenSSL, zlib, LZ4 and ICU before PostgreSQL, using ICU's complete release locale data.
 It records its toolchain lines in the build container when it compiles, and reassembly reuses them as well,
-so a reassembly on another host cannot describe another compiler or glibc.
+so a reassembly on another host cannot describe another compiler or C library.
 These lines change rarely, unlike toolset updates, and the toolchain's license terms follow them.
 The build checks Clang's link plan for GCC runtime contributions.
-The image's `clang.cfg` routes links through [traced-ld.sh](../binaries/linux/image/traced-ld.sh),
+The image's Clang configuration routes links through [traced-ld.sh](../binaries/linux/image/traced-ld.sh),
 which records the link's input files and archive members under the output's build ID.
 Packaging, including a reassembly, fails when an image in the candidate has no such record, wherever the image lies,
-and when a record shows GCC's runtime or any other glibc code,
-so the `glibc-startup` review keeps matching what is linked into each image.
+or its trace shows GCC's runtime or unreviewed system objects.
+The musl startup review binds the exact Alpine package revision and retains the upstream copyright text.
 
 The Windows driver verifies the SHA-256 of its pinned MSYS2 base, CLANG64 packages and parser generators before extraction.
 It builds native extensions with PGXS and Apache-only TimescaleDB with CMake.
@@ -501,7 +518,7 @@ Release validation is the default.
 It requires a verified inventory, all selected source components, complete reviewed file coverage,
 source and toolchain coverage of every native image, retained notices, and verified host prerequisites.
 It compares the host prerequisites with the build's measurement, so it also requires that measurement:
-`PE host library imports` on Windows, `ELF glibc symbol requirements` on Linux,
+`PE host library imports` on Windows, `ELF glibc symbol requirements` or `ELF musl baseline` on Linux,
 and `Mach-O host library imports` and `Mach-O minimum macOS version` on macOS.
 Each cited notice must be a regular file whose SHA-256 matches the reviewed digest.
 Each toolchain component must match its reviewed toolchain line.

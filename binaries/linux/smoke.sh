@@ -34,7 +34,8 @@ unset ICU_DATA
 unset LD_LIBRARY_PATH
 if [[ $(uname -s) == Linux ]]; then
   for program in postgres psql pg_dump; do
-    loaded=$(LD_TRACE_LOADED_OBJECTS=1 "$installation/bin/$program")
+    # Alpine's ldd invokes the musl loader with --list instead of using glibc's trace variable.
+    loaded=$(ldd "$installation/bin/$program")
     libraries=(libcrypto.so.3 libssl.so.3)
     if [[ $program == pg_dump ]]; then libraries+=(libz.so.1 liblz4.so.1); fi
     for lib in "${libraries[@]}"; do

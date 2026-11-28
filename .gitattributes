@@ -145,6 +145,7 @@
 
 
 # License reviews bind the hash of the project's shipped notices, so their bytes must not depend on the checkout.
+/binaries/linux/notices/*.txt text eol=lf
 /binaries/windows/notices/*.txt text eol=lf
 # Upstream license texts that sources.json pins by SHA-256; kept byte for byte as retrieved.
 /binaries/sources/notices/** -text

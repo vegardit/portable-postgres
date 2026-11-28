@@ -5,12 +5,11 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Measures the shipped ELF glibc requirements and checks the Linux runtime's linked libraries. */
+/** Checks the shipped ELF dependencies against the target's libc and measures glibc symbol versions. */
 import { execFileSync } from "node:child_process";
 import { open, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { type LinuxTarget, linuxTargets, nativeLinuxTarget } from "./target.ts";
-import baseline from "./base.json" with { type: "json" };
+import { type LinuxTarget, linuxBases, linuxTargets, nativeLinuxTarget } from "./target.ts";
 import { compareVersions } from "../sources/version.ts";
 
 const glibcLibraries = new Set([
@@ -42,9 +41,14 @@ export async function elfImages(installation: string): Promise<string[]> {
 }
 
 /** Runs readelf with these options on an ELF image and returns what it prints. */
-export function readelf(image: string, ...options: string[]): string {
+export function readelf(target: LinuxTarget, image: string, ...options: string[]): string {
   // Use the reader from the compiler toolchain so it recognizes the DWARF that this Clang emits.
-  return execFileSync("llvm-readelf-" + baseline.llvm, [...options, image], {
+  const { libc } = linuxTargets[target];
+  const { llvm } = linuxBases[libc];
+  const reader = libc === "musl"
+    ? `/usr/lib/llvm${llvm}/bin/llvm-readelf`
+    : `llvm-readelf-${llvm}`;
+  return execFileSync(reader, [...options, image], {
     encoding: "utf8",
     env: { ...process.env, LC_ALL: "C" },
     timeout: 30_000,
@@ -54,7 +58,10 @@ export function readelf(image: string, ...options: string[]): string {
 export async function inspectLinuxRuntime(
   installation: string,
   target: LinuxTarget,
-): Promise<string> {
+): Promise<string | undefined> {
+  const { libc, loader, gnuArch } = linuxTargets[target];
+  const muslLibrary = `libc.musl-${gnuArch}.so.1`;
+  const hostLibraries = libc === "musl" ? new Set([muslLibrary]) : glibcLibraries;
   const bundled = new Set(
     (await readdir(join(installation, "lib"), { withFileTypes: true }))
       .filter(entry => entry.isFile() || entry.isSymbolicLink()).map(entry => entry.name),
@@ -62,29 +69,42 @@ export async function inspectLinuxRuntime(
   let maximum = "0";
   const libraries = new Set<string>();
   for (const path of await elfImages(installation)) {
-    const info = readelf(path, "--wide", "--dynamic", "--version-info");
+    const info = readelf(target, path, "--wide", "--dynamic", "--version-info",
+      "--program-headers");
     const name = relative(installation, path);
+    if (libc === "musl") {
+      const interpreter = /Requesting program interpreter: ([^\]]+)/.exec(info)?.[1];
+      if ((interpreter !== undefined || name.startsWith("bin/"))
+        && interpreter !== "/lib/" + loader)
+      {
+        throw new Error(`${name} must use /lib/${loader} as its ELF interpreter`);
+      }
+    }
     const requirements = info.split("Version needs section")[1] ?? "";
     for (const [, version = ""] of requirements.matchAll(/\bName: GLIBC_([\w.]+)/g)) {
-      if (!/^\d+(?:\.\d+)+$/.test(version) || compareVersions(version, baseline.glibc) > 0) {
+      if (libc === "musl") throw new Error(`${name} requires a glibc symbol: GLIBC_${version}`);
+      const baseline = linuxBases.glibc.glibc;
+      if (!/^\d+(?:\.\d+)+$/.test(version) || compareVersions(version, baseline) > 0) {
         throw new Error(
-          `${name} needs GLIBC_${version}, outside the glibc ${baseline.glibc} baseline`,
+          `${name} needs GLIBC_${version}, outside the glibc ${baseline} baseline`,
         );
       }
       if (compareVersions(version, maximum) > 0) maximum = version;
     }
     for (const [, library = ""] of info.matchAll(/\(NEEDED\)\s+Shared library: \[([^\]]+)\]/g)) {
-      if (library !== linuxTargets[target].loader && !glibcLibraries.has(library)
-        && !bundled.has(library))
-      {
+      if (library !== loader && !hostLibraries.has(library) && !bundled.has(library)) {
         throw new Error(`${name} needs an unreviewed runtime library: ${library}`);
       }
       libraries.add(library);
     }
   }
+  console.log(`Linked libraries: ${[...libraries].sort().join(", ")}`);
+  if (libc === "musl") {
+    if (!libraries.has(muslLibrary)) throw new Error(`No dependency on ${muslLibrary} found`);
+    return undefined;
+  }
   if (maximum === "0") throw new Error("No glibc version requirements found in the installation");
   console.log(`Highest required glibc symbol version: GLIBC_${maximum}`);
-  console.log(`Linked libraries: ${[...libraries].sort().join(", ")}`);
   return maximum;
 }
 

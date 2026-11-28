@@ -10,8 +10,7 @@ import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setReadablePermissions } from "../artifact/assemble.ts";
 import { assertNativeTapFiles } from "../native-proof.ts";
-import { isLinuxTarget, linuxTargets } from "./target.ts";
-import baseline from "./base.json" with { type: "json" };
+import { isLinuxTarget, linuxBases, linuxTargets } from "./target.ts";
 import { fileSha256 } from "../hash.ts";
 import { outputRoot, root } from "../paths.ts";
 import { capture } from "../process.ts";
@@ -23,8 +22,8 @@ if (!isLinuxTarget(target) || !archiveArgument) {
   );
 }
 const archive = resolve(archiveArgument);
-const platform = linuxTargets[target].platform;
-const image = baseline.image;
+const { libc, platform } = linuxTargets[target];
+const image = linuxBases[libc].image;
 const archiveSha256 = await fileSha256(archive);
 const output = outputRoot;
 await mkdir(output, { recursive: true });
@@ -42,6 +41,24 @@ function docker(args: string[]): string {
   return capture("docker", args, { timeout: 180_000 });
 }
 
+// Alpine needs Bash and runuser for the shared proof. Its consumer stage keeps the pinned musl.
+const imageRecipe = join(root, "binaries/linux/image");
+const consumerImage = libc === "musl"
+  ? docker([
+    "build",
+    "--quiet",
+    "--platform",
+    platform,
+    "--target",
+    "consumer",
+    "--file",
+    join(imageRecipe, "musl.Dockerfile"),
+    "--build-arg",
+    `ALPINE_IMAGE=${image}`,
+    imageRecipe,
+  ]).trim()
+  : image;
+
 // The shell command is fixed; the archive path is passed to docker cp as a separate argument.
 const container = docker([
   "create",
@@ -53,7 +70,7 @@ const container = docker([
   "NATIVE_CLEAN_CONSUMER=1",
   "--entrypoint",
   "bash",
-  image,
+  consumerImage,
   "-c",
   "mkdir -p /opt/installation && tar -xzf /tmp/installation.tar.gz -C /opt/installation && exec bash /proof/binaries/linux/smoke.sh /opt/installation",
 ]).trim();
@@ -73,7 +90,7 @@ let cleanupFailure: Error | undefined;
 try {
   await writeFile(
     join(evidence, "consumer.json"),
-    JSON.stringify({ container, target, platform, image, archiveSha256 }, null, 2),
+    JSON.stringify({ container, target, platform, image, consumerImage, archiveSha256 }, null, 2),
   );
   docker(["cp", archive, container + ":/tmp/installation.tar.gz"]);
   docker(["cp", fixture, container + ":/proof"]);

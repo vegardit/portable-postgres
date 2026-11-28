@@ -1,5 +1,5 @@
 {
-  "target": "linux-arm64-glibc",
+  "target": "linux-x64-glibc",
   "licenseInventory": {
     "components": [
       {
@@ -1190,9 +1190,7 @@
           "© (C)"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The seven listed extension images also use PostgreSQL server headers. The arm64 atomics header and ARMv8 CRC sources carry the PostgreSQL project notices. bin/postgres contains the ARMv8, software and runtime-selection CRC symbols. The x64-specific AVX-512 implementation is outside this target. The shared MIT-covered hash and HyperLogLog headers still apply.",
-          "The x64 review at 1a757d3 records the provenance limitation on the shared nepali.stop data. The same source signatures and retained project notices apply to this build.",
+          "The linux-x64-glibc review at 1a757d3 records the source grants for PostgreSQL core and the earlier extension bundle. Review of the expanded contrib payload uses the paths and notices from dry run 45710944049.",
           "pgcrypto: Marko Kreen grants BSD-2-Clause in pgcrypto.h, pgp.c and px.c. David Burren grants BSD-3-Clause in crypt-des.c. The blowfish, gensalt and SHA crypt sources state public-domain terms. FreeBSD commit d8e82636a47b records the author-approved BSD-2-Clause grant for the MD5 implementation. notices/postgresql-freebsd-crypt-md5.txt retains that grant."
         ]
       },
@@ -1260,8 +1258,9 @@
           "licence file LICENSE sha256:da5fbc1f146c0131f01680db7fb67998fb22524a6955871cfe79a45432236c04"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The file list and retained notices for this component match the x64 review."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE (notices/pgvector.txt): PostgreSQL License, PGDG and the University of California.",
+          "Its 19 compiled sources and 8 headers carry no other notice.",
+          "All 3 notice signatures of the source tree were read. The others are its LICENSE, META.json and Dockerfile."
         ]
       },
       {
@@ -1405,8 +1404,11 @@
           "we skip license checks for: | the update script fragments, because the generated update scripts will | contain the license at top, and we don't want to repeat it in the middle | test/sql/dump which contains auto-generated code | src/chunk_adatptive since it's still in BETA"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The Linux recipe sets APACHE_ONLY=ON and audits the compile commands before packaging. The retained NOTICE covers the code derived from PostgreSQL."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE-APACHE (notices/timescaledb.txt) and NOTICE (notices/timescaledb-NOTICE).",
+          "Built Apache-only (APACHE_ONLY=ON); the build fails if it compiles a file under tsl/ or one whose leading comment declares the Timescale License (binaries/timescaledb.ts).",
+          "18 compiled files contain code copied from PostgreSQL, under the PostgreSQL License that NOTICE reproduces.",
+          "Outside tsl/, only build scripts and tests carry the Timescale License header; the installed SQL is generated from sql/, under the Apache License.",
+          "All 45 notice signatures of the source tree were read. The Timescale License ones are under tsl/, scripts/ and test/; the others are Apache headers, license files, and CI, test and documentation text about the license setting."
         ]
       },
       {
@@ -1463,8 +1465,9 @@
           "licence file NOTICE sha256:7e5f8d9202f2cfc0cb385314fa6d3764b655fbf8887b4a1b37bcedad2cd2fc81"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The file list and retained notices for this component match the x64 review."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE (notices/pg_textsearch.txt) and NOTICE (notices/pg_textsearch-NOTICE): PostgreSQL License, Tiger Data.",
+          "Its compiled files say \"Licensed under the PostgreSQL License\". The MIT-licensed hashfn_unstable.h that its library includes is PostgreSQL's header and reviewed there.",
+          "All 9 notice signatures of the source tree were read. The others are its license files and text in CONTRIBUTING.md, RELEASING.md, CI and benchmark data."
         ]
       },
       {
@@ -1506,8 +1509,9 @@
           "licence file LICENSE sha256:fa713329f5c5fea7a1b1e0f7263a7818a35a634cbd63c99caa468dfd5619e1de"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The file list and retained notices for this component match the x64 review."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE (notices/hypopg.txt): PostgreSQL License, PGDG and the University of California.",
+          "Its files by Julien Rouhaud state the PostgreSQL License and refer to LICENSE; the code it copies from PostgreSQL is under the same terms.",
+          "All 7 notice signatures of the source tree were read. The others are its LICENSE, META.json and documentation."
         ]
       },
       {
@@ -1537,8 +1541,9 @@
           "licence file LICENSE sha256:40b35eecae9cb6e59aa52fe5fa3a39d80534efa99f7751e6834902d9cc92d447"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The extension uses MIT terms and incorporates PostgreSQL code in src/check_expr.c. Its retained notices include both grants."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE (notices/plpgsql_check.txt): MIT, Pavel Stehule. META.json and the RPM specs say BSD; the license text is MIT's.",
+          "src/check_expr.c holds \"a simplified copy from pl_exec.c\", PostgreSQL code, so PostgreSQL's notice (notices/postgresql.txt) is cited here as well.",
+          "All 4 notice signatures of the source tree were read. The others are its LICENSE, README, META.json and RPM specs."
         ]
       },
       {
@@ -1587,8 +1592,10 @@
           "licence file LICENSE sha256:c56dd143965057e2dc17604019a456a2da3344896333713b14316bd16a4977cc"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The pinned cron implementation includes Vixie cron and Berkeley bitstring code. Its retained notices and the release source-bundle requirement are the same as in the cited review."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE (notices/pg_cron.txt): PostgreSQL License, Citus Data.",
+          "Vixie-Cron: src/entry.c, src/misc.c, include/cron.h and include/pathnames.h by Paul Vixie (notices/pg_cron-src-entry.c, notices/pg_cron-src-misc.c, notices/pg_cron-include-cron.h.txt; pathnames.h carries the same text). It may be sold only with buildable source, which every release provides as portable-postgres-<version>-sources.tar.gz.",
+          "BSD-4.3TAHOE: include/bitstring.h by the University of California, Berkeley (notices/pg_cron-include-bitstring.h.txt); the README carries its acknowledgement.",
+          "All 5 notice signatures of the source tree were read. The others are its LICENSE, META.json and Citus Data's copyright lines."
         ]
       },
       {
@@ -1713,8 +1720,9 @@
           "licence file LICENSE.txt sha256:363cc44a50855732b134c1248954744e27302d6099f8f6d1d87403be9308c844"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The file list and retained notices for this component match the x64 review."
+          "Drafted from Build run 44964072169 at commit 6136378. LICENSE.txt (notices/pg_partman.txt): PostgreSQL License, Snowflake, Inc.",
+          "Only its SQL ships (no background worker, no Python helpers).",
+          "All 2 notice signatures of the source tree were read. The others are its LICENSE.txt and META.json."
         ]
       },
       {
@@ -1973,9 +1981,9 @@
           "© YYYY and later: Unicode, Inc. and others. | License & terms of use: https://www.unicode.org/copyright.html"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. ICU 79.1 supplies libicuuc, libicui18n and the full libicudata. notices/icu.txt includes Unicode License V3 and the older IBM ICU grant.",
-          "The data image contains cjdict.dict, laodict.dict, burmesedict.dict and zoneinfo64.res. The retained third-party terms cover the Google and TaBE word lists, the NAIST/IPADIC dictionary, the Lao and Burmese dictionaries and the public-domain IANA time zone database. libicui18n contains the BSD-licensed double-conversion implementation.",
-          "The runtime packages the two code libraries and their data library. The Autoconf and pkg.m4 texts in the upstream notice concern build tooling. LLVM code linked into the ICU code libraries has separate coverage."
+          "ICU 79.1 ships common and i18n code and the complete locale data. The retained ICU notice covers the current Unicode grant, the legacy ICU license, double-conversion, CJK, Lao and Burmese dictionaries and the IANA time zone database.",
+          "Release dry run 45710944049 on linux-x64-glibc: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target.",
+          "LLVM runtime objects linked into ICU's code libraries are covered by llvm-cxx-runtime."
         ]
       },
       {
@@ -2071,7 +2079,8 @@
           "© Copyright Henrik Ravn YYYY | Use, modification and distribution are subject to the Boost Software License, Version 1.0."
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The ELF source-file symbols in lib/libz.so.1 identify the upstream compression, decompression, CRC and gzip implementation. The source list excludes contrib/minizip, Ada bindings and command-line tools. notices/zlib.txt retains the Gailly and Adler grant."
+          "The compression recipe builds the zlib shared library from its core implementation, without the contrib tools or minizip. notices/zlib.txt retains the Zlib grant.",
+          "Release dry run 45710944049 on linux-x64-glibc: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
         ]
       },
       {
@@ -2147,7 +2156,8 @@
           "licence file tests/data/COPYING sha256:2ee3c965219a639df2ad00ead56c5e5019d6e362e12c86679b794dacb166eadc"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The ELF file symbols in lib/liblz4.so.1 name lz4.c, lz4hc.c, lz4frame.c, lz4file.c and xxhash.c. The three retained notices cover the library, xxHash and the file API. The Linux build disables the CLI and packages only the shared library."
+          "Only the LZ4 shared library is packaged. The CLI is disabled. notices/lz4.txt, notices/lz4-lib-xxhash.c and notices/lz4-lib-lz4file.h.txt cover the library, embedded xxHash and file API under BSD-2-Clause.",
+          "Release dry run 45710944049 on linux-x64-glibc: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
         ]
       },
       {
@@ -2304,8 +2314,8 @@
           "ÎG©jW"
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. libcrypto.so.3 and libssl.so.3 come from OpenSSL 3.5.9. notices/openssl.txt retains its Apache license. The runtime omits the command-line tools, engines and loadable provider modules.",
-          "The ELF file symbols identify the TLS and QUIC sources and arm64 crypto assembly, including aesv8-armx, aes-gcm-armv8 and sha512-armv8. The assembly generators in this OpenSSL release grant the project license for their OpenSSL distribution. The Bouncy Castle notices found in the pinned source belong to test certificates under test/certs, and the vendored Perl template module is build tooling."
+          "The pinned OpenSSL distribution builds libcrypto and libssl with Apache-2.0 terms retained in notices/openssl.txt. The recipe disables applications, engines and loadable modules. The Perl generators and test certificates are outside the shipped runtime.",
+          "Release dry run 45710944049 on linux-x64-glibc: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
         ]
       },
       {
@@ -2350,8 +2360,9 @@
           "testing. It is distributed under the revised FreeBSD license."
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The source notice signatures and common retained notice hashes match the Linux x64 source review in binaries/linux/review.json at this commit. That review documents the individual license grants and their source paths.",
-          "The file list and retained notices for this component match the x64 review."
+          "Drafted from Build run 44964072169 at commit 6136378. The manual (doc/pgtap.mmd, notices/pgtap.txt) and META.json state PostgreSQL's terms.",
+          "The installed SQL calls them \"the revised FreeBSD license\"; PostgreSQL's terms are recorded, as META.json names them. Only the versioned SQL ships, without pg_prove.",
+          "All 5 notice signatures of the source tree were read. The others are its README, META.json and RPM spec."
         ]
       },
       {
@@ -2453,7 +2464,8 @@
           "license = \"PostgreSQL\""
         ],
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The pgmq component contains the control file, versioned SQL and upgrade scripts from pgmq-extension, plus the Tembo PostgreSQL license in notices/pgmq.txt. The Rust client and its dependencies are outside the runtime."
+          "The Tembo PostgreSQL grant in notices/pgmq.txt covers the shipped extension control and SQL files. The Rust client and its dependencies are outside the archive.",
+          "Release dry run 45710944049 on linux-x64-glibc: the source pins, source notice signatures and retained notice hashes match the reviewed Linux arm64 build. The files listed here are the payload of this target."
         ]
       },
       {
@@ -2555,7 +2567,8 @@
         "noticeSha256": {},
         "toolchain": "21",
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. Clang 21.1.8 used compiler-rt. The package audit checked each shipped ELF link for forbidden GCC contributions. libssl and libcrypto contain compiler-rt's aarch64.c.o and outline atomic helpers. LLVM 21.1.8 identifies lib/builtins/cpu_model/aarch64.c and lib/builtins/aarch64/lse.S under Apache-2.0 WITH LLVM-exception."
+          "Release dry run 45710944049 on Linux x64: the build audited the link records for the expanded ELF payload. The reviewed toolchain line is 21.",
+          "Clang uses compiler-rt startup and builtins. The per-image audit excludes GCC contributions."
         ]
       },
       {
@@ -2657,9 +2670,8 @@
         "noticeSha256": {},
         "toolchain": "glibc 2.35",
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. Ubuntu installed libc6-dev:arm64 2.35-0ubuntu3.18. bin/postgres contains Scrt1.o. The link audit restricts glibc inputs to the reviewed startup objects and libc_nonshared members.",
-          "The exact Ubuntu source tarball and Debian patches match the source package descriptor. The arm64 crti.S and crtn.S contain the linking exception; start.S omits it in this package. Its entire contents following the license header are identical to the explicitly exception-licensed start.S in upstream glibc commit 06d4381dd81eaab16b538017adc5854033f44b6d. The Ubuntu patches contain no change to that file.",
-          "glibc steward Carlos O'Donell confirmed the longstanding application of the exception to this code on 2022-08-25 (glibc-alpha message a1840322-9177-1206-f329-44bfb72c5f98@redhat.com). See https://github.com/bminor/glibc/commit/06d4381dd81eaab16b538017adc5854033f44b6d. The glibc ABI-note and reviewed libc_nonshared routines also carry linking exceptions."
+          "Release dry run 45710944049 on Linux x64: the build audited the link records for the expanded ELF payload. The reviewed toolchain line is glibc 2.35.",
+          "The audited x86-64 startup objects and libc_nonshared members use the linking exception recorded in the Linux x64 review at 1a757d3. ICU data contains no executable code."
         ]
       },
       {
@@ -2676,24 +2688,24 @@
           "notices/llvm-cxx-runtime.txt"
         ],
         "noticeSha256": {
-          "notices/llvm-cxx-runtime.txt": "0702bed1454179a313911aeb1d7ab57f2c5a4cc528238aa61a3ee713261bc202"
+          "notices/llvm-cxx-runtime.txt": "e598af279cf1bcc7e8d57e566cb604ed76a3f159aabaee867a0f9dd8393480ad"
         },
         "toolchain": "21",
         "evidence": [
-          "Approved with the arm64 target in 1a757d3. The Linux C++ wrapper uses LLVM's static libc++, libc++abi and libunwind. The ICU libraries' ELF file symbols include libc++abi and unwind implementation objects, including UnwindRegistersSave.S.o in libicuuc. The shipped notices/llvm-cxx-runtime.txt retains the three upstream runtime license texts. The separate ICU data library contains no executable code."
+          "Linux x64 builds ICU with the LLVM 21 static libc++, libc++abi and libunwind group. The code libraries are listed here and the packaged llvm-cxx-runtime notice retains the three runtime licenses. The ELF audit checks the data-only exception separately."
         ]
       }
     ]
   },
   "hostRequirements": {
-    "os": "Linux on AArch64 with glibc. The archive passed the native SQL and TAP proof in the clean Ubuntu 22.04 arm64 container.",
-    "cpu": "64-bit little-endian AArch64 (Armv8-A). PostgreSQL includes software CRC and runtime selection for the optional ARMv8 CRC extension. The build clears pgvector OPTFLAGS to avoid tuning for the build CPU.",
+    "os": "Linux on x86-64. Tested on Ubuntu 22.04 (glibc 2.35) in the build image and a clean consumer container.",
+    "cpu": "x86-64, the compiler's baseline instruction set; the SSE4.2 and AVX-512 CRC code is selected at run time",
     "libraries": [
       {
         "name": "glibc",
         "requirement": "GLIBC_2.34 or newer",
         "license": "LGPL-2.1-or-later",
-        "evidence": "The arm64 build reviewed in 1a757d3 measured GLIBC_2.34 across the packaged ELF files. Its host dependencies were ld-linux-aarch64.so.1, libc.so.6 and libm.so.6. The other reported NEEDED libraries ship in the archive. The clean Ubuntu 22.04 arm64 consumer passed. Release dry run 45710944049, job 139553060580, passed release review and the clean consumer with this requirement.",
+        "evidence": "The build measures the highest required glibc symbol version across all packaged ELF images. Build run 44964072169 linked only libc.so.6 and libm.so.6 from the host. glibc can load further host modules on its own at run time, such as NSS modules for user and host lookups. On Ubuntu 22.04, glibc loads the host's libgcc_s.so.1 when PostgreSQL requests a backtrace. If the library is unavailable, the error is still reported, with no stack frames.",
         "measured": true
       }
     ]

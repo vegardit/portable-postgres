@@ -26,7 +26,7 @@ for argument in "$@"; do
   esac
   previous=$argument
 done
-trace=$(mktemp "$records/link-XXXXXXXX.tmp")
+trace=$(mktemp "$records/link-tmp-XXXXXXXX")
 trap 'rm -f "$trace"' EXIT
 # The trace also stays in the build logs. The last --build-id option wins, so every output gets an ID
 # even when a recipe passes its own.
