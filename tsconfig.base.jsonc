@@ -16,14 +16,11 @@
     // overrides this pair with bundler resolution through `tsconfig.browser.jsonc`.
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    // TypeScript is the type authority; Vite and future build configs own emitted output.
+    // Node runs the TypeScript sources directly. The compiler only checks types.
     "noEmit": true,
     // Allow `.ts`/`.mts` imports in source files so local runtime execution and editor flows
     // can use the extensions that Node's type-stripping runtime actually loads.
     "allowImportingTsExtensions": true,
-    // Inert during type-checking (`noEmit: true`). Build configs that enable emit inherit
-    // this setting to rewrite relative TypeScript imports to runnable JavaScript extensions.
-    "rewriteRelativeImportExtensions": true,
     // Avoid platform-specific path casing bugs across the workspace.
     "forceConsistentCasingInFileNames": true,
     // Stay close to Node's type-stripping model and avoid non-erasable TypeScript syntax in runtime code.

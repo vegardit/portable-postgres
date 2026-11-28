@@ -165,7 +165,7 @@ it("reassembles on a newer host with the macOS version recorded during compilati
   });
 });
 
-it("uses the checkout's macOS pins in the compiled driver and rejects a saved SDK after a parser change", async () => {
+it("uses the checkout's macOS pins and rejects a saved SDK after a parser change", async () => {
   const checkout = await directory();
   const pins = {
     xcode: "/fixture/Selected.app",
@@ -175,34 +175,26 @@ it("uses the checkout's macOS pins in the compiled driver and rejects a saved SD
     flex: "/fixture/bin/flex",
   };
   const measured: string[] = [];
-  const capture = (command: string, args: string[]) => {
+  const capture: typeof processTools.capture = (command, args) => {
     if (args[0] === "--version") measured.push(command);
     return command === "xcodebuild" ? "Xcode 16.4\nBuild version fixture" : "fixture";
   };
   let compilerEnv: NodeJS.ProcessEnv | undefined;
-  const run = (command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => {
+  const run: typeof processTools.run = (command, args, options) => {
     expect([command, ...args]).toEqual(["bash", join(checkout, "binaries/macos/build.sh")]);
-    compilerEnv = options.env;
+    compilerEnv = options?.env;
     return Promise.reject(new Error("fixture reached the compile script"));
   };
-  // The emitted driver stays in dist while the isolated checkout supplies a different baseline.
-  const compiledPaths = "../dist/binaries/paths.js";
-  const compiledProcess = "../dist/binaries/process.js";
-  const compiledSources = "../dist/binaries/sources/sources.js";
-  vi.doMock(import(compiledPaths),
+  // Recipe paths are set at import time. Load the driver against this fixture's checkout.
+  vi.resetModules();
+  vi.doMock(import("../binaries/paths.ts"),
     () => ({ root: checkout, workRoot: checkout, outputRoot: checkout }));
-  vi.doMock(import(compiledProcess), () => ({ capture, run, buildJobs: () => "1" }));
-  vi.doMock(import(compiledSources),
+  vi.doMock(import("../binaries/process.ts"), () => ({ capture, run, buildJobs: () => "1" }));
+  vi.doMock(import("../binaries/sources/sources.ts"),
     () => ({ sources: [], fetchSources: () => Promise.resolve(new Map<string, string>()) }));
   try {
-    const { build, macOSRecipe } = await vi.importActual<
-      typeof import("../binaries/macos/build.ts")
-    >(
-      "../dist/binaries/macos/build.js",
-    );
-    const { recipeIdentity, recordBuild } = await vi.importActual<typeof packaging>(
-      "../dist/binaries/package.js",
-    );
+    const { build, macOSRecipe } = await import("../binaries/macos/build.ts");
+    const { recipeIdentity, recordBuild } = await import("../binaries/package.ts");
     for (const path of macOSRecipe) {
       expect(path.startsWith(checkout + sep)).toBe(true);
       await mkdir(dirname(path), { recursive: true });
@@ -227,9 +219,10 @@ it("uses the checkout's macOS pins in the compiled driver and rejects a saved SD
       );
     });
   } finally {
-    vi.doUnmock(compiledPaths);
-    vi.doUnmock(compiledProcess);
-    vi.doUnmock(compiledSources);
+    vi.doUnmock(import("../binaries/paths.ts"));
+    vi.doUnmock(import("../binaries/process.ts"));
+    vi.doUnmock(import("../binaries/sources/sources.ts"));
+    vi.resetModules();
   }
 });
 

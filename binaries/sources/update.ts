@@ -193,10 +193,7 @@ function released(tag: string): boolean {
   return capture("git", ["tag", "--list", tag]).trim() === tag;
 }
 
-/**
- * The tracked files that an update rewrites. tsc copies sources.json next to the compiled modules, so a
- * path next to this module would let a compiled updater rewrite that copy instead of the repository's.
- */
+/** The tracked source pins and packaging revision in this checkout. */
 export const pinFiles = {
   sources: join(root, "binaries/sources/sources.json"),
   revision: join(root, "binaries/sources/revision.json"),

@@ -33,7 +33,7 @@ import { buildJobs, capture, run } from "../process.ts";
 import { auditLinks, linkRecordsDirectory } from "./links.ts";
 import { inspectMacOSRuntime, machOImages } from "./runtime.ts";
 
-// Both entry points must use the checkout's recipe, including the baseline whose bytes are hashed.
+// The build must read the same baseline file that the recipe hashes for reassembly.
 const recipeRoot = join(root, "binaries/macos");
 const baselineFile = join(recipeRoot, "base.json");
 const baselineSchema = z.object({

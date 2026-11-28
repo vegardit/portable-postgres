@@ -41,7 +41,6 @@ import {
   nativeLinuxTarget,
 } from "./target.ts";
 
-// From the repository, because the compiled copy of this module in dist has none of these files.
 const recipeRoot = join(root, "binaries/linux");
 
 const commonRecipe = [

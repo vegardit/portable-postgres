@@ -139,7 +139,7 @@ so a published minimum always describes the archive's own binaries.
 A supported CPU baseline must also come from evidence, rather than just the compiler host's capabilities.
 
 The macOS target requires macOS 15 or newer on Apple silicon.
-Both the TypeScript and compiled build drivers read the Xcode version and path, deployment target,
+The macOS build driver reads the Xcode version and path, deployment target,
 and Bison and Flex paths from [base.json](../binaries/macos/base.json).
 The build reads the deployment version and imported libraries from every image's load commands.
 It rejects an image with a minimum above the deployment target.

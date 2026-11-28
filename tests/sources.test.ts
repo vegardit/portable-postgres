@@ -5,7 +5,7 @@
  * SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/portable-postgres
  */
 
-/** Verifies source trust checks and the compiled build toolkit's import boundary. */
+/** Verifies source archive integrity and checks that Node can import the build tools directly. */
 import { createHash } from "node:crypto";
 import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -63,55 +63,41 @@ it("keeps archives of different pins side by side and returns each verified path
   expect((await fetchSources(directory, [first])).get("source")).toBe(firstPaths.get("source"));
 });
 
-it("compiled build export imports without launching a build", () => {
-  const output = execFileSync(process.execPath, [
-    "--input-type=module",
-    "-e",
-    "const { build } = await import('./dist/binaries/linux/build.js'); if (typeof build !== 'function') throw Error('Missing built export'); console.log('built-export-ok');",
-  ], { encoding: "utf8", timeout: 10_000 });
-  expect(output.trim()).toBe("built-export-ok");
-});
-
-it("compiled build drivers and the pin updater use the repository's recipes, notices and pins", () => {
-  // tsc emits only modules and the JSON they import, so a path next to the compiled module finds
-  // neither the build scripts nor the notices, and would write updated pins into dist.
+it("Node imports the TypeScript drivers and finds their checkout inputs from another directory", async () => {
+  const binaries = new URL("../binaries/", import.meta.url);
   const script = `
-    const { existsSync } = await import("node:fs");
-    const { isAbsolute, join, relative, sep } = await import("node:path");
-    const { linuxRecipes } = await import("./dist/binaries/linux/build.js");
-    const { windowsRecipe } = await import("./dist/binaries/windows/build.js");
-    const { pinFiles } = await import("./dist/binaries/sources/update.js");
-    const paths = [
-      ...linuxRecipes.glibc,
-      ...linuxRecipes.musl,
-      ...windowsRecipe,
-      pinFiles.sources,
-      pinFiles.revision,
-    ];
-    // The compiled output directory itself, so that a checkout path that contains "dist" still passes.
-    const inDist = path => {
-      const rest = relative(join(process.cwd(), "dist"), path);
-      return !isAbsolute(rest) && rest.split(sep)[0] !== "..";
-    };
-    console.log(JSON.stringify(paths.filter(path => !existsSync(path) || inDist(path))));
+    import assert from "node:assert/strict";
+    import { existsSync } from "node:fs";
+    import { join, sep } from "node:path";
+    const load = file => import(new URL(file, process.argv[1]));
+    const { root } = await load("paths.ts");
+    assert.equal(root, process.argv[2]);
+    const linux = await load("linux/build.ts");
+    const windows = await load("windows/build.ts");
+    const macos = await load("macos/build.ts");
+    const { pinFiles } = await load("sources/update.ts");
+    for (const driver of [linux, windows, macos]) assert.equal(typeof driver.build, "function");
+    assert.deepEqual(pinFiles, {
+      sources: join(root, "binaries/sources/sources.json"),
+      revision: join(root, "binaries/sources/revision.json"),
+    });
+    for (const path of [
+      ...linux.linuxRecipes.glibc, ...linux.linuxRecipes.musl,
+      ...windows.windowsRecipe, ...macos.macOSRecipe, ...Object.values(pinFiles),
+    ]) {
+      assert.ok(path.startsWith(join(root, "binaries") + sep) && existsSync(path), path);
+    }
   `;
   const output = execFileSync(process.execPath, [
     "--input-type=module",
     "-e",
     script,
+    binaries.href,
+    process.cwd(),
   ], {
+    cwd: await createDirectory(),
     encoding: "utf8",
     timeout: 10_000,
   });
-  expect(JSON.parse(output)).toEqual([]);
-});
-
-it("compiled tooling finds the repository root, not its own output directory", () => {
-  const output = execFileSync(process.execPath, [
-    "--input-type=module",
-    "-e",
-    "const { root } = await import('./dist/binaries/paths.js'); console.log(root);",
-  ], { encoding: "utf8", timeout: 10_000 });
-  // The compiled modules live under dist, but the scripts and SQL fixtures they run stay in the repository.
-  expect(output.trim()).toBe(process.cwd());
+  expect(output).toBe("");
 });

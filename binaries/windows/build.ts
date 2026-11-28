@@ -32,7 +32,6 @@ import {
 import { outputRoot, root, workRoot } from "../paths.ts";
 import { capture, run } from "../process.ts";
 
-// From the repository, because the compiled copy of this module in dist has none of these files.
 const recipeRoot = join(root, "binaries/windows");
 
 /**

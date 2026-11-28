@@ -9,7 +9,17 @@
 import { fork, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  glob,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
@@ -250,7 +260,12 @@ it("refuses an overlapping checkout update and releases the guard after success 
   const checkout = await mkdtemp(join(tmpdir(), "portable-postgres-pin-lock-"));
   try {
     const binaries = join(checkout, "binaries");
-    await cp(join(root, "dist/binaries"), binaries, { recursive: true });
+    const sourceRoot = join(root, "binaries");
+    await mkdir(join(binaries, "sources"), { recursive: true });
+    // Copy the updater and shared modules into the checkout whose pins both processes will update.
+    for await (const file of glob(["*.ts", "sources/*.ts"], { cwd: sourceRoot })) {
+      await copyFile(join(sourceRoot, file), join(binaries, file));
+    }
     await symlink(join(root, "node_modules"), join(checkout, "node_modules"), "junction");
     await writeFile(join(checkout, "package.json"), '{"type":"module"}');
     const pins = join(binaries, "sources/sources.json");
@@ -272,7 +287,7 @@ it("refuses an overlapping checkout update and releases the guard after success 
       };
     `);
     const failLookup = preload('globalThis.fetch = () => { throw Error("unexpected lookup"); };');
-    const cli = join(binaries, "sources/update.js");
+    const cli = join(binaries, "sources/update.ts");
     const run = (mock: string) => spawnSync(process.execPath, ["--import", mock, cli], {
       cwd: checkout,
       encoding: "utf8",

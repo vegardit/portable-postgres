@@ -30,7 +30,7 @@
     "binaries:validate": "node binaries/validate.ts release",
     "binaries:validate:candidate": "node binaries/validate.ts candidate",
     "binaries:verify:archive": "node binaries/validate.ts archive",
-    "test": "pnpm build && vitest run",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:config": "tsc --showConfig --project"
   },

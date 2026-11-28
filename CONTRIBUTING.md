@@ -45,13 +45,15 @@ Our [pull request template](.github/PULL_REQUEST_TEMPLATE.md) includes the contr
 - **Node.js and pnpm.** Install Node.js 26 or newer and use pnpm 12 for all Node.js builds.
   pnpm checks the Node.js version already on your machine.
   Run `pnpm install --frozen-lockfile` from the repository root to install the tools pinned in [package.json](package.json) and [pnpm-lock.yaml](pnpm-lock.yaml).
-- **Compilation, formatting and linting.** Use TypeScript 7 to compile, dprint to format and oxlint to lint TypeScript.
+- **Type checking, formatting and linting.** Use TypeScript 7 to check types, dprint to format and oxlint to lint TypeScript.
   See [Development commands](#development-commands) for the corresponding pnpm scripts.
 - **Python.** The test suite (`pnpm test` or `pnpm check`) requires Python 3.
   Put `python` on `PATH` on Windows or `python3` on Linux and macOS.
   To match CI, install the version in [.python-version](.python-version).
 
 The private root package contains the TypeScript tooling we use to build native archives.
+Node.js runs the `.ts` entry points directly with built-in type stripping.
+You can run the native build commands after installing dependencies.
 People who download an archive can extract it and run PostgreSQL without Node.js.
 Do not copy application code from other projects or reference wrapper implementations, tests, or automation.
 
@@ -65,7 +67,7 @@ Please keep your pull request focused on the problem you're solving so we can se
   This keeps the diff focused when someone edits a sentence later.
 - **Project files.** Keep upstream checkouts and generated outputs out of formatting, linting, tests and packages.
 
-Run `pnpm check` from the repository root to check formatting, linting, types, compilation and unit tests.
+Run `pnpm check` from the repository root to check formatting and types, run the linter, and run the unit tests.
 Run the relevant checks on each target your change affects.
 If you change the native distribution, also run its native SQL tests on each affected target.
 You'll find the platform-specific commands under [Building native archives](#building-native-archives).
@@ -307,10 +309,10 @@ Merging into `main` records that approval.
 - `pnpm format:check`: check formatting of project-owned files.
 - `pnpm format:fix`: format those files.
 - `pnpm lint`: lint project-owned JavaScript and TypeScript once source files exist.
-- `pnpm build`: compile the private binary build tooling with TypeScript 7.
+- `pnpm build`: type-check the native build tools without emitting files.
 - `pnpm typecheck`: check the build tooling and tests.
-- `pnpm test`: run build-tool regression tests.
-- `pnpm check`: run formatting, lint, typecheck, build, and unit checks.
+- `pnpm test`: run build-tool regression tests directly from source with Vitest.
+- `pnpm check`: run the formatting, lint, type, and unit checks.
 
 ### Source pins and native builds
 
